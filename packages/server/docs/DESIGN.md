@@ -59,7 +59,7 @@ orchestrates ports. `http` calls `app`. Dependencies point inward.
 
 - [x] **0. Skeleton** — module, layout, config, SQLite conn + migration runner, crypto (secret cipher), one domain port + adapter as the pattern seed. Compiles + a test.
 - [x] **1. Secrets & accounts** — encrypted secret store, optional app password (vault), GitLab accounts CRUD, AI providers CRUD + default.
-- [ ] **2. Repos** — add repo from URL, assign provider/model, CRUD.
+- [x] **2. Repos** — add repo from URL, assign provider/model, CRUD.
 - [ ] **3. GitLab client** — list MRs, fetch diff + touched files (fast), shallow clone (deep-lite).
 - [ ] **4. AI adapter** — openai-compatible + Claude behind one Provider port.
 - [ ] **5. Review engine** — ContextStrategy + ReviewStrategy, load skills, structured findings, score. Jobs table + worker goroutines (retry clones).
