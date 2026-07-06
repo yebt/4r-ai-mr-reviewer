@@ -57,8 +57,8 @@ orchestrates ports. `http` calls `app`. Dependencies point inward.
 
 ## Build order — vertical slices
 
-- [ ] **0. Skeleton** — module, layout, config, SQLite conn + migration runner, crypto (secret cipher), one domain port + adapter as the pattern seed. Compiles + a test.
-- [ ] **1. Secrets & accounts** — encrypted secret store, optional app password, GitLab accounts CRUD, AI providers CRUD + default.
+- [x] **0. Skeleton** — module, layout, config, SQLite conn + migration runner, crypto (secret cipher), one domain port + adapter as the pattern seed. Compiles + a test.
+- [x] **1. Secrets & accounts** — encrypted secret store, optional app password (vault), GitLab accounts CRUD, AI providers CRUD + default.
 - [ ] **2. Repos** — add repo from URL, assign provider/model, CRUD.
 - [ ] **3. GitLab client** — list MRs, fetch diff + touched files (fast), shallow clone (deep-lite).
 - [ ] **4. AI adapter** — openai-compatible + Claude behind one Provider port.
