@@ -3,8 +3,8 @@ import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
-import tailwindcss from '@tailwindcss/vite'
 import VueRouter from "vue-router/vite";
+import UnoCSS from "unocss/vite";
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -12,13 +12,13 @@ export default defineConfig({
     vue(),
     VueRouter(),
     vueDevTools(),
-    tailwindcss(),
+    UnoCSS(),
   ],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
       '@core': fileURLToPath(new URL('./src/core', import.meta.url)),
-      '@share': fileURLToPath(new URL('./src/shared', import.meta.url)),
+      '@shared': fileURLToPath(new URL('./src/shared', import.meta.url)),
       '@modules': fileURLToPath(new URL('./src/modules', import.meta.url)),
     },
   },
