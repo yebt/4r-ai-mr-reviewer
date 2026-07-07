@@ -61,7 +61,7 @@ orchestrates ports. `http` calls `app`. Dependencies point inward.
 - [x] **1. Secrets & accounts** — encrypted secret store, optional app password (vault), GitLab accounts CRUD, AI providers CRUD + default.
 - [x] **2. Repos** — add repo from URL, assign provider/model, CRUD.
 - [x] **3. GitLab client** — list MRs, fetch diff + touched files (fast), shallow clone (deep-lite).
-- [ ] **4. AI adapter** — openai-compatible + Claude behind one Provider port.
+- [x] **4. AI adapter** — openai-compatible + Claude behind one llm.Client port.
 - [ ] **5. Review engine** — ContextStrategy + ReviewStrategy, load skills, structured findings, score. Jobs table + worker goroutines (retry clones).
 - [ ] **6. Publish** — selective findings → GitLab inline discussions + summary note.
 - [ ] **7. HTTP API** — expose all of the above (the TUI contract).
