@@ -43,6 +43,8 @@ type Repository interface {
 	Create(ctx context.Context, p Provider) error
 	Get(ctx context.Context, id string) (Provider, error)
 	List(ctx context.Context) ([]Provider, error)
+	// Update changes the mutable fields (name, kind, base URL, model).
+	Update(ctx context.Context, p Provider) error
 	Delete(ctx context.Context, id string) error
 	// SetDefault marks id as the sole default provider.
 	SetDefault(ctx context.Context, id string) error

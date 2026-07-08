@@ -34,6 +34,20 @@ func (r *ProviderRepo) Create(ctx context.Context, p provider.Provider) error {
 	return nil
 }
 
+// Update changes a provider's mutable fields (not is_default or the API key).
+func (r *ProviderRepo) Update(ctx context.Context, p provider.Provider) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE providers SET name = ?, kind = ?, base_url = ?, model = ? WHERE id = ?`,
+		p.Name, string(p.Kind), p.BaseURL, p.Model, p.ID)
+	if err != nil {
+		return fmt.Errorf("provider repo: update: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return provider.ErrNotFound
+	}
+	return nil
+}
+
 // Get returns the provider with the given id.
 func (r *ProviderRepo) Get(ctx context.Context, id string) (provider.Provider, error) {
 	row := r.db.QueryRowContext(ctx, `SELECT `+providerCols+` FROM providers WHERE id = ?`, id)

@@ -116,3 +116,43 @@ func TestDefaultWhenNoneSet(t *testing.T) {
 		t.Fatalf("Default with no providers: got %v, want ErrNotFound", err)
 	}
 }
+
+func TestUpdateFieldsKeepsKeyWhenBlank(t *testing.T) {
+	ctx := context.Background()
+	s := newService(t)
+	p := mustAdd(t, s, AddInput{Name: "groq", Kind: provider.KindOpenAICompat, Model: "old", APIKey: "orig-key"})
+
+	updated, err := s.Update(ctx, p.ID, UpdateInput{Name: "groq-eu", Kind: provider.KindOpenAICompat, Model: "new", BaseURL: "https://eu"})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if updated.Name != "groq-eu" || updated.Model != "new" || updated.BaseURL != "https://eu" {
+		t.Fatalf("fields not updated: %+v", updated)
+	}
+	// Blank APIKey leaves the stored key intact.
+	key, _ := s.APIKey(ctx, p.ID)
+	if key != "orig-key" {
+		t.Fatalf("API key changed on blank update: %q", key)
+	}
+}
+
+func TestUpdateRotatesKeyWhenProvided(t *testing.T) {
+	ctx := context.Background()
+	s := newService(t)
+	p := mustAdd(t, s, AddInput{Name: "groq", Kind: provider.KindOpenAICompat, APIKey: "orig-key"})
+
+	if _, err := s.Update(ctx, p.ID, UpdateInput{Name: "groq", Kind: provider.KindOpenAICompat, APIKey: "rotated-key"}); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	key, _ := s.APIKey(ctx, p.ID)
+	if key != "rotated-key" {
+		t.Fatalf("API key not rotated: %q", key)
+	}
+}
+
+func TestUpdateUnknownProvider(t *testing.T) {
+	s := newService(t)
+	if _, err := s.Update(context.Background(), "nope", UpdateInput{Name: "x", Kind: provider.KindOpenAICompat}); !errors.Is(err, provider.ErrNotFound) {
+		t.Fatalf("got %v, want ErrNotFound", err)
+	}
+}

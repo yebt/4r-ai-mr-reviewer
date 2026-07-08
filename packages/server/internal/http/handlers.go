@@ -94,6 +94,28 @@ func (s *Server) listProviders(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+func (s *Server) updateProvider(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Name    string `json:"name"`
+		Kind    string `json:"kind"`
+		BaseURL string `json:"baseUrl"`
+		Model   string `json:"model"`
+		APIKey  string `json:"apiKey"`
+	}
+	if err := decode(r, &in); err != nil {
+		writeErr(w, err, http.StatusBadRequest)
+		return
+	}
+	p, err := s.providers.Update(r.Context(), r.PathValue("id"), providers.UpdateInput{
+		Name: in.Name, Kind: provider.Kind(in.Kind), BaseURL: in.BaseURL, Model: in.Model, APIKey: in.APIKey,
+	})
+	if err != nil {
+		writeErr(w, err, http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, http.StatusOK, toProvider(p))
+}
+
 func (s *Server) setDefaultProvider(w http.ResponseWriter, r *http.Request) {
 	if err := s.providers.SetDefault(r.Context(), r.PathValue("id")); err != nil {
 		writeErr(w, err, http.StatusBadRequest)

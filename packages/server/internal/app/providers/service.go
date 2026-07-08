@@ -85,6 +85,45 @@ func (s *Service) Get(ctx context.Context, id string) (provider.Provider, error)
 	return s.repo.Get(ctx, id)
 }
 
+// UpdateInput describes an edit to a provider. APIKey is optional: empty leaves
+// the stored key unchanged.
+type UpdateInput struct {
+	Name    string
+	Kind    provider.Kind
+	BaseURL string
+	Model   string
+	APIKey  string
+}
+
+// Update edits a provider's fields, optionally rotating its API key.
+func (s *Service) Update(ctx context.Context, id string, in UpdateInput) (provider.Provider, error) {
+	if in.Name == "" {
+		return provider.Provider{}, fmt.Errorf("providers: name is required")
+	}
+	if !in.Kind.Valid() {
+		return provider.Provider{}, fmt.Errorf("providers: invalid kind %q", in.Kind)
+	}
+
+	p, err := s.repo.Get(ctx, id)
+	if err != nil {
+		return provider.Provider{}, err
+	}
+	p.Name = in.Name
+	p.Kind = in.Kind
+	p.BaseURL = in.BaseURL
+	p.Model = in.Model
+
+	if err := s.repo.Update(ctx, p); err != nil {
+		return provider.Provider{}, err
+	}
+	if in.APIKey != "" {
+		if err := s.secrets.Set(ctx, p.APIKeyRef, []byte(in.APIKey)); err != nil {
+			return provider.Provider{}, err
+		}
+	}
+	return p, nil
+}
+
 // Default returns the default provider, or provider.ErrNotFound if none set.
 func (s *Service) Default(ctx context.Context) (provider.Provider, error) {
 	return s.repo.GetDefault(ctx)

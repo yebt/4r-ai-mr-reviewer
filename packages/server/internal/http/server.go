@@ -47,6 +47,7 @@ func (s *Server) Routes() http.Handler {
 
 	mux.HandleFunc("POST /providers", s.createProvider)
 	mux.HandleFunc("GET /providers", s.listProviders)
+	mux.HandleFunc("PATCH /providers/{id}", s.updateProvider)
 	mux.HandleFunc("POST /providers/{id}/default", s.setDefaultProvider)
 	mux.HandleFunc("DELETE /providers/{id}", s.deleteProvider)
 
