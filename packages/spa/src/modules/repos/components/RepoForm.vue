@@ -5,6 +5,7 @@ import type { Repo } from '@shared/api/types'
 import { useReposStore } from '@modules/repos/store'
 import { useAccountsStore } from '@modules/accounts/store'
 import { useProvidersStore } from '@modules/providers/store'
+import { matchAccountId, parseRepoUrl } from '@modules/repos/url'
 
 const props = defineProps<{ editing?: Repo | null }>()
 const emit = defineEmits<{ done: [] }>()
@@ -26,6 +27,27 @@ const error = ref<string | null>(null)
 const isEdit = computed(() => !!props.editing)
 const valid = computed(() => isEdit.value || (form.name.trim() && form.url.trim() && form.accountId))
 
+// Derive fields from the pasted URL, keeping any manual edits.
+const parsed = computed(() => parseRepoUrl(form.url))
+const lastAutoName = ref('')
+const matchedAccount = computed(() => accounts.items.find((a) => a.id === form.accountId) ?? null)
+
+watch(
+  () => form.url,
+  () => {
+    const p = parsed.value
+    if (!p.valid) return
+    if (form.name === '' || form.name === lastAutoName.value) {
+      form.name = p.name
+      lastAutoName.value = p.name
+    }
+    if (form.accountId === '') {
+      const id = matchAccountId(p.origin, accounts.items)
+      if (id) form.accountId = id
+    }
+  },
+)
+
 watch(
   () => props.editing,
   (r) => {
@@ -37,6 +59,7 @@ watch(
       form.model = r.model
     } else {
       Object.assign(form, blank())
+      lastAutoName.value = ''
     }
     error.value = null
   },
@@ -60,6 +83,7 @@ async function submit() {
       })
     }
     Object.assign(form, blank())
+    lastAutoName.value = ''
     emit('done')
   } catch (e) {
     error.value = errorMessage(e)
@@ -78,13 +102,23 @@ async function submit() {
 
     <template v-if="!isEdit">
       <div>
-        <label class="field-label" for="rp-name">Name</label>
-        <input id="rp-name" v-model="form.name" class="field-underline" placeholder="web" autocomplete="off" />
-      </div>
-      <div>
         <label class="field-label" for="rp-url">Project URL</label>
         <input id="rp-url" v-model="form.url" class="field-underline" placeholder="https://gitlab.com/group/project" autocomplete="off" />
+        <p v-if="form.url && !parsed.valid" class="mt-1.5 text-xs text-warn">
+          Enter a full project URL (https://host/group/project).
+        </p>
+        <p v-else-if="parsed.valid" class="mt-1.5 label-mono">
+          {{ parsed.path }}
+          <template v-if="matchedAccount"> · matched {{ matchedAccount.name }}</template>
+          <template v-else-if="accounts.items.length"> · no account for this host</template>
+        </p>
       </div>
+
+      <div>
+        <label class="field-label" for="rp-name">Name <span class="text-muted/60 normal-case">— from URL, editable</span></label>
+        <input id="rp-name" v-model="form.name" class="field-underline" placeholder="project" autocomplete="off" />
+      </div>
+
       <div>
         <label class="field-label" for="rp-account">Account</label>
         <select id="rp-account" v-model="form.accountId" class="field-underline">
@@ -96,9 +130,7 @@ async function submit() {
     </template>
 
     <template v-else>
-      <div class="font-mono text-xs text-muted">
-        {{ form.name }} · {{ form.url }}
-      </div>
+      <div class="font-mono text-xs text-muted">{{ form.name }} · {{ form.url }}</div>
     </template>
 
     <div>
