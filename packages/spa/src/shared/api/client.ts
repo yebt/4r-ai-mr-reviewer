@@ -21,6 +21,12 @@ export class ApiError extends Error {
   }
 }
 
+/** Extracts a human-readable message from any thrown value. */
+export function errorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message
+  return String(e)
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(BASE + path, {
     method,

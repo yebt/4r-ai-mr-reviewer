@@ -8,21 +8,21 @@ const links = [
 </script>
 
 <template>
-  <aside class="flex w-56 shrink-0 flex-col border-r border-line bg-surface">
-    <div class="border-b border-line px-5 py-4">
-      <div class="font-mono text-sm font-semibold tracking-tight text-ink">ai-reviewer</div>
+  <aside class="flex w-52 shrink-0 flex-col border-r border-line/60">
+    <div class="px-5 py-5">
+      <div class="font-mono text-sm font-semibold tracking-tight text-ink">ai&#8209;reviewer</div>
       <div class="label-mono mt-1">4R quality gate</div>
     </div>
-    <nav class="flex flex-col gap-1 p-3">
+    <nav class="flex flex-col">
       <RouterLink
         v-for="link in links"
         :key="link.to"
         :to="link.to"
-        class="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-muted transition-colors hover:(bg-surface-2 text-ink)"
-        active-class="bg-surface-2! text-ink!"
-        :exact-active-class="link.exact ? 'bg-surface-2! text-ink!' : ''"
+        class="flex items-center gap-3 border-l-2 border-transparent px-5 py-2.5 text-sm text-muted transition-colors hover:text-ink"
+        active-class="border-accent! text-ink!"
+        :exact-active-class="link.exact ? 'border-accent! text-ink!' : ''"
       >
-        <span :class="link.icon" class="text-base" aria-hidden="true" />
+        <span :class="link.icon" class="text-[0.95rem] opacity-70" aria-hidden="true" />
         {{ link.label }}
       </RouterLink>
     </nav>
