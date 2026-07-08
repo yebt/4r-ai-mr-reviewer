@@ -35,6 +35,8 @@ export default defineConfig({
 
     'label-mono': 'font-mono text-[0.68rem] uppercase tracking-[0.14em] text-muted',
     'field-label': 'label-mono mb-1.5 block',
+    // Form/section subtitle — clearly dominant over the muted field labels.
+    'section-title': 'text-[0.95rem] font-semibold tracking-tight text-ink',
     'field-underline': 'w-full border-0 border-b border-line bg-transparent px-0 py-2 text-sm text-ink outline-none transition-colors placeholder:text-muted/50 focus:border-accent',
 
     'btn': 'inline-flex cursor-pointer items-center justify-center gap-2 rounded-sm text-sm font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none',

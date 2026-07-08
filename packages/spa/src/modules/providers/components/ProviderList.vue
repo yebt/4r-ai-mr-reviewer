@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { errorMessage } from '@shared/api/client'
+import type { Provider } from '@shared/api/types'
 import { useProvidersStore } from '@modules/providers/store'
+
+const emit = defineEmits<{ edit: [provider: Provider] }>()
 
 const store = useProvidersStore()
 const busyId = ref<string | null>(null)
@@ -51,6 +54,13 @@ async function run(id: string, fn: () => Promise<void>) {
             @click="run(p.id, () => store.setDefault(p.id))"
           >
             Set default
+          </button>
+          <button
+            class="btn-ghost hover:text-ink"
+            :aria-label="`Edit ${p.name}`"
+            @click="emit('edit', p)"
+          >
+            <span class="i-lucide-pencil text-sm" aria-hidden="true" />
           </button>
           <button
             class="btn-ghost hover:text-danger"

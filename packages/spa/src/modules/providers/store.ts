@@ -36,6 +36,15 @@ export const useProvidersStore = defineStore('providers', () => {
     return created
   }
 
+  async function update(
+    id: string,
+    input: { name: string; kind: Provider['kind']; baseUrl: string; model: string; apiKey: string },
+  ) {
+    const updated = await api.updateProvider(id, input)
+    items.value = items.value.map((p) => (p.id === id ? updated : p))
+    return updated
+  }
+
   async function setDefault(id: string) {
     await api.setDefaultProvider(id)
     items.value = items.value.map((p) => ({ ...p, isDefault: p.id === id }))
@@ -46,5 +55,5 @@ export const useProvidersStore = defineStore('providers', () => {
     items.value = items.value.filter((p) => p.id !== id)
   }
 
-  return { items, loading, error, fetchAll, add, setDefault, remove }
+  return { items, loading, error, fetchAll, add, update, setDefault, remove }
 })

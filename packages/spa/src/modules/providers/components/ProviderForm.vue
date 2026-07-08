@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { errorMessage } from '@shared/api/client'
-import type { ProviderKind } from '@shared/api/types'
+import type { Provider, ProviderKind } from '@shared/api/types'
 import { useProvidersStore } from '@modules/providers/store'
+
+const props = defineProps<{ editing?: Provider | null }>()
+const emit = defineEmits<{ done: [] }>()
 
 const store = useProvidersStore()
 
-const form = reactive({
+const blank = () => ({
   name: '',
   kind: 'openai-compat' as ProviderKind,
   baseUrl: '',
@@ -14,29 +17,51 @@ const form = reactive({
   apiKey: '',
   makeDefault: false,
 })
+const form = reactive(blank())
 const submitting = ref(false)
 const error = ref<string | null>(null)
 
-const valid = computed(() => form.name.trim() && form.apiKey.trim())
+const isEdit = computed(() => !!props.editing)
+// In edit mode the API key is optional (blank = keep the stored one).
+const valid = computed(() => form.name.trim() && (isEdit.value || form.apiKey.trim()))
+
+watch(
+  () => props.editing,
+  (p) => {
+    if (p) {
+      form.name = p.name
+      form.kind = p.kind
+      form.baseUrl = p.baseUrl
+      form.model = p.model
+      form.apiKey = ''
+      form.makeDefault = false
+    } else {
+      Object.assign(form, blank())
+    }
+    error.value = null
+  },
+  { immediate: true },
+)
 
 async function submit() {
   if (!valid.value || submitting.value) return
   submitting.value = true
   error.value = null
   try {
-    await store.add({
+    const payload = {
       name: form.name.trim(),
       kind: form.kind,
       baseUrl: form.baseUrl.trim(),
       model: form.model.trim(),
       apiKey: form.apiKey.trim(),
-      makeDefault: form.makeDefault,
-    })
-    form.name = ''
-    form.baseUrl = ''
-    form.model = ''
-    form.apiKey = ''
-    form.makeDefault = false
+    }
+    if (props.editing) {
+      await store.update(props.editing.id, payload)
+    } else {
+      await store.add({ ...payload, makeDefault: form.makeDefault })
+    }
+    Object.assign(form, blank())
+    emit('done')
   } catch (e) {
     error.value = errorMessage(e)
   } finally {
@@ -47,7 +72,10 @@ async function submit() {
 
 <template>
   <form class="flex flex-col gap-5" @submit.prevent="submit">
-    <div class="label-mono">New provider</div>
+    <h2 class="section-title flex items-center gap-2">
+      <span class="inline-block h-3.5 w-0.5" :class="isEdit ? 'bg-flame' : 'bg-accent'" aria-hidden="true" />
+      {{ isEdit ? 'Edit provider' : 'New provider' }}
+    </h2>
 
     <div>
       <label class="field-label" for="pv-name">Name</label>
@@ -73,20 +101,25 @@ async function submit() {
     </div>
 
     <div>
-      <label class="field-label" for="pv-key">API key</label>
-      <input id="pv-key" v-model="form.apiKey" type="password" class="field-underline" placeholder="sk-… / gsk_…" autocomplete="off" />
+      <label class="field-label" for="pv-key">
+        API key <span v-if="isEdit" class="text-muted/60 normal-case">— leave blank to keep</span>
+      </label>
+      <input id="pv-key" v-model="form.apiKey" type="password" class="field-underline" :placeholder="isEdit ? '••••••••' : 'sk-… / gsk_…'" autocomplete="off" />
     </div>
 
-    <label class="flex cursor-pointer items-center gap-2 text-sm text-muted select-none">
+    <label v-if="!isEdit" class="flex cursor-pointer items-center gap-2 text-sm text-muted select-none">
       <input v-model="form.makeDefault" type="checkbox" class="accent-accent" />
       Make default
     </label>
 
     <p v-if="error" class="text-sm text-danger">{{ error }}</p>
 
-    <button type="submit" class="btn-accent self-start" :disabled="!valid || submitting">
-      <span v-if="submitting" class="i-lucide-loader-circle animate-spin" aria-hidden="true" />
-      {{ submitting ? 'Saving' : 'Add provider' }}
-    </button>
+    <div class="flex items-center gap-3">
+      <button type="submit" class="btn-accent" :disabled="!valid || submitting">
+        <span v-if="submitting" class="i-lucide-loader-circle animate-spin" aria-hidden="true" />
+        {{ submitting ? 'Saving' : isEdit ? 'Save changes' : 'Add provider' }}
+      </button>
+      <button v-if="isEdit" type="button" class="btn-ghost" @click="emit('done')">Cancel</button>
+    </div>
   </form>
 </template>

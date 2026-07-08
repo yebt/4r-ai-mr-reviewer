@@ -29,7 +29,10 @@ async function submit() {
 
 <template>
   <form class="flex flex-col gap-5" @submit.prevent="submit">
-    <div class="label-mono">New account</div>
+    <h2 class="section-title flex items-center gap-2">
+      <span class="inline-block h-3.5 w-0.5 bg-accent" aria-hidden="true" />
+      New account
+    </h2>
 
     <div>
       <label class="field-label" for="acc-name">Name</label>
