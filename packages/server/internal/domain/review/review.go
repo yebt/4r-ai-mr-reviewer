@@ -52,6 +52,15 @@ const (
 	StatusError   Status = "error"
 )
 
+// ContextMode selects how much material the engine sees: Fast is the diff plus
+// touched files; Deep clones the repo for surrounding context.
+type ContextMode string
+
+const (
+	ModeFast ContextMode = "fast"
+	ModeDeep ContextMode = "deep"
+)
+
 // Finding is a single located issue. Line 0 means the finding is not tied to a
 // specific line (file-level or general).
 type Finding struct {
@@ -70,6 +79,7 @@ type Review struct {
 	ID             string
 	RepoID         string
 	MRIID          int
+	ContextMode    ContextMode
 	Status         Status
 	Summary        string
 	Findings       []Finding

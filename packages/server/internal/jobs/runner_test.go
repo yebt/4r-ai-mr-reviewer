@@ -1,0 +1,152 @@
+package jobs
+
+import (
+	"context"
+	"errors"
+	"io"
+	"log"
+	"sync"
+	"testing"
+
+	"github.com/webcloster-dev/ai-reviewer/internal/domain/job"
+)
+
+// fakeStore is an in-memory job.Store for runner unit tests.
+type fakeStore struct {
+	mu       sync.Mutex
+	jobs     []*job.Job
+	seq      int
+	requeued int
+}
+
+func (s *fakeStore) Enqueue(_ context.Context, reviewID string) (job.Job, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.seq++
+	j := &job.Job{ID: string(rune('a' + s.seq)), ReviewID: reviewID, Status: job.StatusPending}
+	s.jobs = append(s.jobs, j)
+	return *j, nil
+}
+
+func (s *fakeStore) Claim(context.Context) (job.Job, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, j := range s.jobs {
+		if j.Status == job.StatusPending {
+			j.Status = job.StatusRunning
+			j.Attempts++
+			return *j, true, nil
+		}
+	}
+	return job.Job{}, false, nil
+}
+
+func (s *fakeStore) find(id string) *job.Job {
+	for _, j := range s.jobs {
+		if j.ID == id {
+			return j
+		}
+	}
+	return nil
+}
+
+func (s *fakeStore) Complete(_ context.Context, jobID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if j := s.find(jobID); j != nil {
+		j.Status = job.StatusDone
+	}
+	return nil
+}
+
+func (s *fakeStore) Fail(_ context.Context, jobID, msg string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if j := s.find(jobID); j != nil {
+		j.Status = job.StatusError
+		j.LastError = msg
+	}
+	return nil
+}
+
+func (s *fakeStore) RequeueRunning(context.Context) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := 0
+	for _, j := range s.jobs {
+		if j.Status == job.StatusRunning {
+			j.Status = job.StatusPending
+			n++
+		}
+	}
+	s.requeued = n
+	return n, nil
+}
+
+func (s *fakeStore) Get(_ context.Context, jobID string) (job.Job, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if j := s.find(jobID); j != nil {
+		return *j, nil
+	}
+	return job.Job{}, job.ErrNotFound
+}
+
+func quietRunner(store job.Store, h Handler) *Runner {
+	return NewRunner(store, h, WithLogger(log.New(io.Discard, "", 0)))
+}
+
+func TestDrainRunsHandlerAndCompletes(t *testing.T) {
+	ctx := context.Background()
+	store := &fakeStore{}
+	var got []string
+	r := quietRunner(store, func(_ context.Context, reviewID string) error {
+		got = append(got, reviewID)
+		return nil
+	})
+
+	j, _ := r.Enqueue(ctx, "review-1")
+	r.Drain(ctx)
+
+	if len(got) != 1 || got[0] != "review-1" {
+		t.Fatalf("handler calls = %v, want [review-1]", got)
+	}
+	if final, _ := store.Get(ctx, j.ID); final.Status != job.StatusDone {
+		t.Fatalf("job status = %s, want done", final.Status)
+	}
+}
+
+func TestDrainFailsJobOnHandlerError(t *testing.T) {
+	ctx := context.Background()
+	store := &fakeStore{}
+	r := quietRunner(store, func(context.Context, string) error {
+		return errors.New("kaboom")
+	})
+
+	j, _ := r.Enqueue(ctx, "review-1")
+	r.Drain(ctx)
+
+	final, _ := store.Get(ctx, j.ID)
+	if final.Status != job.StatusError || final.LastError != "kaboom" {
+		t.Fatalf("job = %+v, want error/kaboom", final)
+	}
+}
+
+func TestDrainProcessesAllPending(t *testing.T) {
+	ctx := context.Background()
+	store := &fakeStore{}
+	count := 0
+	r := quietRunner(store, func(context.Context, string) error {
+		count++
+		return nil
+	})
+
+	for range 3 {
+		_, _ = r.Enqueue(ctx, "rev")
+	}
+	r.Drain(ctx)
+
+	if count != 3 {
+		t.Fatalf("handled %d jobs, want 3", count)
+	}
+}
