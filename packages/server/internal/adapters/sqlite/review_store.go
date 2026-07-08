@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/review"
@@ -68,9 +69,9 @@ func (r *ReviewStore) Save(ctx context.Context, rv review.Review) error {
 	}
 	for i, f := range rv.Findings {
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO review_findings(id, review_id, position, dimension, severity, file, line, issue, why, fix, blocking)
-			VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
-			id.New(), rv.ID, i, string(f.Dimension), string(f.Severity), f.File, f.Line, f.Issue, f.Why, f.Fix, boolToInt(f.Blocking)); err != nil {
+			INSERT INTO review_findings(id, review_id, position, dimension, severity, file, line, issue, why, fix, blocking, published)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+			id.New(), rv.ID, i, string(f.Dimension), string(f.Severity), f.File, f.Line, f.Issue, f.Why, f.Fix, boolToInt(f.Blocking), boolToInt(f.Published)); err != nil {
 			return fmt.Errorf("review store: save: insert finding: %w", err)
 		}
 	}
@@ -89,7 +90,7 @@ func (r *ReviewStore) Get(ctx context.Context, id string) (review.Review, error)
 	}
 
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT dimension, severity, file, line, issue, why, fix, blocking
+		SELECT dimension, severity, file, line, issue, why, fix, blocking, published
 		FROM review_findings WHERE review_id = ? ORDER BY position`, id)
 	if err != nil {
 		return review.Review{}, fmt.Errorf("review store: get findings: %w", err)
@@ -97,16 +98,17 @@ func (r *ReviewStore) Get(ctx context.Context, id string) (review.Review, error)
 	defer rows.Close()
 	for rows.Next() {
 		var (
-			f        review.Finding
-			dim, sev string
-			blocking int
+			f                   review.Finding
+			dim, sev            string
+			blocking, published int
 		)
-		if err := rows.Scan(&dim, &sev, &f.File, &f.Line, &f.Issue, &f.Why, &f.Fix, &blocking); err != nil {
+		if err := rows.Scan(&dim, &sev, &f.File, &f.Line, &f.Issue, &f.Why, &f.Fix, &blocking, &published); err != nil {
 			return review.Review{}, fmt.Errorf("review store: scan finding: %w", err)
 		}
 		f.Dimension = review.Dimension(dim)
 		f.Severity = review.Severity(sev)
 		f.Blocking = blocking != 0
+		f.Published = published != 0
 		rv.Findings = append(rv.Findings, f)
 	}
 	return rv, rows.Err()
@@ -130,6 +132,26 @@ func (r *ReviewStore) ListByRepo(ctx context.Context, repoID string) ([]review.R
 		out = append(out, rv)
 	}
 	return out, rows.Err()
+}
+
+// MarkFindingsPublished flags the findings at the given positions as published.
+func (r *ReviewStore) MarkFindingsPublished(ctx context.Context, reviewID string, positions []int) error {
+	if len(positions) == 0 {
+		return nil
+	}
+	args := make([]any, 0, len(positions)+1)
+	args = append(args, reviewID)
+	placeholders := make([]string, len(positions))
+	for i, p := range positions {
+		placeholders[i] = "?"
+		args = append(args, p)
+	}
+	q := `UPDATE review_findings SET published = 1 WHERE review_id = ? AND position IN (` +
+		strings.Join(placeholders, ",") + `)`
+	if _, err := r.db.ExecContext(ctx, q, args...); err != nil {
+		return fmt.Errorf("review store: mark published: %w", err)
+	}
+	return nil
 }
 
 // SetStatus updates only status and error.

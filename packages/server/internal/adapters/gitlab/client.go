@@ -44,10 +44,18 @@ type FileChange struct {
 	DeletedFile bool   `json:"deleted_file"`
 }
 
+// DiffRefs are the SHAs needed to anchor an inline comment to a diff line.
+type DiffRefs struct {
+	BaseSHA  string `json:"base_sha"`
+	StartSHA string `json:"start_sha"`
+	HeadSHA  string `json:"head_sha"`
+}
+
 // Changes is an MR together with its per-file diffs (the "fast" context).
 type Changes struct {
 	MergeRequest
-	Files []FileChange `json:"changes"`
+	DiffRefs DiffRefs     `json:"diff_refs"`
+	Files    []FileChange `json:"changes"`
 }
 
 // Client is a GitLab REST API v4 client scoped to one account (base URL + token).

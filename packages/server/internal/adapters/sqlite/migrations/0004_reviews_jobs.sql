@@ -29,7 +29,8 @@ CREATE TABLE review_findings (
     issue      TEXT NOT NULL DEFAULT '',
     why        TEXT NOT NULL DEFAULT '',
     fix        TEXT NOT NULL DEFAULT '',
-    blocking   INTEGER NOT NULL DEFAULT 0
+    blocking   INTEGER NOT NULL DEFAULT 0,
+    published  INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX review_findings_review ON review_findings(review_id);
 

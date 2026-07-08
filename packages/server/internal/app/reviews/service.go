@@ -69,6 +69,29 @@ func (s *Service) Create(ctx context.Context, repoID string, mrIID int, mode rev
 	return rv, nil
 }
 
+// List returns a repo's reviews (without findings), newest first.
+func (s *Service) List(ctx context.Context, repoID string) ([]review.Review, error) {
+	return s.reviews.ListByRepo(ctx, repoID)
+}
+
+// Get returns a review with its findings.
+func (s *Service) Get(ctx context.Context, reviewID string) (review.Review, error) {
+	return s.reviews.Get(ctx, reviewID)
+}
+
+// ListOpenMergeRequests lists the open MRs of a repo's GitLab project.
+func (s *Service) ListOpenMergeRequests(ctx context.Context, repoID string) ([]gitlab.MergeRequest, error) {
+	rp, err := s.repos.Get(ctx, repoID)
+	if err != nil {
+		return nil, err
+	}
+	gl, projectID, _, err := s.gitlabFor(ctx, rp)
+	if err != nil {
+		return nil, err
+	}
+	return gl.ListOpenMergeRequests(ctx, projectID)
+}
+
 // Retry clones an existing review's configuration into a fresh pending review
 // and enqueues it. The original (errored) review is kept for history.
 func (s *Service) Retry(ctx context.Context, reviewID string) (review.Review, error) {
@@ -129,16 +152,7 @@ func (s *Service) execute(ctx context.Context, rv review.Review) (review.Review,
 		return review.Review{}, err
 	}
 
-	acc, err := s.accounts.Get(ctx, rp.AccountID)
-	if err != nil {
-		return review.Review{}, err
-	}
-	token, err := s.accounts.Token(ctx, rp.AccountID)
-	if err != nil {
-		return review.Review{}, err
-	}
-	gl := gitlab.NewClient(acc.BaseURL, token)
-	projectID, err := gitlab.ProjectPath(rp.URL)
+	gl, projectID, token, err := s.gitlabFor(ctx, rp)
 	if err != nil {
 		return review.Review{}, err
 	}

@@ -63,7 +63,7 @@ orchestrates ports. `http` calls `app`. Dependencies point inward.
 - [x] **3. GitLab client** — list MRs, fetch diff + touched files (fast), shallow clone (deep-lite).
 - [x] **4. AI adapter** — openai-compatible + Claude behind one llm.Client port.
 - [x] **5. Review engine** — ContextStrategy + ReviewStrategy, load skills, structured findings, score. Jobs table + worker goroutines (retry clones).
-- [ ] **6. Publish** — selective findings → GitLab inline discussions + summary note.
-- [ ] **7. HTTP API** — expose all of the above (the TUI contract).
+- [x] **6. Publish** — selective findings → GitLab inline discussions + summary note.
+- [x] **7. HTTP API** — expose all of the above (the TUI contract). Plus wired composition root (cmd/server) with vault unlock, job runner, graceful shutdown.
 
 Each slice must compile and carry its own tests before moving on.

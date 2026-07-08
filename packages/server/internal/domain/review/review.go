@@ -72,6 +72,7 @@ type Finding struct {
 	Why       string
 	Fix       string
 	Blocking  bool
+	Published bool
 }
 
 // Review is a completed (or in-flight) review of one merge request.
