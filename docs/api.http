@@ -40,6 +40,18 @@ Content-Type: application/json
 ### List providers
 GET {{baseUrl}}/providers
 
+### Edit a provider (empty apiKey keeps the stored key)
+PATCH {{baseUrl}}/providers/{{createProvider.response.body.id}}
+Content-Type: application/json
+
+{
+  "name": "groq-eu",
+  "kind": "openai-compat",
+  "baseUrl": "https://api.groq.com/openai/v1",
+  "model": "llama-3.3-70b-versatile",
+  "apiKey": ""
+}
+
 ### Set default provider
 POST {{baseUrl}}/providers/{{createProvider.response.body.id}}/default
 

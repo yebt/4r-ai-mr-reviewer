@@ -79,6 +79,12 @@ The first provider created becomes the default automatically. For `anthropic`,
 ### `GET /providers` → `200`
 Array of providers (never includes the API key).
 
+### `PATCH /providers/{id}` → `200`
+Edits a provider. `apiKey` is optional — an empty string keeps the stored key.
+```json
+{ "name": "groq-eu", "kind": "openai-compat", "baseUrl": "https://eu", "model": "llama-3.3", "apiKey": "" }
+```
+
 ### `POST /providers/{id}/default` → `200`
 Makes this provider the sole default.
 
