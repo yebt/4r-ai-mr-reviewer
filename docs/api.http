@@ -1,0 +1,113 @@
+# ai-reviewer API collection
+#
+# Runnable with the VS Code "REST Client" extension or JetBrains HTTP Client.
+# Run requests top to bottom: later requests reuse ids captured from earlier
+# responses via the named-request syntax (@name / {{name.response...}}).
+
+@baseUrl = http://localhost:8080
+
+### Health
+GET {{baseUrl}}/health
+
+### Create a GitLab account
+# @name createAccount
+POST {{baseUrl}}/accounts
+Content-Type: application/json
+
+{
+  "name": "work",
+  "baseUrl": "https://gitlab.com",
+  "token": "glpat-REPLACE_ME"
+}
+
+### List accounts
+GET {{baseUrl}}/accounts
+
+### Create an AI provider (first one becomes default)
+# @name createProvider
+POST {{baseUrl}}/providers
+Content-Type: application/json
+
+{
+  "name": "groq",
+  "kind": "openai-compat",
+  "baseUrl": "https://api.groq.com/openai/v1",
+  "model": "llama-3.3-70b-versatile",
+  "apiKey": "gsk_REPLACE_ME",
+  "makeDefault": true
+}
+
+### List providers
+GET {{baseUrl}}/providers
+
+### Set default provider
+POST {{baseUrl}}/providers/{{createProvider.response.body.id}}/default
+
+### Create a tracked repo
+# @name createRepo
+POST {{baseUrl}}/repos
+Content-Type: application/json
+
+{
+  "name": "web",
+  "url": "https://gitlab.com/group/project",
+  "accountId": "{{createAccount.response.body.id}}",
+  "providerId": "{{createProvider.response.body.id}}",
+  "model": ""
+}
+
+### List repos
+GET {{baseUrl}}/repos
+
+### Reassign provider/model on a repo
+PATCH {{baseUrl}}/repos/{{createRepo.response.body.id}}/assign
+Content-Type: application/json
+
+{
+  "providerId": "{{createProvider.response.body.id}}",
+  "model": "llama-3.3-70b-versatile"
+}
+
+### List the repo's open merge requests (live from GitLab)
+GET {{baseUrl}}/repos/{{createRepo.response.body.id}}/merge-requests
+
+### Start a review for an MR
+# @name createReview
+POST {{baseUrl}}/reviews
+Content-Type: application/json
+
+{
+  "repoId": "{{createRepo.response.body.id}}",
+  "mrIid": 7,
+  "mode": "fast"
+}
+
+### Poll a review (repeat until status = done)
+GET {{baseUrl}}/reviews/{{createReview.response.body.id}}
+
+### List the repo's reviews
+GET {{baseUrl}}/repos/{{createRepo.response.body.id}}/reviews
+
+### Retry a review (clones config into a new review)
+POST {{baseUrl}}/reviews/{{createReview.response.body.id}}/retry
+
+### Publish all findings
+POST {{baseUrl}}/reviews/{{createReview.response.body.id}}/publish
+Content-Type: application/json
+
+{ "all": true }
+
+### Publish only selected findings (by index)
+POST {{baseUrl}}/reviews/{{createReview.response.body.id}}/publish
+Content-Type: application/json
+
+{ "indices": [0, 2] }
+
+### Delete a repo
+DELETE {{baseUrl}}/repos/{{createRepo.response.body.id}}
+
+### Delete a provider
+DELETE {{baseUrl}}/providers/{{createProvider.response.body.id}}
+
+### Delete an account
+DELETE {{baseUrl}}/accounts/{{createAccount.response.body.id}}
