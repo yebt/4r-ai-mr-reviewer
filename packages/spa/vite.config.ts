@@ -22,4 +22,15 @@ export default defineConfig({
       '@modules': fileURLToPath(new URL('./src/modules', import.meta.url)),
     },
   },
+  // The backend has no CORS (single-user, local). In dev we proxy /api to it so
+  // the SPA can call the API same-origin.
+  server: {
+    proxy: {
+      '/api': {
+        target: process.env.VITE_API_TARGET ?? 'http://localhost:8080',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+    },
+  },
 })

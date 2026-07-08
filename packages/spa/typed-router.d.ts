@@ -38,6 +38,41 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/accounts': RouteRecordInfo<
+      '/accounts',
+      '/accounts',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/providers': RouteRecordInfo<
+      '/providers',
+      '/providers',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/repos/': RouteRecordInfo<
+      '/repos/',
+      '/repos',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/repos/[id]': RouteRecordInfo<
+      '/repos/[id]',
+      '/repos/:id',
+      { id: ParamValue<true> },
+      { id: ParamValue<false> },
+      | never
+    >,
+    '/reviews/[id]': RouteRecordInfo<
+      '/reviews/[id]',
+      '/reviews/:id',
+      { id: ParamValue<true> },
+      { id: ParamValue<false> },
+      | never
+    >,
   }
 
   /**
@@ -58,6 +93,46 @@ declare module 'vue-router/auto-routes' {
         | never
       pathParamNames:
         | never
+    }
+    'src/pages/accounts.vue': {
+      routes:
+        | '/accounts'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/providers.vue': {
+      routes:
+        | '/providers'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/repos/index.vue': {
+      routes:
+        | '/repos/'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/repos/[id].vue': {
+      routes:
+        | '/repos/[id]'
+      views:
+        | never
+      pathParamNames:
+        | 'id'
+    }
+    'src/pages/reviews/[id].vue': {
+      routes:
+        | '/reviews/[id]'
+      views:
+        | never
+      pathParamNames:
+        | 'id'
     }
   }
 
