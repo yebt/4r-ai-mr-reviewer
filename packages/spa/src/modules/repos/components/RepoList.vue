@@ -1,0 +1,79 @@
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
+import { errorMessage } from '@shared/api/client'
+import type { Repo } from '@shared/api/types'
+import { useReposStore } from '@modules/repos/store'
+import { useAccountsStore } from '@modules/accounts/store'
+import { useProvidersStore } from '@modules/providers/store'
+
+const emit = defineEmits<{ edit: [repo: Repo] }>()
+
+const repos = useReposStore()
+const accounts = useAccountsStore()
+const providers = useProvidersStore()
+const busyId = ref<string | null>(null)
+
+onMounted(() => {
+  if (repos.items.length === 0) repos.fetchAll()
+  if (accounts.items.length === 0) accounts.fetchAll()
+  if (providers.items.length === 0) providers.fetchAll()
+})
+
+const accountName = computed(() => (id: string) => accounts.items.find((a) => a.id === id)?.name ?? '—')
+const providerLabel = computed(() => (repo: Repo) => {
+  if (!repo.providerId) return 'default provider'
+  const p = providers.items.find((x) => x.id === repo.providerId)
+  return p ? p.name : 'unknown provider'
+})
+
+async function remove(id: string) {
+  busyId.value = id
+  try {
+    await repos.remove(id)
+  } catch (e) {
+    repos.error = errorMessage(e)
+  } finally {
+    busyId.value = null
+  }
+}
+</script>
+
+<template>
+  <div>
+    <div class="label-mono mb-3">{{ repos.items.length }} repository(ies)</div>
+
+    <p v-if="repos.loading" class="py-3 text-sm text-muted">Loading…</p>
+    <p v-else-if="repos.error" class="py-3 text-sm text-danger">{{ repos.error }}</p>
+    <p v-else-if="repos.items.length === 0" class="py-3 text-sm text-muted">
+      No repositories yet. Track one to start reviewing.
+    </p>
+
+    <ul v-else class="border-t border-line/50">
+      <li v-for="r in repos.items" :key="r.id" class="row justify-between">
+        <div class="min-w-0">
+          <RouterLink :to="`/repos/${r.id}`" class="text-sm text-ink hover:text-accent">
+            {{ r.name }}
+          </RouterLink>
+          <div class="truncate font-mono text-xs text-muted">{{ r.url }}</div>
+          <div class="mt-0.5 label-mono">
+            {{ accountName(r.accountId) }} · {{ providerLabel(r) }}<template v-if="r.model"> · {{ r.model }}</template>
+          </div>
+        </div>
+        <div class="flex shrink-0 items-center gap-1">
+          <RouterLink :to="`/repos/${r.id}`" class="btn-ghost text-xs">Open</RouterLink>
+          <button class="btn-ghost hover:text-ink" :aria-label="`Reassign ${r.name}`" @click="emit('edit', r)">
+            <span class="i-lucide-pencil text-sm" aria-hidden="true" />
+          </button>
+          <button
+            class="btn-ghost hover:text-danger"
+            :disabled="busyId === r.id"
+            :aria-label="`Delete ${r.name}`"
+            @click="remove(r.id)"
+          >
+            <span class="i-lucide-trash-2 text-sm" aria-hidden="true" />
+          </button>
+        </div>
+      </li>
+    </ul>
+  </div>
+</template>
