@@ -1,79 +1,117 @@
-# 4R AI MR & PR Reviewer
+![4R — AI code review](assets/banner2.jpg)
 
-![AI MR & PR Reviewer](assets/banner.jpg)
+# 4R — AI Merge Request Reviewer
 
-4R AI MR & PR Reviewer is a self-hosted developer productivity tool that automatically reviews Merge Requests (GitLab) and Pull Requests (GitHub) using modern Large Language Models. It executes a comprehensive multi-step analysis across **4 critical pillars (the 4R Framework)** to deliver deep, structured, and actionable code insights directly to your developers.
+Self-hosted AI code review for **GitLab merge requests**, built around the **4R
+quality framework** — **R**isk, **R**eadability, **R**eliability, **R**esilience.
 
----
+You configure your GitLab accounts and an AI provider, track repositories, and
+run a review on any open merge request. The engine loads the 4R rule sets,
+sends the diff to the model, and produces **located, structured findings** with
+a deterministic score and an approve / request-changes recommendation. You then
+choose which findings to publish back to the MR as inline discussions.
 
-## 🚀 The 4R Framework
+> Status: **backend MVP complete** (GitLab-first, single-user). Web SPA in
+> active development. See the [roadmap](#roadmap).
 
-Rather than doing a generic, one-pass review, the system runs four distinct auditing steps sequentially:
+## Why 4R
 
-1. **🔒 Risk**
-   * Detects hardcoded secrets, API keys, credentials, or DB URLs.
-   * Highlights client-side authorization bypass risks.
-   * Flags insecure data sinks prone to SQL injection, XSS, or path traversal.
-   * Audits security-sensitive settings (e.g., cookie flags).
+Every change is reviewed through four lenses so the issues that matter most are
+caught before they reach production — without slowing down changes that are
+genuinely safe:
 
-2. **📖 Readability**
-   * Identifies complex or convoluted logic that hurts maintainability.
-   * Audits naming conventions, API clarity, comments, and structure.
-   * Assesses code documentation, typing, and standard design pattern usage.
+| Lens | Question |
+|---|---|
+| **R1 · Risk** | Can this harm security, data, or production stability? |
+| **R2 · Readability** | Will the next engineer understand it without an hour of digging? |
+| **R3 · Reliability** | Does it behave correctly across the realistic range of inputs? |
+| **R4 · Resilience** | Does it degrade gracefully when dependencies fail or slow down? |
 
-3. **🛠️ Reliability**
-   * Analyzes state handling, variable scope leaks, and concurrent race conditions.
-   * Verifies error propagation, exception safety, and resource leaks.
-   * Inspects edge cases, off-by-one errors, and type boundary validation.
+## Features
 
-4. **⚡ Resilience**
-   * Evaluates how the code recovers from third-party API or network failures.
-   * Assesses timeouts, retries, and fallback mechanisms.
-   * Checks database transaction rollbacks, lock contentions, and resource exhaustion.
+- **GitLab MR review** — list open MRs, fetch the diff (fast) or shallow-clone
+  for deeper context (deep), run the 4R engine, publish selected findings.
+- **Deterministic scoring** — the recommendation and 0–100 score are computed
+  from findings, not asked of the model.
+- **Multiple AI providers** — OpenAI-compatible (Groq, OpenAI, Moonshot, Kimi,
+  OpenRouter) and Anthropic (Claude), with per-repo provider/model and optional
+  temperature.
+- **Secrets encrypted at rest** — tokens and API keys are AES-256-GCM encrypted;
+  the API never returns them.
+- **Async jobs** — reviews run in the background with status polling; retry
+  clones the review and keeps the failed one for history.
+- **Selective publishing** — pick which findings become inline discussions, or
+  comment them all.
 
----
+## Architecture
 
-## 🛠️ Technology Stack
+A monorepo. The backend owns all state and is the single contract every client
+consumes over HTTP.
 
-* **Backend**: Go (version 1.26+) utilizing `modernc.org/sqlite` for database management.
-* **Frontend**: Vue 3 (Composition API), Vite, TypeScript, Bun package manager, and UnoCSS.
-* **AI Providers**: Fully configurable integration with Claude (Anthropic), Groq, OpenAI, Moonshot, kimi, and OpenRouter.
-* **Notifications**: Telegram Bot integration for live MR alert channels and interactive command triggers.
+```
+packages/
+  server/   Go 1.26 backend — hexagonal, SQLite (single binary), REST API
+  spa/      Vue 3 + TypeScript + Vite + UnoCSS + Pinia web client
+docs/       API reference, design notes, banner prompt
+```
 
----
+- **Backend**: Go + SQLite (`modernc.org/sqlite`, pure-Go → single binary), an
+  encrypted secret vault, a job runner, and the 4R engine behind strategy
+  interfaces (fast/deep context × single/multi-pass).
+- **Web**: file-based routing, feature modules, a borderless technical-minimal
+  design system.
 
-## ⚙️ Configuration & Quick Start
+## Quick start
 
-The application is configured using environment variables:
+Requires **Go 1.26+**, **Node 22+** / **bun**, and **git**.
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `AIR_HTTP_ADDR` | Server bind address and port | `:8080` |
-| `AIR_DB_PATH` | Path to SQLite database file | `ai-reviewer.db` |
-| `AIR_PASSWORD` | Optional master password for DB privacy | *(Empty/Key-file mode)* |
-| `AIR_SKILLS_DIR` | Custom prompt/review skills directory | *(Optional)* |
+```sh
+# run backend + SPA together (backend :8080, SPA :5173)
+make dev
 
-### Developer Commands
+# …or separately
+make run-server
+make run-spa
+```
 
-All development tasks are automated via the root [Makefile](file:///home/webcloster-dev/Development/Repos/PRODUCTIVITY/ai-reviewer-5/Makefile):
+Then open <http://localhost:5173>. The Vite dev server proxies `/api` to the
+backend, so no CORS setup is needed.
 
-* **Run Backend + Frontend Dev Server (recommended)**:
-  ```bash
-  make dev
-  ```
-* **Start Server Only**:
-  ```bash
-  make run-server
-  ```
-* **Start Single Page Application Only**:
-  ```bash
-  make run-spa
-  ```
-* **Compile Server Production Binary**:
-  ```bash
-  make build
-  ```
-* **Run Tests**:
-  ```bash
-  make test
-  ```
+### Configuration (backend env vars)
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `AIR_HTTP_ADDR` | `:8080` | Listen address |
+| `AIR_DB_PATH` | `ai-reviewer.db` | SQLite database file |
+| `AIR_PASSWORD` | _(empty)_ | Unlocks the secret vault; empty → key-file mode |
+| `AIR_KEYFILE_PATH` | `<db>.key` | Master key file (key-file mode) |
+| `AIR_SKILLS_DIR` | _(empty)_ | Override dir for the 4R rule files |
+
+## Make targets
+
+```
+make            # help
+make dev        # backend + SPA together
+make run-server # backend only
+make run-spa    # SPA only
+make build      # compile the server binary to ./bin
+make test       # server test suite
+```
+
+## API
+
+The HTTP API is the contract for every client. See **[docs/API.md](docs/API.md)**
+for the full reference and **[docs/api.http](docs/api.http)** for a runnable
+request collection.
+
+## Roadmap
+
+Deferred beyond the current MVP:
+
+- GitHub support, OAuth, multiple accounts
+- Webhook auto-trigger (on VPS deploy)
+- Telegram bot (notify → trigger → publish)
+- Multi-pass review with prompt caching; adaptive contextual memory
+- **Humanize** module — capture the user's writing style into profiles and
+  generate humanized versions of a review's comments
+- Progressive/streaming review feedback; mobile-first responsive redesign
