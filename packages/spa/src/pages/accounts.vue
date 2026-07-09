@@ -12,7 +12,7 @@ import AccountList from '@modules/accounts/components/AccountList.vue'
       </template>
     </PageHeader>
 
-    <div class="grid gap-12 md:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
+    <div class="flex flex-col md:grid gap-8 md:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] md:gap-12">
       <AccountForm />
       <AccountList />
     </div>

@@ -24,8 +24,8 @@ function modeFor(iid: number) {
     <p v-else-if="items.length === 0" class="py-3 text-sm text-muted">No open merge requests.</p>
 
     <ul v-else class="border-t border-line/50">
-      <li v-for="mr in items" :key="mr.iid" class="row justify-between">
-        <div class="min-w-0">
+      <li v-for="mr in items" :key="mr.iid" class="row flex-wrap justify-between gap-y-2">
+        <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2">
             <span class="font-mono text-xs text-muted">!{{ mr.iid }}</span>
             <a :href="mr.webUrl" target="_blank" rel="noreferrer" class="truncate text-sm text-ink hover:text-accent">
@@ -37,7 +37,7 @@ function modeFor(iid: number) {
           </div>
         </div>
 
-        <div class="flex shrink-0 items-center gap-2">
+        <div class="flex w-full items-center justify-end gap-2 sm:w-auto">
           <select
             :value="modeFor(mr.iid)"
             class="border-b border-line bg-transparent py-1 pr-1 text-xs text-ink outline-none focus:border-accent"

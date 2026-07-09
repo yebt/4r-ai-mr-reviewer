@@ -64,8 +64,8 @@ async function remove(id: string) {
     />
 
     <ul v-else class="border-t border-line/50">
-      <li v-for="r in repos.items" :key="r.id" class="row justify-between">
-        <div class="min-w-0">
+      <li v-for="r in repos.items" :key="r.id" class="row flex-wrap justify-between gap-y-2">
+        <div class="min-w-0 flex-1">
           <RouterLink :to="`/repos/${r.id}`" class="text-sm text-ink hover:text-accent">
             {{ r.name }}
           </RouterLink>
@@ -74,7 +74,7 @@ async function remove(id: string) {
             {{ accountName(r.accountId) }} · {{ providerLabel(r) }}<template v-if="r.model"> · {{ r.model }}</template>
           </div>
         </div>
-        <div class="flex shrink-0 items-center gap-1">
+        <div class="flex w-full items-center justify-end gap-1 sm:w-auto">
           <RouterLink :to="`/repos/${r.id}`" class="btn-ghost text-xs">Open</RouterLink>
           <button class="btn-ghost hover:text-ink" :aria-label="`Reassign ${r.name}`" @click="emit('edit', r)">
             <span class="i-lucide-pencil text-sm" aria-hidden="true" />

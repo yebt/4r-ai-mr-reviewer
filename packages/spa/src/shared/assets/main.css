@@ -19,6 +19,16 @@ body {
   opacity: 0;
 }
 
+/* Off-canvas drawer slide. */
+.drawer-enter-active,
+.drawer-leave-active {
+  transition: transform 0.2s ease;
+}
+.drawer-enter-from,
+.drawer-leave-to {
+  transform: translateX(-100%);
+}
+
 /* Toast enter/leave. */
 .toast-enter-active,
 .toast-leave-active {
