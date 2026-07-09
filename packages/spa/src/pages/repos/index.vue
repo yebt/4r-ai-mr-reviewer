@@ -10,11 +10,7 @@ const editing = ref<Repo | null>(null)
 
 <template>
   <div>
-    <PageHeader label="Workspace" title="Repositories">
-      <template #actions>
-        <span class="label-mono">GitLab</span>
-      </template>
-    </PageHeader>
+    <PageHeader title="Tracked repositories" />
 
     <div class="flex flex-col md:grid gap-8 md:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] md:gap-12">
       <RepoForm :editing="editing" @done="editing = null" />

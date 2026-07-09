@@ -10,11 +10,7 @@ const editing = ref<Provider | null>(null)
 
 <template>
   <div>
-    <PageHeader label="Configuration" title="AI providers">
-      <template #actions>
-        <span class="label-mono">4R engine</span>
-      </template>
-    </PageHeader>
+    <PageHeader title="AI providers" />
 
     <div class="flex flex-col md:grid gap-8 md:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] md:gap-12">
       <ProviderForm :editing="editing" @done="editing = null" />

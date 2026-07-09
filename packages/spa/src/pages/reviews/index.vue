@@ -25,11 +25,7 @@ const items = computed(() => reviews.allReviews)
 
 <template>
   <div>
-    <PageHeader label="Activity" title="Reviews">
-      <template #actions>
-        <span class="label-mono">all repositories</span>
-      </template>
-    </PageHeader>
+    <PageHeader title="Reviews" />
 
     <p v-if="loading" class="py-3 text-sm text-muted">Loading…</p>
     <EmptyState

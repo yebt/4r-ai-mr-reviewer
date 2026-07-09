@@ -38,11 +38,7 @@ const sections = computed(() =>
 
 <template>
   <div>
-    <PageHeader label="4R engine" title="Review skills">
-      <template #actions>
-        <span class="label-mono">read-only</span>
-      </template>
-    </PageHeader>
+    <PageHeader title="4R review skills" />
 
     <p v-if="loading" class="py-3 text-sm text-muted">Loading…</p>
     <p v-else-if="error" class="py-3 text-sm text-danger">{{ error }}</p>

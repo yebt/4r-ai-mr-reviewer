@@ -1,17 +1,76 @@
 <script setup lang="ts">
+import { computed, onMounted } from 'vue'
 import PageHeader from '@shared/components/ui/PageHeader.vue'
+import { useReposStore } from '@modules/repos/store'
+import { useProvidersStore } from '@modules/providers/store'
+import { useReviewsStore } from '@modules/reviews/store'
+
+const repos = useReposStore()
+const providers = useProvidersStore()
+const reviews = useReviewsStore()
+
+onMounted(async () => {
+  if (repos.items.length === 0) await repos.fetchAll()
+  if (providers.items.length === 0) providers.fetchAll()
+  // Fill the review count in the background.
+  void Promise.all(repos.items.map((r) => reviews.fetchReviews(r.id)))
+})
+
+const reviewCount = computed(() => reviews.allReviews.length)
+const repoCount = computed(() => repos.items.length)
+const providerCount = computed(() => providers.items.length)
+
+const shortcuts = [
+  { to: '/repos', label: 'Repositories', icon: 'i-lucide-folder-git-2' },
+  { to: '/reviews', label: 'Reviews', icon: 'i-lucide-list-checks' },
+  { to: '/accounts', label: 'GitLab accounts', icon: 'i-lucide-users' },
+  { to: '/providers', label: 'AI providers', icon: 'i-lucide-cpu' },
+  { to: '/skills', label: '4R skills', icon: 'i-lucide-book-open' },
+]
 </script>
 
 <template>
   <div>
-    <PageHeader label="Quick access" title="Recent reviews" />
-    <p class="text-muted">
-      Add an account and an AI provider, track a repository, then start a review
-      of a merge request.
-    </p>
-    <RouterLink to="/repos" class="btn-accent mt-6">
-      Go to repositories
-      <span class="i-lucide-arrow-right" aria-hidden="true" />
-    </RouterLink>
+    <PageHeader title="Overview" />
+
+    <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <!-- Hero stat -->
+      <RouterLink
+        to="/reviews"
+        class="group col-span-2 flex flex-col justify-between border border-line/60 bg-surface/40 p-5 transition-colors hover:border-ink"
+      >
+        <div class="label-mono">Reviews run</div>
+        <div class="mt-6 font-mono text-5xl font-semibold text-ink">{{ reviewCount }}</div>
+        <div class="mt-4 inline-flex items-center gap-1 text-sm text-accent">
+          View all
+          <span class="i-lucide-arrow-right transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+        </div>
+      </RouterLink>
+
+      <!-- Secondary stats -->
+      <RouterLink to="/repos" class="flex flex-col justify-between border border-line/60 bg-surface/40 p-5 hover:border-ink">
+        <div class="label-mono">Repositories</div>
+        <div class="mt-4 font-mono text-3xl font-semibold text-ink">{{ repoCount }}</div>
+      </RouterLink>
+      <RouterLink to="/providers" class="flex flex-col justify-between border border-line/60 bg-surface/40 p-5 hover:border-ink">
+        <div class="label-mono">Providers</div>
+        <div class="mt-4 font-mono text-3xl font-semibold text-ink">{{ providerCount }}</div>
+      </RouterLink>
+
+      <!-- Shortcuts -->
+      <RouterLink
+        v-for="(s, i) in shortcuts"
+        :key="s.to"
+        :to="s.to"
+        class="group flex items-center justify-between border border-line/60 bg-surface/40 p-4 transition-colors hover:border-ink"
+        :class="i === shortcuts.length - 1 ? 'col-span-2 md:col-span-4' : ''"
+      >
+        <div class="flex items-center gap-3">
+          <span :class="s.icon" class="text-lg text-muted group-hover:text-ink" aria-hidden="true" />
+          <span class="text-sm text-ink">{{ s.label }}</span>
+        </div>
+        <span class="i-lucide-arrow-up-right text-muted group-hover:text-accent" aria-hidden="true" />
+      </RouterLink>
+    </div>
   </div>
 </template>

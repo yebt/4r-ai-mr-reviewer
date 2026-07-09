@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppSidebar from '@shared/components/layout/AppSidebar.vue'
+import AppBottomNav from '@shared/components/layout/AppBottomNav.vue'
 import ConfirmDialog from '@shared/components/ui/ConfirmDialog.vue'
 import ToastHost from '@shared/components/ui/ToastHost.vue'
 import Breadcrumbs from '@shared/components/ui/Breadcrumbs.vue'
@@ -26,7 +27,7 @@ router.beforeEach(() => {
       <AppSidebar class="h-full" />
     </div>
 
-    <!-- Mobile: off-canvas drawer -->
+    <!-- Mobile: off-canvas drawer (opened from the bottom nav's "More") -->
     <Transition name="fade">
       <div
         v-if="sidebarOpen"
@@ -41,15 +42,7 @@ router.beforeEach(() => {
     </Transition>
 
     <main class="flex-1 overflow-y-auto">
-      <!-- Mobile top bar -->
-      <div class="flex items-center gap-3 border-b border-line/60 px-4 py-3 md:hidden">
-        <button type="button" class="btn-ghost" aria-label="Open menu" @click="sidebarOpen = true">
-          <span class="i-lucide-menu text-lg" aria-hidden="true" />
-        </button>
-        <span class="font-mono text-sm font-semibold tracking-tight text-ink">ai&#8209;reviewer</span>
-      </div>
-
-      <div class="mx-auto max-w-5xl px-4 py-6 md:px-8 md:py-8">
+      <div class="mx-auto max-w-5xl px-4 py-6 pb-24 md:px-8 md:py-8 md:pb-8">
         <!-- Permanent breadcrumb bar: reserved height keeps the layout stable. -->
         <div class="mb-6 min-h-[1.1rem]">
           <Breadcrumbs :items="breadcrumbs.items" />
@@ -57,6 +50,9 @@ router.beforeEach(() => {
         <RouterView />
       </div>
     </main>
+
+    <!-- Mobile: bottom navigation -->
+    <AppBottomNav @more="sidebarOpen = true" />
   </div>
 
   <ConfirmDialog />

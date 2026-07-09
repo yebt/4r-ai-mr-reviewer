@@ -94,7 +94,7 @@ async function retry() {
 
 <template>
   <div>
-    <PageHeader label="Review" :title="review ? `Merge request !${review.mrIid}` : 'Review'">
+    <PageHeader :title="review ? `Merge request !${review.mrIid}` : 'Review'">
       <template #actions>
         <ReviewStatusChip v-if="review" :status="review.status" />
       </template>

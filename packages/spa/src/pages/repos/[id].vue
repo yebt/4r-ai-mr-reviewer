@@ -50,11 +50,7 @@ async function startReview(iid: number, mode: string) {
 
 <template>
   <div>
-    <PageHeader label="Repository" :title="repo?.name ?? 'Repository'">
-      <template #actions>
-        <span class="label-mono">{{ repo?.url }}</span>
-      </template>
-    </PageHeader>
+    <PageHeader :title="repo?.name ?? 'Repository'" />
 
     <section class="mb-10">
       <h2 class="section-title mb-3 flex items-center gap-2">
