@@ -10,6 +10,18 @@ export interface AddProviderInput {
   model: string
   apiKey: string
   makeDefault: boolean
+  temperature: number | null
+  models: string[]
+}
+
+export interface UpdateProviderInput {
+  name: string
+  kind: ProviderKind
+  baseUrl: string
+  model: string
+  apiKey: string
+  temperature: number | null
+  models: string[]
 }
 
 export const useProvidersStore = defineStore('providers', () => {
@@ -36,10 +48,7 @@ export const useProvidersStore = defineStore('providers', () => {
     return created
   }
 
-  async function update(
-    id: string,
-    input: { name: string; kind: Provider['kind']; baseUrl: string; model: string; apiKey: string },
-  ) {
+  async function update(id: string, input: UpdateProviderInput) {
     const updated = await api.updateProvider(id, input)
     items.value = items.value.map((p) => (p.id === id ? updated : p))
     return updated

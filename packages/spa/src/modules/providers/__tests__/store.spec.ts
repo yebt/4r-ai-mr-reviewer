@@ -28,6 +28,8 @@ const provider = (id: string, isDefault = false) => ({
   baseUrl: '',
   model: 'm',
   isDefault,
+  temperature: null,
+  models: [] as string[],
   createdAt: '',
 })
 
@@ -41,7 +43,7 @@ describe('providers store', () => {
     mocked.createProvider.mockResolvedValue(provider('2', true))
     mocked.listProviders.mockResolvedValue([provider('1', false), provider('2', true)])
     const store = useProvidersStore()
-    await store.add({ name: 'p-2', kind: 'openai-compat', baseUrl: '', model: 'm', apiKey: 'k', makeDefault: true })
+    await store.add({ name: 'p-2', kind: 'openai-compat', baseUrl: '', model: 'm', apiKey: 'k', makeDefault: true, temperature: null, models: [] })
     expect(mocked.listProviders).toHaveBeenCalledOnce()
     expect(store.items).toHaveLength(2)
   })

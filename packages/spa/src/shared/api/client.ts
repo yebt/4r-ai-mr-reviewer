@@ -62,10 +62,20 @@ export const api = {
     model: string
     apiKey: string
     makeDefault: boolean
+    temperature: number | null
+    models: string[]
   }) => request<Provider>('POST', '/providers', input),
   updateProvider: (
     id: string,
-    input: { name: string; kind: ProviderKind; baseUrl: string; model: string; apiKey: string },
+    input: {
+      name: string
+      kind: ProviderKind
+      baseUrl: string
+      model: string
+      apiKey: string
+      temperature: number | null
+      models: string[]
+    },
   ) => request<Provider>('PATCH', `/providers/${id}`, input),
   setDefaultProvider: (id: string) => request<void>('POST', `/providers/${id}/default`),
   deleteProvider: (id: string) => request<void>('DELETE', `/providers/${id}`),

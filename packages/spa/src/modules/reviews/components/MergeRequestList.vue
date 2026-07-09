@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { reactive } from 'vue'
 import type { MergeRequest } from '@shared/api/types'
 
 defineProps<{
@@ -7,7 +8,13 @@ defineProps<{
   error?: string | null
   busyIid?: number | null
 }>()
-defineEmits<{ review: [iid: number] }>()
+const emit = defineEmits<{ review: [iid: number, mode: string] }>()
+
+// Per-MR context mode, chosen at the moment of triggering (default fast).
+const modes = reactive<Record<number, string>>({})
+function modeFor(iid: number) {
+  return modes[iid] ?? 'fast'
+}
 </script>
 
 <template>
@@ -29,10 +36,22 @@ defineEmits<{ review: [iid: number] }>()
             {{ mr.sourceBranch }} → {{ mr.targetBranch }}<template v-if="mr.author"> · {{ mr.author }}</template>
           </div>
         </div>
-        <button class="btn-line shrink-0 text-xs" :disabled="busyIid === mr.iid" @click="$emit('review', mr.iid)">
-          <span v-if="busyIid === mr.iid" class="i-lucide-loader-circle animate-spin" aria-hidden="true" />
-          Review
-        </button>
+
+        <div class="flex shrink-0 items-center gap-2">
+          <select
+            :value="modeFor(mr.iid)"
+            class="border-b border-line bg-transparent py-1 pr-1 text-xs text-ink outline-none focus:border-accent"
+            :aria-label="`Context mode for !${mr.iid}`"
+            @change="modes[mr.iid] = ($event.target as HTMLSelectElement).value"
+          >
+            <option value="fast">fast</option>
+            <option value="deep">deep</option>
+          </select>
+          <button class="btn-line text-xs" :disabled="busyIid === mr.iid" @click="emit('review', mr.iid, modeFor(mr.iid))">
+            <span v-if="busyIid === mr.iid" class="i-lucide-loader-circle animate-spin" aria-hidden="true" />
+            Review
+          </button>
+        </div>
       </li>
     </ul>
   </div>

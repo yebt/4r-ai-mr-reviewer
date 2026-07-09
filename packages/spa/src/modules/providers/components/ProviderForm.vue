@@ -16,13 +16,16 @@ const blank = () => ({
   model: '',
   apiKey: '',
   makeDefault: false,
+  temperature: '', // string; empty = don't send (model default)
+  models: [] as string[],
 })
 const form = reactive(blank())
 const submitting = ref(false)
 const error = ref<string | null>(null)
+const showAdvanced = ref(false)
+const modelDraft = ref('')
 
 const isEdit = computed(() => !!props.editing)
-// In edit mode the API key is optional (blank = keep the stored one).
 const valid = computed(() => form.name.trim() && (isEdit.value || form.apiKey.trim()))
 
 watch(
@@ -35,30 +38,59 @@ watch(
       form.model = p.model
       form.apiKey = ''
       form.makeDefault = false
+      form.temperature = p.temperature == null ? '' : String(p.temperature)
+      form.models = [...p.models]
+      showAdvanced.value = p.temperature != null || p.models.length > 0
     } else {
       Object.assign(form, blank())
+      showAdvanced.value = false
     }
     error.value = null
   },
   { immediate: true },
 )
 
+function addModel() {
+  const m = modelDraft.value.trim()
+  if (m && !form.models.includes(m)) form.models.push(m)
+  modelDraft.value = ''
+}
+
+function removeModel(m: string) {
+  form.models = form.models.filter((x) => x !== m)
+}
+
+function parseTemperature(): number | null | 'invalid' {
+  const raw = form.temperature.trim()
+  if (raw === '') return null
+  const n = Number(raw)
+  return Number.isNaN(n) ? 'invalid' : n
+}
+
 async function submit() {
   if (!valid.value || submitting.value) return
+  const temperature = parseTemperature()
+  if (temperature === 'invalid') {
+    error.value = 'Temperature must be a number.'
+    return
+  }
+
   submitting.value = true
   error.value = null
   try {
-    const payload = {
+    const base = {
       name: form.name.trim(),
       kind: form.kind,
       baseUrl: form.baseUrl.trim(),
       model: form.model.trim(),
       apiKey: form.apiKey.trim(),
+      temperature,
+      models: [...form.models],
     }
     if (props.editing) {
-      await store.update(props.editing.id, payload)
+      await store.update(props.editing.id, base)
     } else {
-      await store.add({ ...payload, makeDefault: form.makeDefault })
+      await store.add({ ...base, makeDefault: form.makeDefault })
     }
     Object.assign(form, blank())
     emit('done')
@@ -111,6 +143,51 @@ async function submit() {
       <input v-model="form.makeDefault" type="checkbox" class="accent-accent" />
       Make default
     </label>
+
+    <!-- Advanced -->
+    <div class="border-t border-line/50 pt-4">
+      <button
+        type="button"
+        class="flex items-center gap-1 label-mono hover:text-ink"
+        @click="showAdvanced = !showAdvanced"
+      >
+        <span :class="showAdvanced ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'" aria-hidden="true" />
+        Advanced
+      </button>
+
+      <div v-if="showAdvanced" class="mt-4 flex flex-col gap-5">
+        <div>
+          <label class="field-label" for="pv-temp">
+            Temperature <span class="text-muted/60 normal-case">— blank uses the model default</span>
+          </label>
+          <input id="pv-temp" v-model="form.temperature" class="field-underline" inputmode="decimal" placeholder="model default" autocomplete="off" />
+          <p class="mt-1.5 text-xs text-muted/70">Some models reject any value other than their default — leave blank for those.</p>
+        </div>
+
+        <div>
+          <label class="field-label">Model presets</label>
+          <div class="flex gap-2">
+            <input
+              v-model="modelDraft"
+              class="field-underline"
+              placeholder="add a model name"
+              autocomplete="off"
+              @keydown.enter.prevent="addModel"
+            />
+            <button type="button" class="btn-line text-xs" @click="addModel">Add</button>
+          </div>
+          <div v-if="form.models.length" class="mt-3 flex flex-wrap gap-2">
+            <span v-for="m in form.models" :key="m" class="inline-flex items-center gap-1 border border-line px-2 py-1 font-mono text-xs text-ink">
+              {{ m }}
+              <button type="button" class="text-muted hover:text-danger" :aria-label="`Remove ${m}`" @click="removeModel(m)">
+                <span class="i-lucide-x text-xs" aria-hidden="true" />
+              </button>
+            </span>
+          </div>
+          <p class="mt-2 text-xs text-muted/70">Pick from these (no typos) when configuring a repository.</p>
+        </div>
+      </div>
+    </div>
 
     <p v-if="error" class="text-sm text-danger">{{ error }}</p>
 

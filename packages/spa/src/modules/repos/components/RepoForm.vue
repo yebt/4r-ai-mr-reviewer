@@ -32,6 +32,13 @@ const parsed = computed(() => parseRepoUrl(form.url))
 const lastAutoName = ref('')
 const matchedAccount = computed(() => accounts.items.find((a) => a.id === form.accountId) ?? null)
 
+// Model suggestions come from the chosen provider (or the default one).
+const selectedProvider = computed(() => {
+  if (form.providerId) return providers.items.find((p) => p.id === form.providerId) ?? null
+  return providers.items.find((p) => p.isDefault) ?? null
+})
+const modelPresets = computed(() => selectedProvider.value?.models ?? [])
+
 // Resolve name + account from the URL when the field loses focus, keeping any
 // manual edits the user already made.
 function resolveFromUrl() {
@@ -142,7 +149,20 @@ async function submit() {
 
     <div>
       <label class="field-label" for="rp-model">Model <span class="text-muted/60 normal-case">— optional</span></label>
-      <input id="rp-model" v-model="form.model" class="field-underline" placeholder="use provider's model" autocomplete="off" />
+      <input
+        id="rp-model"
+        v-model="form.model"
+        class="field-underline"
+        list="rp-model-presets"
+        placeholder="use provider's model"
+        autocomplete="off"
+      />
+      <datalist id="rp-model-presets">
+        <option v-for="m in modelPresets" :key="m" :value="m" />
+      </datalist>
+      <p v-if="modelPresets.length" class="mt-1.5 text-xs text-muted/70">
+        Presets: {{ modelPresets.join(', ') }}
+      </p>
     </div>
 
     <p v-if="error" class="text-sm text-danger">{{ error }}</p>

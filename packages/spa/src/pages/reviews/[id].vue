@@ -4,7 +4,9 @@ import { useRoute, useRouter } from 'vue-router'
 import { useIntervalFn } from '@vueuse/core'
 import { errorMessage } from '@shared/api/client'
 import PageHeader from '@shared/components/ui/PageHeader.vue'
+import Breadcrumbs from '@shared/components/ui/Breadcrumbs.vue'
 import { useReviewsStore } from '@modules/reviews/store'
+import { useReposStore } from '@modules/repos/store'
 import { isTerminal } from '@modules/reviews/format'
 import ReviewStatusChip from '@modules/reviews/components/ReviewStatusChip.vue'
 import ReviewSummary from '@modules/reviews/components/ReviewSummary.vue'
@@ -13,9 +15,21 @@ import FindingRow from '@modules/reviews/components/FindingRow.vue'
 const route = useRoute()
 const router = useRouter()
 const store = useReviewsStore()
+const repos = useReposStore()
 
 const reviewId = computed(() => (route.params as { id: string }).id)
 const review = computed(() => store.current)
+
+const crumbs = computed(() => {
+  const items: { label: string; to?: string }[] = [{ label: 'Repositories', to: '/repos' }]
+  const rv = review.value
+  if (rv) {
+    const repo = repos.items.find((r) => r.id === rv.repoId)
+    items.push({ label: repo?.name ?? 'Repository', to: `/repos/${rv.repoId}` })
+    items.push({ label: `Review !${rv.mrIid}` })
+  }
+  return items
+})
 
 const selected = ref<number[]>([])
 const publishing = ref(false)
@@ -37,6 +51,7 @@ watch(
   async (id) => {
     pause()
     selected.value = []
+    if (repos.items.length === 0) repos.fetchAll()
     await store.load(id)
     if (review.value && !isTerminal(review.value.status)) resume()
   },
@@ -75,6 +90,8 @@ async function retry() {
 
 <template>
   <div>
+    <Breadcrumbs :items="crumbs" />
+
     <PageHeader label="Review" :title="review ? `Merge request !${review.mrIid}` : 'Review'">
       <template #actions>
         <ReviewStatusChip v-if="review" :status="review.status" />

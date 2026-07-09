@@ -16,6 +16,8 @@ export interface Provider {
   baseUrl: string
   model: string
   isDefault: boolean
+  temperature: number | null
+  models: string[]
   createdAt: string
 }
 

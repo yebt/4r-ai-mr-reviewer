@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { errorMessage } from '@shared/api/client'
 import PageHeader from '@shared/components/ui/PageHeader.vue'
+import Breadcrumbs from '@shared/components/ui/Breadcrumbs.vue'
 import { useReposStore } from '@modules/repos/store'
 import { useReviewsStore } from '@modules/reviews/store'
 import MergeRequestList from '@modules/reviews/components/MergeRequestList.vue'
@@ -15,7 +16,6 @@ const repoId = (route.params as { id: string }).id
 const repos = useReposStore()
 const reviews = useReviewsStore()
 
-const mode = ref<'fast' | 'deep'>('fast')
 const creatingIid = ref<number | null>(null)
 
 const repo = computed(() => repos.items.find((r) => r.id === repoId) ?? null)
@@ -26,10 +26,10 @@ onMounted(async () => {
   reviews.fetchReviews(repoId)
 })
 
-async function startReview(iid: number) {
+async function startReview(iid: number, mode: string) {
   creatingIid.value = iid
   try {
-    const rv = await reviews.create(repoId, iid, mode.value)
+    const rv = await reviews.create(repoId, iid, mode)
     router.push(`/reviews/${rv.id}`)
   } catch (e) {
     reviews.mrsError = errorMessage(e)
@@ -41,6 +41,8 @@ async function startReview(iid: number) {
 
 <template>
   <div>
+    <Breadcrumbs :items="[{ label: 'Repositories', to: '/repos' }, { label: repo?.name ?? 'Repository' }]" />
+
     <PageHeader label="Repository" :title="repo?.name ?? 'Repository'">
       <template #actions>
         <span class="label-mono">{{ repo?.url }}</span>
@@ -48,19 +50,10 @@ async function startReview(iid: number) {
     </PageHeader>
 
     <section class="mb-10">
-      <div class="mb-3 flex items-center justify-between gap-4">
-        <h2 class="section-title flex items-center gap-2">
-          <span class="inline-block h-3.5 w-0.5 bg-accent" aria-hidden="true" />
-          Open merge requests
-        </h2>
-        <label class="flex items-center gap-2 label-mono">
-          context
-          <select v-model="mode" class="border-b border-line bg-transparent py-1 text-xs text-ink outline-none focus:border-accent px-3">
-            <option value="fast">fast</option>
-            <option value="deep">deep</option>
-          </select>
-        </label>
-      </div>
+      <h2 class="section-title mb-3 flex items-center gap-2">
+        <span class="inline-block h-3.5 w-0.5 bg-accent" aria-hidden="true" />
+        Open merge requests
+      </h2>
       <MergeRequestList
         :items="reviews.mrs"
         :loading="reviews.mrsLoading"
