@@ -5,6 +5,8 @@
   "exclude": ["src/**/__tests__/*"],
   "compilerOptions": {
     "moduleResolution": "bundler",
+    // Lets the vue-router typed-routes Volar plugin resolve route paths.
+    "rootDir": ".",
     // Extra safety for array and object lookups, but may have false positives.
     "noUncheckedIndexedAccess": true,
 

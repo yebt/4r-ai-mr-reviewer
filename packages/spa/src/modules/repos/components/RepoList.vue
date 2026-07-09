@@ -2,6 +2,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { errorMessage } from '@shared/api/client'
 import { confirm } from '@shared/composables/useConfirm'
+import { toast } from '@shared/composables/useToast'
+import EmptyState from '@shared/components/ui/EmptyState.vue'
 import type { Repo } from '@shared/api/types'
 import { useReposStore } from '@modules/repos/store'
 import { useAccountsStore } from '@modules/accounts/store'
@@ -39,6 +41,7 @@ async function remove(id: string) {
   busyId.value = id
   try {
     await repos.remove(id)
+    toast.success('Repository deleted')
   } catch (e) {
     repos.error = errorMessage(e)
   } finally {
@@ -53,9 +56,12 @@ async function remove(id: string) {
 
     <p v-if="repos.loading" class="py-3 text-sm text-muted">Loading…</p>
     <p v-else-if="repos.error" class="py-3 text-sm text-danger">{{ repos.error }}</p>
-    <p v-else-if="repos.items.length === 0" class="py-3 text-sm text-muted">
-      No repositories yet. Track one to start reviewing.
-    </p>
+    <EmptyState
+      v-else-if="repos.items.length === 0"
+      icon="i-lucide-folder-git-2"
+      title="No repositories yet"
+      hint="Track a repository to start reviewing its merge requests."
+    />
 
     <ul v-else class="border-t border-line/50">
       <li v-for="r in repos.items" :key="r.id" class="row justify-between">

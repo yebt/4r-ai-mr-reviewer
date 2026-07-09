@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { errorMessage } from '@shared/api/client'
+import { toast } from '@shared/composables/useToast'
 import type { Provider, ProviderKind } from '@shared/api/types'
 import { useProvidersStore } from '@modules/providers/store'
 
@@ -89,8 +90,10 @@ async function submit() {
     }
     if (props.editing) {
       await store.update(props.editing.id, base)
+      toast.success('Provider updated')
     } else {
       await store.add({ ...base, makeDefault: form.makeDefault })
+      toast.success('Provider added')
     }
     Object.assign(form, blank())
     emit('done')

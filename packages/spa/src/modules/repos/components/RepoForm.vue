@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { errorMessage } from '@shared/api/client'
+import { toast } from '@shared/composables/useToast'
 import type { Repo } from '@shared/api/types'
 import { useReposStore } from '@modules/repos/store'
 import { useAccountsStore } from '@modules/accounts/store'
@@ -79,6 +80,7 @@ async function submit() {
   try {
     if (props.editing) {
       await repos.assign(props.editing.id, { providerId: form.providerId, model: form.model.trim() })
+      toast.success('Repository updated')
     } else {
       await repos.add({
         name: form.name.trim(),
@@ -87,6 +89,7 @@ async function submit() {
         providerId: form.providerId,
         model: form.model.trim(),
       })
+      toast.success('Repository added')
     }
     Object.assign(form, blank())
     lastAutoName.value = ''

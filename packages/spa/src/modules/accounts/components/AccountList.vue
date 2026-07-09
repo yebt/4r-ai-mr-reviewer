@@ -2,6 +2,8 @@
 import { onMounted, ref } from 'vue'
 import { errorMessage } from '@shared/api/client'
 import { confirm } from '@shared/composables/useConfirm'
+import { toast } from '@shared/composables/useToast'
+import EmptyState from '@shared/components/ui/EmptyState.vue'
 import { useAccountsStore } from '@modules/accounts/store'
 
 const store = useAccountsStore()
@@ -23,6 +25,7 @@ async function remove(id: string) {
   removingId.value = id
   try {
     await store.remove(id)
+    toast.success('Account deleted')
   } catch (e) {
     store.error = errorMessage(e)
   } finally {
@@ -37,9 +40,12 @@ async function remove(id: string) {
 
     <p v-if="store.loading" class="py-3 text-sm text-muted">Loading…</p>
     <p v-else-if="store.error" class="py-3 text-sm text-danger">{{ store.error }}</p>
-    <p v-else-if="store.items.length === 0" class="py-3 text-sm text-muted">
-      No accounts yet. Add one to start.
-    </p>
+    <EmptyState
+      v-else-if="store.items.length === 0"
+      icon="i-lucide-users"
+      title="No accounts yet"
+      hint="Add a GitLab account to start tracking repositories."
+    />
 
     <ul v-else class="border-t border-line/50">
       <li v-for="acc in store.items" :key="acc.id" class="row justify-between">

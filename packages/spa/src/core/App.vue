@@ -2,6 +2,7 @@
 import { useRouter } from 'vue-router'
 import AppSidebar from '@shared/components/layout/AppSidebar.vue'
 import ConfirmDialog from '@shared/components/ui/ConfirmDialog.vue'
+import ToastHost from '@shared/components/ui/ToastHost.vue'
 import Breadcrumbs from '@shared/components/ui/Breadcrumbs.vue'
 import { setBreadcrumbs, useBreadcrumbs } from '@shared/composables/useBreadcrumbs'
 
@@ -29,4 +30,5 @@ router.beforeEach(() => {
     </main>
   </div>
   <ConfirmDialog />
+  <ToastHost />
 </template>

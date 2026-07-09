@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useIntervalFn } from '@vueuse/core'
 import { errorMessage } from '@shared/api/client'
 import { setBreadcrumbs } from '@shared/composables/useBreadcrumbs'
+import { toast } from '@shared/composables/useToast'
 import PageHeader from '@shared/components/ui/PageHeader.vue'
 import { useReviewsStore } from '@modules/reviews/store'
 import { useReposStore } from '@modules/repos/store'
@@ -73,6 +74,7 @@ async function publish(payload: { all?: boolean; indices?: number[] }) {
   try {
     await store.publish(reviewId.value, payload)
     selected.value = []
+    toast.success('Findings published')
   } catch (e) {
     publishError.value = errorMessage(e)
   } finally {

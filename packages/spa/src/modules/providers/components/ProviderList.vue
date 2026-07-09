@@ -2,6 +2,8 @@
 import { onMounted, ref } from 'vue'
 import { errorMessage } from '@shared/api/client'
 import { confirm } from '@shared/composables/useConfirm'
+import { toast } from '@shared/composables/useToast'
+import EmptyState from '@shared/components/ui/EmptyState.vue'
 import type { Provider } from '@shared/api/types'
 import { useProvidersStore } from '@modules/providers/store'
 
@@ -10,25 +12,32 @@ const emit = defineEmits<{ edit: [provider: Provider] }>()
 const store = useProvidersStore()
 const busyId = ref<string | null>(null)
 
+async function run(id: string, fn: () => Promise<void>): Promise<boolean> {
+  busyId.value = id
+  try {
+    await fn()
+    return true
+  } catch (e) {
+    store.error = errorMessage(e)
+    return false
+  } finally {
+    busyId.value = null
+  }
+}
+
+async function setDefault(p: Provider) {
+  if (await run(p.id, () => store.setDefault(p.id))) toast.success(`${p.name} is now the default`)
+}
+
 async function removeProvider(p: Provider) {
   const ok = await confirm({ title: 'Delete provider', message: `Delete "${p.name}"?`, danger: true })
-  if (ok) await run(p.id, () => store.remove(p.id))
+  if (!ok) return
+  if (await run(p.id, () => store.remove(p.id))) toast.success('Provider deleted')
 }
 
 onMounted(() => {
   if (store.items.length === 0) store.fetchAll()
 })
-
-async function run(id: string, fn: () => Promise<void>) {
-  busyId.value = id
-  try {
-    await fn()
-  } catch (e) {
-    store.error = errorMessage(e)
-  } finally {
-    busyId.value = null
-  }
-}
 </script>
 
 <template>
@@ -37,9 +46,12 @@ async function run(id: string, fn: () => Promise<void>) {
 
     <p v-if="store.loading" class="py-3 text-sm text-muted">Loading…</p>
     <p v-else-if="store.error" class="py-3 text-sm text-danger">{{ store.error }}</p>
-    <p v-else-if="store.items.length === 0" class="py-3 text-sm text-muted">
-      No providers yet. Add one to run reviews.
-    </p>
+    <EmptyState
+      v-else-if="store.items.length === 0"
+      icon="i-lucide-cpu"
+      title="No providers yet"
+      hint="Add an AI provider to run reviews."
+    />
 
     <ul v-else class="border-t border-line/50">
       <li v-for="p in store.items" :key="p.id" class="row justify-between">
@@ -57,7 +69,7 @@ async function run(id: string, fn: () => Promise<void>) {
             v-if="!p.isDefault"
             class="btn-ghost text-xs"
             :disabled="busyId === p.id"
-            @click="run(p.id, () => store.setDefault(p.id))"
+            @click="setDefault(p)"
           >
             Set default
           </button>

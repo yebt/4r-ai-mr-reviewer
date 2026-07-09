@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
 import { errorMessage } from '@shared/api/client'
+import { toast } from '@shared/composables/useToast'
 import { useAccountsStore } from '@modules/accounts/store'
 
 const store = useAccountsStore()
@@ -17,6 +18,7 @@ async function submit() {
   error.value = null
   try {
     await store.add({ name: form.name.trim(), baseUrl: form.baseUrl.trim(), token: form.token.trim() })
+    toast.success('Account added')
     form.name = ''
     form.token = ''
   } catch (e) {

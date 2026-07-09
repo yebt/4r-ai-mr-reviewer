@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import PageHeader from '@shared/components/ui/PageHeader.vue'
+import EmptyState from '@shared/components/ui/EmptyState.vue'
 import { useReposStore } from '@modules/repos/store'
 import { useReviewsStore } from '@modules/reviews/store'
 import ReviewStatusChip from '@modules/reviews/components/ReviewStatusChip.vue'
@@ -31,9 +32,12 @@ const items = computed(() => reviews.allReviews)
     </PageHeader>
 
     <p v-if="loading" class="py-3 text-sm text-muted">Loading…</p>
-    <p v-else-if="items.length === 0" class="py-3 text-sm text-muted">
-      No reviews yet. Open a repository and start one.
-    </p>
+    <EmptyState
+      v-else-if="items.length === 0"
+      icon="i-lucide-list-checks"
+      title="No reviews yet"
+      hint="Open a repository and start a review on a merge request."
+    />
 
     <ul v-else class="border-t border-line/50">
       <li v-for="rv in items" :key="rv.id" class="row justify-between">
