@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useIntervalFn } from '@vueuse/core'
 import { errorMessage } from '@shared/api/client'
+import { setBreadcrumbs } from '@shared/composables/useBreadcrumbs'
 import PageHeader from '@shared/components/ui/PageHeader.vue'
-import Breadcrumbs from '@shared/components/ui/Breadcrumbs.vue'
 import { useReviewsStore } from '@modules/reviews/store'
 import { useReposStore } from '@modules/repos/store'
 import { isTerminal } from '@modules/reviews/format'
@@ -30,6 +30,8 @@ const crumbs = computed(() => {
   }
   return items
 })
+
+watchEffect(() => setBreadcrumbs(crumbs.value))
 
 const selected = ref<number[]>([])
 const publishing = ref(false)
@@ -90,8 +92,6 @@ async function retry() {
 
 <template>
   <div>
-    <Breadcrumbs :items="crumbs" />
-
     <PageHeader label="Review" :title="review ? `Merge request !${review.mrIid}` : 'Review'">
       <template #actions>
         <ReviewStatusChip v-if="review" :status="review.status" />

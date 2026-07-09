@@ -2,8 +2,10 @@
 const links = [
   { to: '/', label: 'Quick access', icon: 'i-lucide-zap', exact: true },
   { to: '/repos', label: 'Repositories', icon: 'i-lucide-folder-git-2' },
+  { to: '/reviews', label: 'Reviews', icon: 'i-lucide-list-checks' },
   { to: '/accounts', label: 'Accounts', icon: 'i-lucide-users' },
   { to: '/providers', label: 'AI providers', icon: 'i-lucide-cpu' },
+  { to: '/skills', label: 'Skills', icon: 'i-lucide-book-open' },
 ]
 </script>
 

@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { errorMessage } from '@shared/api/client'
+import { setBreadcrumbs } from '@shared/composables/useBreadcrumbs'
 import PageHeader from '@shared/components/ui/PageHeader.vue'
-import Breadcrumbs from '@shared/components/ui/Breadcrumbs.vue'
 import { useReposStore } from '@modules/repos/store'
 import { useReviewsStore } from '@modules/reviews/store'
 import MergeRequestList from '@modules/reviews/components/MergeRequestList.vue'
@@ -24,6 +24,10 @@ const repoReviews = computed(() => reviews.reviewsFor(repoId))
 // Stale-while-revalidate: only show a spinner when nothing is cached yet.
 const mrsLoading = computed(() => reviews.mrsLoading && mrs.value.length === 0)
 const reviewsLoading = computed(() => reviews.listLoading && repoReviews.value.length === 0)
+
+watchEffect(() => {
+  setBreadcrumbs([{ label: 'Repositories', to: '/repos' }, { label: repo.value?.name ?? 'Repository' }])
+})
 
 onMounted(async () => {
   if (repos.items.length === 0) await repos.fetchAll()
@@ -46,8 +50,6 @@ async function startReview(iid: number, mode: string) {
 
 <template>
   <div>
-    <Breadcrumbs :items="[{ label: 'Repositories', to: '/repos' }, { label: repo?.name ?? 'Repository' }]" />
-
     <PageHeader label="Repository" :title="repo?.name ?? 'Repository'">
       <template #actions>
         <span class="label-mono">{{ repo?.url }}</span>

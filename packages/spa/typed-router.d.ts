@@ -66,11 +66,25 @@ declare module 'vue-router/auto-routes' {
       { id: ParamValue<false> },
       | never
     >,
+    '/reviews/': RouteRecordInfo<
+      '/reviews/',
+      '/reviews',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/reviews/[id]': RouteRecordInfo<
       '/reviews/[id]',
       '/reviews/:id',
       { id: ParamValue<true> },
       { id: ParamValue<false> },
+      | never
+    >,
+    '/skills': RouteRecordInfo<
+      '/skills',
+      '/skills',
+      Record<never, never>,
+      Record<never, never>,
       | never
     >,
   }
@@ -126,6 +140,14 @@ declare module 'vue-router/auto-routes' {
       pathParamNames:
         | 'id'
     }
+    'src/pages/reviews/index.vue': {
+      routes:
+        | '/reviews/'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
     'src/pages/reviews/[id].vue': {
       routes:
         | '/reviews/[id]'
@@ -133,6 +155,14 @@ declare module 'vue-router/auto-routes' {
         | never
       pathParamNames:
         | 'id'
+    }
+    'src/pages/skills.vue': {
+      routes:
+        | '/skills'
+      views:
+        | never
+      pathParamNames:
+        | never
     }
   }
 

@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { api, errorMessage } from '@shared/api/client'
 import type { MergeRequest, Review } from '@shared/api/types'
 
@@ -27,6 +27,13 @@ export const useReviewsStore = defineStore('reviews', () => {
   function reviewsFor(repoId: string): Review[] {
     return reviewsByRepo.value[repoId] ?? []
   }
+
+  // Flattened view of every cached review, newest first — for the global list.
+  const allReviews = computed(() =>
+    Object.values(reviewsByRepo.value)
+      .flat()
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)),
+  )
 
   async function fetchMergeRequests(repoId: string) {
     mrsLoading.value = true
@@ -118,6 +125,7 @@ export const useReviewsStore = defineStore('reviews', () => {
     currentError,
     mergeRequestsFor,
     reviewsFor,
+    allReviews,
     fetchMergeRequests,
     fetchReviews,
     create,

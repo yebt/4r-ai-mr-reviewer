@@ -104,4 +104,11 @@ export const api = {
   retryReview: (id: string) => request<Review>('POST', `/reviews/${id}/retry`),
   publishReview: (id: string, input: { all?: boolean; indices?: number[] }) =>
     request<{ status: string }>('POST', `/reviews/${id}/publish`, input),
+
+  // skills
+  getSkills: () =>
+    request<{ risk: string; readability: string; reliability: string; resilience: string }>(
+      'GET',
+      '/skills',
+    ),
 }
