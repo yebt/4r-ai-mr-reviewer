@@ -4,6 +4,8 @@ import { errorMessage } from '@shared/api/client'
 import { toast } from '@shared/composables/useToast'
 import { useAccountsStore } from '@modules/accounts/store'
 
+const emit = defineEmits<{ done: [] }>()
+
 const store = useAccountsStore()
 
 const form = reactive({ name: '', baseUrl: 'https://gitlab.com', token: '' })
@@ -21,6 +23,7 @@ async function submit() {
     toast.success('Account added')
     form.name = ''
     form.token = ''
+    emit('done')
   } catch (e) {
     error.value = errorMessage(e)
   } finally {
@@ -31,11 +34,6 @@ async function submit() {
 
 <template>
   <form class="flex flex-col gap-5" @submit.prevent="submit">
-    <h2 class="section-title flex items-center gap-2">
-      <span class="inline-block h-3.5 w-0.5 bg-accent" aria-hidden="true" />
-      New account
-    </h2>
-
     <div>
       <label class="field-label" for="acc-name">Name</label>
       <input id="acc-name" v-model="form.name" class="field-underline" placeholder="work" autocomplete="off" />

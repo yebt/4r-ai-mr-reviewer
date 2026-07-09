@@ -104,11 +104,6 @@ async function submit() {
 
 <template>
   <form class="flex flex-col gap-5" @submit.prevent="submit">
-    <h2 class="section-title flex items-center gap-2">
-      <span class="inline-block h-3.5 w-0.5" :class="isEdit ? 'bg-flame' : 'bg-accent'" aria-hidden="true" />
-      {{ isEdit ? 'Reassign provider' : 'New repository' }}
-    </h2>
-
     <template v-if="!isEdit">
       <div>
         <label class="field-label" for="rp-url">Project URL</label>

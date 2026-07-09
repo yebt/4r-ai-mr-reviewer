@@ -62,7 +62,7 @@ const shortcuts = [
         v-for="(s, i) in shortcuts"
         :key="s.to"
         :to="s.to"
-        class="group flex items-center justify-between border border-line/60 bg-surface/40 p-4 transition-colors hover:border-ink"
+        class="group flex items-center justify-between border border-line/60 bg-surface/40 p-4 hover:border-ink"
         :class="i === shortcuts.length - 1 ? 'col-span-2 md:col-span-4' : ''"
       >
         <div class="flex items-center gap-3">
