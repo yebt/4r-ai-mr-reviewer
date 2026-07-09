@@ -32,21 +32,20 @@ const parsed = computed(() => parseRepoUrl(form.url))
 const lastAutoName = ref('')
 const matchedAccount = computed(() => accounts.items.find((a) => a.id === form.accountId) ?? null)
 
-watch(
-  () => form.url,
-  () => {
-    const p = parsed.value
-    if (!p.valid) return
-    if (form.name === '' || form.name === lastAutoName.value) {
-      form.name = p.name
-      lastAutoName.value = p.name
-    }
-    if (form.accountId === '') {
-      const id = matchAccountId(p.origin, accounts.items)
-      if (id) form.accountId = id
-    }
-  },
-)
+// Resolve name + account from the URL when the field loses focus, keeping any
+// manual edits the user already made.
+function resolveFromUrl() {
+  const p = parsed.value
+  if (!p.valid) return
+  if (form.name === '' || form.name === lastAutoName.value) {
+    form.name = p.name
+    lastAutoName.value = p.name
+  }
+  if (form.accountId === '') {
+    const id = matchAccountId(p.origin, accounts.items)
+    if (id) form.accountId = id
+  }
+}
 
 watch(
   () => props.editing,
@@ -103,7 +102,7 @@ async function submit() {
     <template v-if="!isEdit">
       <div>
         <label class="field-label" for="rp-url">Project URL</label>
-        <input id="rp-url" v-model="form.url" class="field-underline" placeholder="https://gitlab.com/group/project" autocomplete="off" />
+        <input id="rp-url" v-model="form.url" class="field-underline" placeholder="https://gitlab.com/group/project" autocomplete="off" @blur="resolveFromUrl" />
         <p v-if="form.url && !parsed.valid" class="mt-1.5 text-xs text-warn">
           Enter a full project URL (https://host/group/project).
         </p>
