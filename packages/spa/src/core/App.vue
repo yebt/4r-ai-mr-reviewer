@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppSidebar from '@shared/components/layout/AppSidebar.vue'
 import AppBottomNav from '@shared/components/layout/AppBottomNav.vue'
@@ -10,12 +9,10 @@ import { setBreadcrumbs, useBreadcrumbs } from '@shared/composables/useBreadcrum
 
 const breadcrumbs = useBreadcrumbs()
 const router = useRouter()
-const sidebarOpen = ref(false)
 
-// Reset the trail and close the mobile drawer before each navigation.
+// Reset the breadcrumb trail before each navigation; pages declare their own.
 router.beforeEach(() => {
   setBreadcrumbs([])
-  sidebarOpen.value = false
   return true
 })
 </script>
@@ -26,20 +23,6 @@ router.beforeEach(() => {
     <div class="hidden shrink-0 md:block">
       <AppSidebar class="h-full" />
     </div>
-
-    <!-- Mobile: off-canvas drawer (opened from the bottom nav's "More") -->
-    <Transition name="fade">
-      <div
-        v-if="sidebarOpen"
-        class="fixed inset-0 z-40 bg-canvas/70 md:hidden"
-        @click="sidebarOpen = false"
-      />
-    </Transition>
-    <Transition name="drawer">
-      <div v-if="sidebarOpen" class="fixed inset-y-0 left-0 z-50 md:hidden">
-        <AppSidebar class="h-full" @navigate="sidebarOpen = false" />
-      </div>
-    </Transition>
 
     <main class="flex-1 overflow-y-auto">
       <div class="mx-auto max-w-5xl px-4 py-6 pb-24 md:px-8 md:py-8 md:pb-8">
@@ -52,7 +35,7 @@ router.beforeEach(() => {
     </main>
 
     <!-- Mobile: bottom navigation -->
-    <AppBottomNav @more="sidebarOpen = true" />
+    <AppBottomNav />
   </div>
 
   <ConfirmDialog />
