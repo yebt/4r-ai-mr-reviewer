@@ -42,7 +42,7 @@ func newTestServer(t *testing.T) *httptest.Server {
 	runner := jobs.NewRunner(sqlite.NewJobStore(db), reviewSvc.Handle, jobs.WithLogger(log.New(io.Discard, "", 0)))
 	reviewSvc.AttachRunner(runner)
 
-	srv := httptest.NewServer(NewServer(accountSvc, providerSvc, repoSvc, reviewSvc).Routes())
+	srv := httptest.NewServer(NewServer(accountSvc, providerSvc, repoSvc, reviewSvc, set).Routes())
 	t.Cleanup(srv.Close)
 	return srv
 }

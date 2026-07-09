@@ -39,6 +39,12 @@ you send them on create, but they are never returned in any response.
 { "status": "ok" }
 ```
 
+### `GET /skills`
+The 4R review rule sets currently loaded by the engine (read-only).
+```json
+{ "risk": "# R1 — Risk…", "readability": "…", "reliability": "…", "resilience": "…" }
+```
+
 ---
 
 ## Accounts (GitLab)

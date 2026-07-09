@@ -18,6 +18,7 @@ import (
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/repo"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/review"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/secret"
+	"github.com/webcloster-dev/ai-reviewer/internal/review/skills"
 )
 
 // Server holds the application services the handlers call.
@@ -26,11 +27,12 @@ type Server struct {
 	providers *providers.Service
 	repos     *repos.Service
 	reviews   *reviews.Service
+	skills    skills.Set
 }
 
 // NewServer wires a Server.
-func NewServer(a *accounts.Service, p *providers.Service, r *repos.Service, rv *reviews.Service) *Server {
-	return &Server{accounts: a, providers: p, repos: r, reviews: rv}
+func NewServer(a *accounts.Service, p *providers.Service, r *repos.Service, rv *reviews.Service, sk skills.Set) *Server {
+	return &Server{accounts: a, providers: p, repos: r, reviews: rv, skills: sk}
 }
 
 // Routes returns the HTTP handler with every endpoint registered.
@@ -40,6 +42,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
+
+	mux.HandleFunc("GET /skills", s.getSkills)
 
 	mux.HandleFunc("POST /accounts", s.createAccount)
 	mux.HandleFunc("GET /accounts", s.listAccounts)

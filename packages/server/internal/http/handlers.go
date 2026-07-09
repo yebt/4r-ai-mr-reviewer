@@ -14,6 +14,24 @@ import (
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/review"
 )
 
+// --- skills ---
+
+type skillsResp struct {
+	Risk        string `json:"risk"`
+	Readability string `json:"readability"`
+	Reliability string `json:"reliability"`
+	Resilience  string `json:"resilience"`
+}
+
+func (s *Server) getSkills(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, skillsResp{
+		Risk:        s.skills.Risk,
+		Readability: s.skills.Readability,
+		Reliability: s.skills.Reliability,
+		Resilience:  s.skills.Resilience,
+	})
+}
+
 // --- accounts ---
 
 func (s *Server) createAccount(w http.ResponseWriter, r *http.Request) {

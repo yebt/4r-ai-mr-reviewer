@@ -72,7 +72,7 @@ func run() error {
 	reviewSvc.AttachRunner(runner)
 	go runner.Start(ctx)
 
-	api := httpapi.NewServer(accountSvc, providerSvc, repoSvc, reviewSvc)
+	api := httpapi.NewServer(accountSvc, providerSvc, repoSvc, reviewSvc, ruleSet)
 	srv := &http.Server{Addr: cfg.HTTPAddr, Handler: api.Routes()}
 
 	go func() {
