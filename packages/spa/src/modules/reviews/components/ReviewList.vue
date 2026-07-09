@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Review } from '@shared/api/types'
-import { recommendationClass, recommendationLabel } from '@modules/reviews/format'
+import { formatDateTime, recommendationClass, recommendationLabel, shortId } from '@modules/reviews/format'
 import ReviewStatusChip from '@modules/reviews/components/ReviewStatusChip.vue'
 
 defineProps<{
@@ -25,7 +25,11 @@ defineProps<{
             </RouterLink>
             <ReviewStatusChip :status="rv.status" />
           </div>
-          <div class="label-mono mt-0.5">{{ rv.contextMode }}</div>
+          <div class="label-mono mt-0.5 flex flex-wrap gap-x-2">
+            <span class="text-muted/70">#{{ shortId(rv.id) }}</span>
+            <span>{{ rv.contextMode }}</span>
+            <span v-if="rv.createdAt">{{ formatDateTime(rv.createdAt) }}</span>
+          </div>
         </div>
         <div class="shrink-0 text-right">
           <div v-if="rv.status === 'done'" class="text-sm" :class="recommendationClass[rv.recommendation]">

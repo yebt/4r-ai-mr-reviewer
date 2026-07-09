@@ -48,37 +48,40 @@ describe('reviews store', () => {
     vi.clearAllMocks()
   })
 
-  it('fetchMergeRequests populates mrs', async () => {
+  it('caches merge requests per repo', async () => {
     mocked.listMergeRequests.mockResolvedValue([{ iid: 7, title: 'x' }])
     const store = useReviewsStore()
     await store.fetchMergeRequests('r1')
-    expect(store.mrs).toHaveLength(1)
+    expect(store.mergeRequestsFor('r1')).toHaveLength(1)
+    expect(store.mergeRequestsFor('other')).toHaveLength(0)
   })
 
-  it('fetchMergeRequests clears mrs on error', async () => {
+  it('keeps the cache empty and records the error on failure', async () => {
     mocked.listMergeRequests.mockRejectedValue(new Error('gitlab down'))
     const store = useReviewsStore()
     await store.fetchMergeRequests('r1')
     expect(store.mrsError).toBe('gitlab down')
-    expect(store.mrs).toHaveLength(0)
+    expect(store.mergeRequestsFor('r1')).toHaveLength(0)
   })
 
-  it('create prepends the new review', async () => {
+  it('create prepends the new review to the repo cache', async () => {
     mocked.createReview.mockResolvedValue(review('new'))
     const store = useReviewsStore()
-    store.list = [review('old')]
+    store.reviewsByRepo = { r1: [review('old')] }
     await store.create('r1', 7, 'fast')
-    expect(store.list.map((r) => r.id)).toEqual(['new', 'old'])
+    expect(store.reviewsFor('r1').map((r) => r.id)).toEqual(['new', 'old'])
   })
 
-  it('load sets current', async () => {
-    mocked.getReview.mockResolvedValue(review('1', 'done'))
+  it('load shows the cached review immediately, then refreshes', async () => {
     const store = useReviewsStore()
+    store.reviewsById = { '1': review('1', 'pending') }
+    mocked.getReview.mockResolvedValue(review('1', 'done'))
     await store.load('1')
+    expect(store.currentLoading).toBe(false)
     expect(store.current?.status).toBe('done')
   })
 
-  it('publish calls api then refreshes current', async () => {
+  it('publish calls the api then refreshes current', async () => {
     mocked.publishReview.mockResolvedValue({ status: 'published' })
     mocked.getReview.mockResolvedValue(review('1', 'done'))
     const store = useReviewsStore()

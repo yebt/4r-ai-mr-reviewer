@@ -19,6 +19,11 @@ const reviews = useReviewsStore()
 const creatingIid = ref<number | null>(null)
 
 const repo = computed(() => repos.items.find((r) => r.id === repoId) ?? null)
+const mrs = computed(() => reviews.mergeRequestsFor(repoId))
+const repoReviews = computed(() => reviews.reviewsFor(repoId))
+// Stale-while-revalidate: only show a spinner when nothing is cached yet.
+const mrsLoading = computed(() => reviews.mrsLoading && mrs.value.length === 0)
+const reviewsLoading = computed(() => reviews.listLoading && repoReviews.value.length === 0)
 
 onMounted(async () => {
   if (repos.items.length === 0) await repos.fetchAll()
@@ -41,23 +46,22 @@ async function startReview(iid: number, mode: string) {
 
 <template>
   <div>
+    <Breadcrumbs :items="[{ label: 'Repositories', to: '/repos' }, { label: repo?.name ?? 'Repository' }]" />
+
     <PageHeader label="Repository" :title="repo?.name ?? 'Repository'">
       <template #actions>
         <span class="label-mono">{{ repo?.url }}</span>
       </template>
     </PageHeader>
-    <Breadcrumbs
-      :items="[{ label: 'Repositories', to: '/repos' }, { label: repo?.name ?? 'Repository' }]"
-    />
 
     <section class="mb-10">
       <h2 class="section-title mb-3 flex items-center gap-2">
-        <span class="bg-accent inline-block h-3.5 w-0.5" aria-hidden="true" />
+        <span class="inline-block h-3.5 w-0.5 bg-accent" aria-hidden="true" />
         Open merge requests
       </h2>
       <MergeRequestList
-        :items="reviews.mrs"
-        :loading="reviews.mrsLoading"
+        :items="mrs"
+        :loading="mrsLoading"
         :error="reviews.mrsError"
         :busy-iid="creatingIid"
         @review="startReview"
@@ -66,10 +70,10 @@ async function startReview(iid: number, mode: string) {
 
     <section>
       <h2 class="section-title mb-3 flex items-center gap-2">
-        <span class="bg-accent inline-block h-3.5 w-0.5" aria-hidden="true" />
+        <span class="inline-block h-3.5 w-0.5 bg-accent" aria-hidden="true" />
         Reviews
       </h2>
-      <ReviewList :items="reviews.list" :loading="reviews.listLoading" :error="reviews.listError" />
+      <ReviewList :items="repoReviews" :loading="reviewsLoading" :error="reviews.listError" />
     </section>
   </div>
 </template>

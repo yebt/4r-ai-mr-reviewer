@@ -90,14 +90,13 @@ async function retry() {
 
 <template>
   <div>
+    <Breadcrumbs :items="crumbs" />
 
     <PageHeader label="Review" :title="review ? `Merge request !${review.mrIid}` : 'Review'">
       <template #actions>
         <ReviewStatusChip v-if="review" :status="review.status" />
       </template>
     </PageHeader>
-
-    <Breadcrumbs :items="crumbs" />
 
     <p v-if="store.currentLoading && !review" class="text-sm text-muted">Loading…</p>
     <p v-else-if="store.currentError" class="text-sm text-danger">{{ store.currentError }}</p>

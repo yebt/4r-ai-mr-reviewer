@@ -40,3 +40,20 @@ export function recommendationLabel(r: Recommendation): string {
 export function isTerminal(status: ReviewStatus): boolean {
   return status === 'done' || status === 'error'
 }
+
+/** First 8 chars of a review id, to tell same-MR reviews apart. */
+export function shortId(id: string): string {
+  return id.slice(0, 8)
+}
+
+export function formatDateTime(iso: string): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleString(undefined, {
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
