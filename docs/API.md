@@ -70,19 +70,27 @@ Removes the account, its token, and cascades to its repos.
   "baseUrl": "https://api.groq.com/openai/v1",
   "model": "llama-3.3-70b-versatile",
   "apiKey": "gsk_xxxxx",
-  "makeDefault": true
+  "makeDefault": true,
+  "temperature": null,
+  "models": ["llama-3.3-70b-versatile", "moonshotai/kimi-k2"]
 }
 ```
 The first provider created becomes the default automatically. For `anthropic`,
 `baseUrl` may be omitted (defaults to `https://api.anthropic.com`).
+
+`temperature` is optional: `null` (or omitted) means the review will **not send
+a temperature**, so the model uses its default — required by models that reject
+any other value. `models` is a list of preset model names offered when
+configuring a repository.
 
 ### `GET /providers` → `200`
 Array of providers (never includes the API key).
 
 ### `PATCH /providers/{id}` → `200`
 Edits a provider. `apiKey` is optional — an empty string keeps the stored key.
+`temperature` (`null` = don't send) and `models` are the advanced settings.
 ```json
-{ "name": "groq-eu", "kind": "openai-compat", "baseUrl": "https://eu", "model": "llama-3.3", "apiKey": "" }
+{ "name": "groq-eu", "kind": "openai-compat", "baseUrl": "https://eu", "model": "llama-3.3", "apiKey": "", "temperature": 0.2, "models": ["llama-3.3"] }
 ```
 
 ### `POST /providers/{id}/default` → `200`
