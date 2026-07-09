@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -21,13 +22,14 @@ func NewProviderRepo(db *sql.DB) *ProviderRepo {
 
 var _ provider.Repository = (*ProviderRepo)(nil)
 
-const providerCols = `id, name, kind, base_url, model, api_key_ref, is_default, created_at`
+const providerCols = `id, name, kind, base_url, model, api_key_ref, is_default, temperature, models, created_at`
 
 // Create inserts a provider row.
 func (r *ProviderRepo) Create(ctx context.Context, p provider.Provider) error {
 	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO providers(`+providerCols+`) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
-		p.ID, p.Name, string(p.Kind), p.BaseURL, p.Model, p.APIKeyRef, boolToInt(p.IsDefault), formatTime(p.CreatedAt))
+		`INSERT INTO providers(`+providerCols+`) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		p.ID, p.Name, string(p.Kind), p.BaseURL, p.Model, p.APIKeyRef, boolToInt(p.IsDefault),
+		nullFloat(p.Temperature), marshalModels(p.Models), formatTime(p.CreatedAt))
 	if err != nil {
 		return fmt.Errorf("provider repo: create: %w", err)
 	}
@@ -37,8 +39,8 @@ func (r *ProviderRepo) Create(ctx context.Context, p provider.Provider) error {
 // Update changes a provider's mutable fields (not is_default or the API key).
 func (r *ProviderRepo) Update(ctx context.Context, p provider.Provider) error {
 	res, err := r.db.ExecContext(ctx,
-		`UPDATE providers SET name = ?, kind = ?, base_url = ?, model = ? WHERE id = ?`,
-		p.Name, string(p.Kind), p.BaseURL, p.Model, p.ID)
+		`UPDATE providers SET name = ?, kind = ?, base_url = ?, model = ?, temperature = ?, models = ? WHERE id = ?`,
+		p.Name, string(p.Kind), p.BaseURL, p.Model, nullFloat(p.Temperature), marshalModels(p.Models), p.ID)
 	if err != nil {
 		return fmt.Errorf("provider repo: update: %w", err)
 	}
@@ -132,16 +134,24 @@ func (r *ProviderRepo) GetDefault(ctx context.Context) (provider.Provider, error
 
 func scanProvider(s scanner) (provider.Provider, error) {
 	var (
-		p         provider.Provider
-		kind      string
-		isDefault int
-		createdAt string
+		p          provider.Provider
+		kind       string
+		isDefault  int
+		temp       sql.NullFloat64
+		modelsJSON string
+		createdAt  string
 	)
-	if err := s.Scan(&p.ID, &p.Name, &kind, &p.BaseURL, &p.Model, &p.APIKeyRef, &isDefault, &createdAt); err != nil {
+	if err := s.Scan(&p.ID, &p.Name, &kind, &p.BaseURL, &p.Model, &p.APIKeyRef, &isDefault,
+		&temp, &modelsJSON, &createdAt); err != nil {
 		return provider.Provider{}, err
 	}
 	p.Kind = provider.Kind(kind)
 	p.IsDefault = isDefault != 0
+	if temp.Valid {
+		v := temp.Float64
+		p.Temperature = &v
+	}
+	p.Models = unmarshalModels(modelsJSON)
 	t, err := parseTime(createdAt)
 	if err != nil {
 		return provider.Provider{}, err
@@ -155,4 +165,34 @@ func boolToInt(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+// nullFloat maps a nil *float64 to SQL NULL.
+func nullFloat(f *float64) any {
+	if f == nil {
+		return nil
+	}
+	return *f
+}
+
+func marshalModels(models []string) string {
+	if len(models) == 0 {
+		return "[]"
+	}
+	b, err := json.Marshal(models)
+	if err != nil {
+		return "[]"
+	}
+	return string(b)
+}
+
+func unmarshalModels(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	var out []string
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		return nil
+	}
+	return out
 }

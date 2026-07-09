@@ -25,12 +25,14 @@ func NewService(repo provider.Repository, secrets secret.Store) *Service {
 
 // AddInput describes a new provider.
 type AddInput struct {
-	Name      string
-	Kind      provider.Kind
-	BaseURL   string
-	Model     string
-	APIKey    string
+	Name        string
+	Kind        provider.Kind
+	BaseURL     string
+	Model       string
+	APIKey      string
 	MakeDefault bool
+	Temperature *float64
+	Models      []string
 }
 
 // Add encrypts the API key and records the provider. The first provider added
@@ -50,12 +52,14 @@ func (s *Service) Add(ctx context.Context, in AddInput) (provider.Provider, erro
 	makeDefault := in.MakeDefault || len(existing) == 0
 
 	p := provider.Provider{
-		ID:        id.New(),
-		Name:      in.Name,
-		Kind:      in.Kind,
-		BaseURL:   in.BaseURL,
-		Model:     in.Model,
-		CreatedAt: time.Now().UTC(),
+		ID:          id.New(),
+		Name:        in.Name,
+		Kind:        in.Kind,
+		BaseURL:     in.BaseURL,
+		Model:       in.Model,
+		Temperature: in.Temperature,
+		Models:      in.Models,
+		CreatedAt:   time.Now().UTC(),
 	}
 	p.APIKeyRef = "provider:" + p.ID + ":apikey"
 
@@ -88,11 +92,13 @@ func (s *Service) Get(ctx context.Context, id string) (provider.Provider, error)
 // UpdateInput describes an edit to a provider. APIKey is optional: empty leaves
 // the stored key unchanged.
 type UpdateInput struct {
-	Name    string
-	Kind    provider.Kind
-	BaseURL string
-	Model   string
-	APIKey  string
+	Name        string
+	Kind        provider.Kind
+	BaseURL     string
+	Model       string
+	APIKey      string
+	Temperature *float64
+	Models      []string
 }
 
 // Update edits a provider's fields, optionally rotating its API key.
@@ -112,6 +118,8 @@ func (s *Service) Update(ctx context.Context, id string, in UpdateInput) (provid
 	p.Kind = in.Kind
 	p.BaseURL = in.BaseURL
 	p.Model = in.Model
+	p.Temperature = in.Temperature
+	p.Models = in.Models
 
 	if err := s.repo.Update(ctx, p); err != nil {
 		return provider.Provider{}, err

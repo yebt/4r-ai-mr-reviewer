@@ -31,9 +31,8 @@ func TestOpenAIComplete(t *testing.T) {
 
 	c := NewOpenAIClient(srv.URL, "k")
 	resp, err := c.Complete(context.Background(), llm.Request{
-		Model:       "llama",
-		Temperature: 0,
-		Messages:    []llm.Message{{Role: llm.RoleSystem, Content: "sys"}, {Role: llm.RoleUser, Content: "hi"}},
+		Model:    "llama",
+		Messages: []llm.Message{{Role: llm.RoleSystem, Content: "sys"}, {Role: llm.RoleUser, Content: "hi"}},
 	})
 	if err != nil {
 		t.Fatalf("Complete: %v", err)
@@ -43,6 +42,27 @@ func TestOpenAIComplete(t *testing.T) {
 	}
 	if gotReq.Model != "llama" || len(gotReq.Messages) != 2 {
 		t.Fatalf("unexpected request forwarded: %+v", gotReq)
+	}
+	if gotReq.Temperature != nil {
+		t.Errorf("temperature should be omitted when unset, got %v", *gotReq.Temperature)
+	}
+}
+
+func TestOpenAISendsTemperatureWhenSet(t *testing.T) {
+	var gotReq openaiRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotReq)
+		fmt.Fprint(w, `{"model":"m","choices":[{"message":{"content":"ok"}}]}`)
+	}))
+	defer srv.Close()
+
+	temp := 0.3
+	c := NewOpenAIClient(srv.URL, "k")
+	if _, err := c.Complete(context.Background(), llm.Request{Model: "m", Temperature: &temp}); err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if gotReq.Temperature == nil || *gotReq.Temperature != 0.3 {
+		t.Fatalf("temperature not sent: %v", gotReq.Temperature)
 	}
 }
 

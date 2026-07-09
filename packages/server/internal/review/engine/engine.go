@@ -28,20 +28,19 @@ type Input struct {
 
 // Engine runs single-pass reviews with a fixed rule set.
 type Engine struct {
-	skills      skills.Set
-	temperature float64
-	maxTokens   int
+	skills    skills.Set
+	maxTokens int
 }
 
-// New builds an engine over a loaded rule set. Temperature defaults to 0 for
-// deterministic reviews.
+// New builds an engine over a loaded rule set.
 func New(set skills.Set) *Engine {
 	return &Engine{skills: set}
 }
 
 // Run executes one review against client using model, returning a completed
-// Review. Persistence and job orchestration are the caller's concern.
-func (e *Engine) Run(ctx context.Context, client llm.Client, model string, in Input) (review.Review, error) {
+// Review. temperature is optional (nil = let the model use its default).
+// Persistence and job orchestration are the caller's concern.
+func (e *Engine) Run(ctx context.Context, client llm.Client, model string, temperature *float64, in Input) (review.Review, error) {
 	if in.Diff == "" {
 		return review.Review{}, fmt.Errorf("engine: empty diff")
 	}
@@ -49,7 +48,7 @@ func (e *Engine) Run(ctx context.Context, client llm.Client, model string, in In
 	resp, err := client.Complete(ctx, llm.Request{
 		Model:       model,
 		Messages:    buildMessages(e.skills, in),
-		Temperature: e.temperature,
+		Temperature: temperature,
 		MaxTokens:   e.maxTokens,
 	})
 	if err != nil {

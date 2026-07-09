@@ -20,12 +20,13 @@ type Message struct {
 	Content string
 }
 
-// Request is a completion request. Temperature defaults to 0 (deterministic),
-// which is what reviews want. MaxTokens of 0 lets the adapter apply its default.
+// Request is a completion request. Temperature is optional: nil means "don't
+// send it", so the model uses its own default (some models reject any other
+// value). MaxTokens of 0 lets the adapter apply its default.
 type Request struct {
 	Model       string
 	Messages    []Message
-	Temperature float64
+	Temperature *float64
 	MaxTokens   int
 }
 

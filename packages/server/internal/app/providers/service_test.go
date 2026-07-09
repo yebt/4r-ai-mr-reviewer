@@ -156,3 +156,39 @@ func TestUpdateUnknownProvider(t *testing.T) {
 		t.Fatalf("got %v, want ErrNotFound", err)
 	}
 }
+
+func TestTemperatureAndModelsRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	s := newService(t)
+	temp := 0.2
+	p := mustAdd(t, s, AddInput{
+		Name: "groq", Kind: provider.KindOpenAICompat, APIKey: "k",
+		Temperature: &temp, Models: []string{"llama-3.3", "kimi-k2"},
+	})
+
+	got, err := s.Get(ctx, p.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Temperature == nil || *got.Temperature != 0.2 {
+		t.Fatalf("temperature not persisted: %v", got.Temperature)
+	}
+	if len(got.Models) != 2 || got.Models[0] != "llama-3.3" {
+		t.Fatalf("models not persisted: %+v", got.Models)
+	}
+}
+
+func TestUpdateClearsTemperature(t *testing.T) {
+	ctx := context.Background()
+	s := newService(t)
+	temp := 0.5
+	p := mustAdd(t, s, AddInput{Name: "groq", Kind: provider.KindOpenAICompat, APIKey: "k", Temperature: &temp})
+
+	if _, err := s.Update(ctx, p.ID, UpdateInput{Name: "groq", Kind: provider.KindOpenAICompat, Temperature: nil}); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	got, _ := s.Get(ctx, p.ID)
+	if got.Temperature != nil {
+		t.Fatalf("temperature should be cleared, got %v", *got.Temperature)
+	}
+}

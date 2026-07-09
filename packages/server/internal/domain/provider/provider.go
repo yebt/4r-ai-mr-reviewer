@@ -35,6 +35,11 @@ type Provider struct {
 	Model     string // default model for reviews
 	APIKeyRef string
 	IsDefault bool
+	// Temperature is an optional generation setting. nil means "don't send it"
+	// (some models reject any value other than their default).
+	Temperature *float64
+	// Models is a list of preset model names to pick from when configuring a repo.
+	Models    []string
 	CreatedAt time.Time
 }
 

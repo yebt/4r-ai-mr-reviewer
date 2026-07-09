@@ -59,12 +59,14 @@ func (s *Server) deleteAccount(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) createProvider(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Name        string `json:"name"`
-		Kind        string `json:"kind"`
-		BaseURL     string `json:"baseUrl"`
-		Model       string `json:"model"`
-		APIKey      string `json:"apiKey"`
-		MakeDefault bool   `json:"makeDefault"`
+		Name        string   `json:"name"`
+		Kind        string   `json:"kind"`
+		BaseURL     string   `json:"baseUrl"`
+		Model       string   `json:"model"`
+		APIKey      string   `json:"apiKey"`
+		MakeDefault bool     `json:"makeDefault"`
+		Temperature *float64 `json:"temperature"`
+		Models      []string `json:"models"`
 	}
 	if err := decode(r, &in); err != nil {
 		writeErr(w, err, http.StatusBadRequest)
@@ -73,6 +75,7 @@ func (s *Server) createProvider(w http.ResponseWriter, r *http.Request) {
 	p, err := s.providers.Add(r.Context(), providers.AddInput{
 		Name: in.Name, Kind: provider.Kind(in.Kind), BaseURL: in.BaseURL,
 		Model: in.Model, APIKey: in.APIKey, MakeDefault: in.MakeDefault,
+		Temperature: in.Temperature, Models: in.Models,
 	})
 	if err != nil {
 		writeErr(w, err, http.StatusBadRequest)
@@ -96,11 +99,13 @@ func (s *Server) listProviders(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) updateProvider(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Name    string `json:"name"`
-		Kind    string `json:"kind"`
-		BaseURL string `json:"baseUrl"`
-		Model   string `json:"model"`
-		APIKey  string `json:"apiKey"`
+		Name        string   `json:"name"`
+		Kind        string   `json:"kind"`
+		BaseURL     string   `json:"baseUrl"`
+		Model       string   `json:"model"`
+		APIKey      string   `json:"apiKey"`
+		Temperature *float64 `json:"temperature"`
+		Models      []string `json:"models"`
 	}
 	if err := decode(r, &in); err != nil {
 		writeErr(w, err, http.StatusBadRequest)
@@ -108,6 +113,7 @@ func (s *Server) updateProvider(w http.ResponseWriter, r *http.Request) {
 	}
 	p, err := s.providers.Update(r.Context(), r.PathValue("id"), providers.UpdateInput{
 		Name: in.Name, Kind: provider.Kind(in.Kind), BaseURL: in.BaseURL, Model: in.Model, APIKey: in.APIKey,
+		Temperature: in.Temperature, Models: in.Models,
 	})
 	if err != nil {
 		writeErr(w, err, http.StatusBadRequest)
@@ -288,19 +294,26 @@ func toAccount(a account.Account) accountResp {
 }
 
 type providerResp struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	Kind      string    `json:"kind"`
-	BaseURL   string    `json:"baseUrl"`
-	Model     string    `json:"model"`
-	IsDefault bool      `json:"isDefault"`
-	CreatedAt time.Time `json:"createdAt"`
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	Kind        string    `json:"kind"`
+	BaseURL     string    `json:"baseUrl"`
+	Model       string    `json:"model"`
+	IsDefault   bool      `json:"isDefault"`
+	Temperature *float64  `json:"temperature"`
+	Models      []string  `json:"models"`
+	CreatedAt   time.Time `json:"createdAt"`
 }
 
 func toProvider(p provider.Provider) providerResp {
+	models := p.Models
+	if models == nil {
+		models = []string{}
+	}
 	return providerResp{
 		ID: p.ID, Name: p.Name, Kind: string(p.Kind), BaseURL: p.BaseURL,
-		Model: p.Model, IsDefault: p.IsDefault, CreatedAt: p.CreatedAt,
+		Model: p.Model, IsDefault: p.IsDefault, Temperature: p.Temperature,
+		Models: models, CreatedAt: p.CreatedAt,
 	}
 }
 

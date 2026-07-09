@@ -165,7 +165,7 @@ func (s *Service) execute(ctx context.Context, rv review.Review) (review.Review,
 	}
 	in.RepoID = rv.RepoID
 
-	return s.engine.Run(ctx, aiClient, model, in)
+	return s.engine.Run(ctx, aiClient, model, prov.Temperature, in)
 }
 
 func (s *Service) resolveProvider(ctx context.Context, providerID string) (provider.Provider, error) {

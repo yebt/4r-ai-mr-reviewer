@@ -43,7 +43,7 @@ func TestRunCleanReview(t *testing.T) {
 	e := newEngine(t)
 	fc := &fakeClient{content: `{"summary":"clean change","findings":[]}`}
 
-	rv, err := e.Run(context.Background(), fc, "model-x", sampleInput())
+	rv, err := e.Run(context.Background(), fc, "model-x", nil, sampleInput())
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -64,7 +64,7 @@ func TestRunWithBlockingFinding(t *testing.T) {
 		{"dimension":"risk","severity":"high","file":"auth.go","line":42,"issue":"hardcoded secret","why":"leak","fix":"use env","blocking":true}
 	]}`}
 
-	rv, err := e.Run(context.Background(), fc, "model-x", sampleInput())
+	rv, err := e.Run(context.Background(), fc, "model-x", nil, sampleInput())
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestRunParsesFencedJSON(t *testing.T) {
 	e := newEngine(t)
 	fc := &fakeClient{content: "Here is the review:\n```json\n{\"summary\":\"ok\",\"findings\":[]}\n```\n"}
 
-	rv, err := e.Run(context.Background(), fc, "m", sampleInput())
+	rv, err := e.Run(context.Background(), fc, "m", nil, sampleInput())
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -97,7 +97,7 @@ func TestRunPromptContainsSkillsAndDiff(t *testing.T) {
 	e := newEngine(t)
 	fc := &fakeClient{content: `{"summary":"x","findings":[]}`}
 
-	if _, err := e.Run(context.Background(), fc, "m", sampleInput()); err != nil {
+	if _, err := e.Run(context.Background(), fc, "m", nil, sampleInput()); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	if len(fc.gotReq.Messages) != 2 {
@@ -111,8 +111,21 @@ func TestRunPromptContainsSkillsAndDiff(t *testing.T) {
 	if !strings.Contains(user, "@@ -1 +1 @@") {
 		t.Fatal("user prompt missing the diff")
 	}
-	if fc.gotReq.Temperature != 0 {
-		t.Fatalf("temperature = %v, want 0 (deterministic)", fc.gotReq.Temperature)
+	if fc.gotReq.Temperature != nil {
+		t.Fatalf("temperature = %v, want nil (not sent by default)", fc.gotReq.Temperature)
+	}
+}
+
+func TestRunForwardsTemperature(t *testing.T) {
+	e := newEngine(t)
+	fc := &fakeClient{content: `{"summary":"x","findings":[]}`}
+	temp := 0.2
+
+	if _, err := e.Run(context.Background(), fc, "m", &temp, sampleInput()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if fc.gotReq.Temperature == nil || *fc.gotReq.Temperature != 0.2 {
+		t.Fatalf("temperature not forwarded: %v", fc.gotReq.Temperature)
 	}
 }
 
@@ -120,7 +133,7 @@ func TestRunEmptyDiffIsError(t *testing.T) {
 	e := newEngine(t)
 	in := sampleInput()
 	in.Diff = ""
-	if _, err := e.Run(context.Background(), &fakeClient{}, "m", in); err == nil {
+	if _, err := e.Run(context.Background(), &fakeClient{}, "m", nil, in); err == nil {
 		t.Fatal("expected error for empty diff")
 	}
 }
@@ -128,7 +141,7 @@ func TestRunEmptyDiffIsError(t *testing.T) {
 func TestRunPropagatesClientError(t *testing.T) {
 	e := newEngine(t)
 	fc := &fakeClient{err: errors.New("rate limited")}
-	if _, err := e.Run(context.Background(), fc, "m", sampleInput()); err == nil {
+	if _, err := e.Run(context.Background(), fc, "m", nil, sampleInput()); err == nil {
 		t.Fatal("expected client error to propagate")
 	}
 }
@@ -136,7 +149,7 @@ func TestRunPropagatesClientError(t *testing.T) {
 func TestRunMalformedOutputIsError(t *testing.T) {
 	e := newEngine(t)
 	fc := &fakeClient{content: "I could not produce JSON, sorry."}
-	if _, err := e.Run(context.Background(), fc, "m", sampleInput()); err == nil {
+	if _, err := e.Run(context.Background(), fc, "m", nil, sampleInput()); err == nil {
 		t.Fatal("expected parse error for non-JSON output")
 	}
 }
