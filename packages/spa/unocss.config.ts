@@ -43,6 +43,7 @@ export default defineConfig({
     'btn-accent': 'btn bg-accent px-4 py-2 text-accent-ink hover:opacity-90',
     'btn-line': 'btn border border-line px-4 py-2 text-ink hover:border-ink',
     'btn-ghost': 'btn text-muted px-2 py-1 hover:text-ink hover:bg-muted/20',
+    'btn-danger-solid': 'btn bg-danger px-4 py-2 text-canvas hover:opacity-90',
 
     'chip': 'inline-flex items-center gap-1 font-mono text-[0.66rem] uppercase tracking-wider',
   },

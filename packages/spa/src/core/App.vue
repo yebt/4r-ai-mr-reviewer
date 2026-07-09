@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import AppSidebar from '@shared/components/layout/AppSidebar.vue'
+import ConfirmDialog from '@shared/components/ui/ConfirmDialog.vue'
 </script>
 
 <template>
@@ -11,4 +12,5 @@ import AppSidebar from '@shared/components/layout/AppSidebar.vue'
       </div>
     </main>
   </div>
+  <ConfirmDialog />
 </template>

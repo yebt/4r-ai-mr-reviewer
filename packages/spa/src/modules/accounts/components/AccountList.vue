@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { errorMessage } from '@shared/api/client'
+import { confirm } from '@shared/composables/useConfirm'
 import { useAccountsStore } from '@modules/accounts/store'
 
 const store = useAccountsStore()
@@ -11,6 +12,14 @@ onMounted(() => {
 })
 
 async function remove(id: string) {
+  const acc = store.items.find((a) => a.id === id)
+  const ok = await confirm({
+    title: 'Delete account',
+    message: `Delete "${acc?.name}"? Its tracked repositories will be removed too.`,
+    danger: true,
+  })
+  if (!ok) return
+
   removingId.value = id
   try {
     await store.remove(id)

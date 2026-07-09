@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { errorMessage } from '@shared/api/client'
+import { confirm } from '@shared/composables/useConfirm'
 import type { Repo } from '@shared/api/types'
 import { useReposStore } from '@modules/repos/store'
 import { useAccountsStore } from '@modules/accounts/store'
@@ -27,6 +28,14 @@ const providerLabel = computed(() => (repo: Repo) => {
 })
 
 async function remove(id: string) {
+  const r = repos.items.find((x) => x.id === id)
+  const ok = await confirm({
+    title: 'Delete repository',
+    message: `Delete "${r?.name}"? Its reviews will be removed too.`,
+    danger: true,
+  })
+  if (!ok) return
+
   busyId.value = id
   try {
     await repos.remove(id)

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { errorMessage } from '@shared/api/client'
+import { confirm } from '@shared/composables/useConfirm'
 import type { Provider } from '@shared/api/types'
 import { useProvidersStore } from '@modules/providers/store'
 
@@ -8,6 +9,11 @@ const emit = defineEmits<{ edit: [provider: Provider] }>()
 
 const store = useProvidersStore()
 const busyId = ref<string | null>(null)
+
+async function removeProvider(p: Provider) {
+  const ok = await confirm({ title: 'Delete provider', message: `Delete "${p.name}"?`, danger: true })
+  if (ok) await run(p.id, () => store.remove(p.id))
+}
 
 onMounted(() => {
   if (store.items.length === 0) store.fetchAll()
@@ -66,7 +72,7 @@ async function run(id: string, fn: () => Promise<void>) {
             class="btn-ghost hover:text-danger"
             :disabled="busyId === p.id"
             :aria-label="`Delete ${p.name}`"
-            @click="run(p.id, () => store.remove(p.id))"
+            @click="removeProvider(p)"
           >
             <span class="i-lucide-trash-2 text-sm" aria-hidden="true" />
           </button>
