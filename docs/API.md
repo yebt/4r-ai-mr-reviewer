@@ -174,6 +174,9 @@ Full review including findings:
 }
 ```
 
+### `DELETE /reviews/{id}` → `204`
+Hard-removes the review and all its findings. Returns `404` if it does not exist.
+
 ### `POST /reviews/{id}/retry` → `201`
 Clones the review's configuration into a fresh pending review. The original
 (errored) review is kept for history.
