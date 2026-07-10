@@ -8,6 +8,7 @@ vi.mock('@shared/api/client', () => ({
     listRepoReviews: vi.fn(),
     createReview: vi.fn(),
     getReview: vi.fn(),
+    deleteReview: vi.fn(),
     retryReview: vi.fn(),
     publishReview: vi.fn(),
   },
@@ -22,6 +23,7 @@ const mocked = api as unknown as {
   listRepoReviews: ReturnType<typeof vi.fn>
   createReview: ReturnType<typeof vi.fn>
   getReview: ReturnType<typeof vi.fn>
+  deleteReview: ReturnType<typeof vi.fn>
   retryReview: ReturnType<typeof vi.fn>
   publishReview: ReturnType<typeof vi.fn>
 }
@@ -80,6 +82,21 @@ describe('reviews store', () => {
     await store.load('1')
     expect(store.currentLoading).toBe(false)
     expect(store.current?.status).toBe('done')
+  })
+
+  it('remove purges the review from every cache', async () => {
+    mocked.deleteReview.mockResolvedValue(undefined)
+    const store = useReviewsStore()
+    store.reviewsById = { '1': review('1'), '2': review('2') }
+    store.reviewsByRepo = { r1: [review('1'), review('2')] }
+    store.current = review('1')
+
+    await store.remove('1')
+
+    expect(mocked.deleteReview).toHaveBeenCalledWith('1')
+    expect(store.reviewsById['1']).toBeUndefined()
+    expect(store.reviewsFor('r1').map((r) => r.id)).toEqual(['2'])
+    expect(store.current).toBeNull()
   })
 
   it('publish calls the api then refreshes current', async () => {

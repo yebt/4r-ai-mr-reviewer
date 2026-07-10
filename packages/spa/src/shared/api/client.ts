@@ -93,6 +93,7 @@ export const api = {
   createReview: (input: { repoId: string; mrIid: number; mode: string }) =>
     request<Review>('POST', '/reviews', input),
   getReview: (id: string) => request<Review>('GET', `/reviews/${id}`),
+  deleteReview: (id: string) => request<void>('DELETE', `/reviews/${id}`),
   retryReview: (id: string) => request<Review>('POST', `/reviews/${id}/retry`),
   publishReview: (id: string, input: { all?: boolean; indices?: number[] }) =>
     request<{ status: string }>('POST', `/reviews/${id}/publish`, input),

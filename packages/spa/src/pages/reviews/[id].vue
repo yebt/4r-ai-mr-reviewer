@@ -3,6 +3,7 @@ import { computed, onUnmounted, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useIntervalFn } from '@vueuse/core'
 import { errorMessage } from '@shared/api/client'
+import { confirm } from '@shared/composables/useConfirm'
 import { setBreadcrumbs } from '@shared/composables/useBreadcrumbs'
 import { toast } from '@shared/composables/useToast'
 import PageHeader from '@shared/components/ui/PageHeader.vue'
@@ -99,6 +100,28 @@ async function retry() {
     store.currentError = errorMessage(e)
   }
 }
+
+const deleting = ref(false)
+
+async function remove() {
+  const ok = await confirm({
+    title: 'Delete review',
+    message: 'Delete this review and all its findings? This cannot be undone.',
+    danger: true,
+  })
+  if (!ok) return
+
+  deleting.value = true
+  const repoId = review.value?.repoId
+  try {
+    await store.remove(reviewId.value)
+    toast.success('Review deleted')
+    router.push(repoId ? `/repos/${repoId}` : '/repos')
+  } catch (e) {
+    store.currentError = errorMessage(e)
+    deleting.value = false
+  }
+}
 </script>
 
 <template>
@@ -106,6 +129,20 @@ async function retry() {
     <PageHeader :title="review ? `Merge request !${review.mrIid}` : 'Review'">
       <template #actions>
         <ReviewStatusChip v-if="review" :status="review.status" />
+        <button
+          v-if="review"
+          class="btn-ghost text-danger text-xs"
+          :disabled="deleting"
+          @click="remove"
+        >
+          <span
+            v-if="deleting"
+            class="i-lucide-loader-circle animate-spin text-sm"
+            aria-hidden="true"
+          />
+          <span v-else class="i-lucide-trash-2 text-sm" aria-hidden="true" />
+          Delete
+        </button>
       </template>
     </PageHeader>
 

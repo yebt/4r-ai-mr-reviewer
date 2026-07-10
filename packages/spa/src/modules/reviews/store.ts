@@ -107,6 +107,20 @@ export const useReviewsStore = defineStore('reviews', () => {
     return api.retryReview(id)
   }
 
+  // remove hard-deletes a review and purges it from every cache.
+  async function remove(id: string) {
+    await api.deleteReview(id)
+    const { [id]: _removed, ...rest } = reviewsById.value
+    reviewsById.value = rest
+    reviewsByRepo.value = Object.fromEntries(
+      Object.entries(reviewsByRepo.value).map(([repoId, list]) => [
+        repoId,
+        list.filter((r) => r.id !== id),
+      ]),
+    )
+    if (current.value?.id === id) current.value = null
+  }
+
   async function publish(id: string, selection: { all?: boolean; indices?: number[] }) {
     await api.publishReview(id, selection)
     await refresh(id)
@@ -132,6 +146,7 @@ export const useReviewsStore = defineStore('reviews', () => {
     load,
     refresh,
     retry,
+    remove,
     publish,
   }
 })
