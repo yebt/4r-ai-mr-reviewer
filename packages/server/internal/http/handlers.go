@@ -282,6 +282,14 @@ func (s *Server) retryReview(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, toReview(rv))
 }
 
+func (s *Server) deleteReview(w http.ResponseWriter, r *http.Request) {
+	if err := s.reviews.Delete(r.Context(), r.PathValue("id")); err != nil {
+		writeErr(w, err, http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) publishReview(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		All     bool  `json:"all"`

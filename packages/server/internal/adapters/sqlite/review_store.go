@@ -178,6 +178,27 @@ func (r *ReviewStore) SetStatus(ctx context.Context, id string, status review.St
 	return nil
 }
 
+// Delete hard-removes a review and its findings in one transaction.
+func (r *ReviewStore) Delete(ctx context.Context, id string) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("review store: delete: begin: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM review_findings WHERE review_id = ?`, id); err != nil {
+		return fmt.Errorf("review store: delete: clear findings: %w", err)
+	}
+	res, err := tx.ExecContext(ctx, `DELETE FROM reviews WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("review store: delete: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return review.ErrNotFound
+	}
+	return tx.Commit()
+}
+
 func scanReview(s scanner) (review.Review, error) {
 	var (
 		rv                 review.Review

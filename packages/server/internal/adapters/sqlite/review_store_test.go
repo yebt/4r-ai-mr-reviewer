@@ -145,6 +145,34 @@ func TestReviewGetMissing(t *testing.T) {
 	}
 }
 
+func TestReviewDelete(t *testing.T) {
+	ctx := context.Background()
+	s, repoID := newReviewStore(t)
+
+	rv := review.Review{ID: id.New(), RepoID: repoID, MRIID: 4, Status: review.StatusDone}
+	if err := s.Create(ctx, rv); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	rv.Findings = []review.Finding{{Dimension: review.Risk, Severity: review.SeverityHigh, File: "a.go"}}
+	if err := s.Save(ctx, rv); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	if err := s.Delete(ctx, rv.ID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if _, err := s.Get(ctx, rv.ID); !errors.Is(err, review.ErrNotFound) {
+		t.Fatalf("Get after delete = %v, want ErrNotFound", err)
+	}
+}
+
+func TestReviewDeleteMissing(t *testing.T) {
+	s, _ := newReviewStore(t)
+	if err := s.Delete(context.Background(), "nope"); !errors.Is(err, review.ErrNotFound) {
+		t.Fatalf("got %v, want ErrNotFound", err)
+	}
+}
+
 func TestReviewListByRepoNewestFirst(t *testing.T) {
 	ctx := context.Background()
 	s, repoID := newReviewStore(t)

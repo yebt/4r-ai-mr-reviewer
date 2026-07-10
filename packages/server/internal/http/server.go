@@ -64,6 +64,7 @@ func (s *Server) Routes() http.Handler {
 
 	mux.HandleFunc("POST /reviews", s.createReview)
 	mux.HandleFunc("GET /reviews/{id}", s.getReview)
+	mux.HandleFunc("DELETE /reviews/{id}", s.deleteReview)
 	mux.HandleFunc("POST /reviews/{id}/retry", s.retryReview)
 	mux.HandleFunc("POST /reviews/{id}/publish", s.publishReview)
 

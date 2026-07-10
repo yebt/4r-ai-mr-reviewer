@@ -79,6 +79,11 @@ func (s *Service) Get(ctx context.Context, reviewID string) (review.Review, erro
 	return s.reviews.Get(ctx, reviewID)
 }
 
+// Delete hard-removes a review and its findings.
+func (s *Service) Delete(ctx context.Context, reviewID string) error {
+	return s.reviews.Delete(ctx, reviewID)
+}
+
 // ListOpenMergeRequests lists the open MRs of a repo's GitLab project.
 func (s *Service) ListOpenMergeRequests(ctx context.Context, repoID string) ([]gitlab.MergeRequest, error) {
 	rp, err := s.repos.Get(ctx, repoID)
