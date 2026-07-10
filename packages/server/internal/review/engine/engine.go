@@ -26,6 +26,19 @@ type Input struct {
 	Diff        string
 }
 
+// Strategy runs a review, reporting fine-grained progress through onPhase
+// (which may be nil). Single-pass and multi-pass both implement it.
+type Strategy interface {
+	Run(ctx context.Context, client llm.Client, model string, temperature *float64, in Input, onPhase func(phase string)) (review.Review, error)
+}
+
+// reportPhase calls onPhase if it is set.
+func reportPhase(onPhase func(string), phase string) {
+	if onPhase != nil {
+		onPhase(phase)
+	}
+}
+
 // Engine runs single-pass reviews with a fixed rule set.
 type Engine struct {
 	skills    skills.Set
@@ -37,13 +50,16 @@ func New(set skills.Set) *Engine {
 	return &Engine{skills: set}
 }
 
+var _ Strategy = (*Engine)(nil)
+
 // Run executes one review against client using model, returning a completed
 // Review. temperature is optional (nil = let the model use its default).
 // Persistence and job orchestration are the caller's concern.
-func (e *Engine) Run(ctx context.Context, client llm.Client, model string, temperature *float64, in Input) (review.Review, error) {
+func (e *Engine) Run(ctx context.Context, client llm.Client, model string, temperature *float64, in Input, onPhase func(phase string)) (review.Review, error) {
 	if in.Diff == "" {
 		return review.Review{}, fmt.Errorf("engine: empty diff")
 	}
+	reportPhase(onPhase, "reviewing")
 
 	resp, err := client.Complete(ctx, llm.Request{
 		Model:       model,

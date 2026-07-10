@@ -66,7 +66,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	reviewSvc := reviews.NewService(reviewStore, repoStore, accountSvc, providerSvc, engine.New(ruleSet))
+	reviewSvc := reviews.NewService(reviewStore, repoStore, accountSvc, providerSvc, engine.NewMultiPass(ruleSet))
 
 	runner := jobs.NewRunner(jobStore, reviewSvc.Handle)
 	reviewSvc.AttachRunner(runner)

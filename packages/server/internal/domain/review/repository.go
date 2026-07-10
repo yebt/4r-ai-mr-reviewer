@@ -20,6 +20,8 @@ type Repository interface {
 	ListByRepo(ctx context.Context, repoID string) ([]Review, error)
 	// SetStatus updates only the status and error fields.
 	SetStatus(ctx context.Context, id string, status Status, errMsg string) error
+	// SetPhase updates only the progress phase (called frequently while running).
+	SetPhase(ctx context.Context, id string, phase string) error
 	// MarkFindingsPublished flags the findings at the given positions (0-based,
 	// in stored order) as published to the platform.
 	MarkFindingsPublished(ctx context.Context, reviewID string, positions []int) error

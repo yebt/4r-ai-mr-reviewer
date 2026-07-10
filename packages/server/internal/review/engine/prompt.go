@@ -36,7 +36,14 @@ Use "line" 0 when a finding is not tied to a specific line. Set "blocking" true 
 // and the user prompt (the merge request content) for a single-pass review.
 func buildMessages(set skills.Set, in Input) []llm.Message {
 	system := strings.Join([]string{frameworkPreamble, set.Combined(), jsonContract}, "\n\n---\n\n")
+	return []llm.Message{
+		{Role: llm.RoleSystem, Content: system},
+		{Role: llm.RoleUser, Content: renderUserPrompt(in)},
+	}
+}
 
+// renderUserPrompt formats the merge request content shown to the model.
+func renderUserPrompt(in Input) string {
 	var user strings.Builder
 	fmt.Fprintf(&user, "Merge request !%d", in.MRIID)
 	if in.Title != "" {
@@ -48,9 +55,5 @@ func buildMessages(set skills.Set, in Input) []llm.Message {
 	}
 	user.WriteString("Diff:\n")
 	user.WriteString(in.Diff)
-
-	return []llm.Message{
-		{Role: llm.RoleSystem, Content: system},
-		{Role: llm.RoleUser, Content: user.String()},
-	}
+	return user.String()
 }

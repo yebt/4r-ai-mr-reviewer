@@ -26,7 +26,7 @@ type Service struct {
 	repos     repo.Repository
 	accounts  *accounts.Service
 	providers *providers.Service
-	engine    *engine.Engine
+	strategy  engine.Strategy
 	runner    *jobs.Runner
 }
 
@@ -36,9 +36,9 @@ func NewService(
 	repos repo.Repository,
 	accounts *accounts.Service,
 	providers *providers.Service,
-	eng *engine.Engine,
+	strategy engine.Strategy,
 ) *Service {
-	return &Service{reviews: reviews, repos: repos, accounts: accounts, providers: providers, engine: eng}
+	return &Service{reviews: reviews, repos: repos, accounts: accounts, providers: providers, strategy: strategy}
 }
 
 // AttachRunner sets the job runner used to enqueue reviews. This breaks the
@@ -157,7 +157,7 @@ func (s *Service) execute(ctx context.Context, rv review.Review) (review.Review,
 		return review.Review{}, err
 	}
 
-	strat := s.strategy(rv.ContextMode, gl, token)
+	strat := s.contextStrategy(rv.ContextMode, gl, token)
 	in, cleanup, err := strat.Build(ctx, reviewctx.Target{RepoURL: rp.URL, ProjectID: projectID, MRIID: rv.MRIID})
 	defer cleanup()
 	if err != nil {
@@ -165,7 +165,8 @@ func (s *Service) execute(ctx context.Context, rv review.Review) (review.Review,
 	}
 	in.RepoID = rv.RepoID
 
-	return s.engine.Run(ctx, aiClient, model, prov.Temperature, in)
+	onPhase := func(phase string) { _ = s.reviews.SetPhase(ctx, rv.ID, phase) }
+	return s.strategy.Run(ctx, aiClient, model, prov.Temperature, in, onPhase)
 }
 
 func (s *Service) resolveProvider(ctx context.Context, providerID string) (provider.Provider, error) {
@@ -175,7 +176,7 @@ func (s *Service) resolveProvider(ctx context.Context, providerID string) (provi
 	return s.providers.Default(ctx)
 }
 
-func (s *Service) strategy(mode review.ContextMode, gl *gitlab.Client, token string) reviewctx.Strategy {
+func (s *Service) contextStrategy(mode review.ContextMode, gl *gitlab.Client, token string) reviewctx.Strategy {
 	if mode == review.ModeDeep {
 		return reviewctx.NewDeepStrategy(gl, gitlab.NewCloner(token))
 	}

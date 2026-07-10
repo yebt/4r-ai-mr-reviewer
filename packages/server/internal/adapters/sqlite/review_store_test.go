@@ -122,6 +122,22 @@ func TestReviewSetStatus(t *testing.T) {
 	}
 }
 
+func TestReviewSetPhase(t *testing.T) {
+	ctx := context.Background()
+	s, repoID := newReviewStore(t)
+	rv := review.Review{ID: id.New(), RepoID: repoID, MRIID: 1, Status: review.StatusRunning}
+	if err := s.Create(ctx, rv); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := s.SetPhase(ctx, rv.ID, "reliability"); err != nil {
+		t.Fatalf("SetPhase: %v", err)
+	}
+	got, _ := s.Get(ctx, rv.ID)
+	if got.Phase != "reliability" {
+		t.Fatalf("phase = %q, want reliability", got.Phase)
+	}
+}
+
 func TestReviewGetMissing(t *testing.T) {
 	s, _ := newReviewStore(t)
 	if _, err := s.Get(context.Background(), "nope"); !errors.Is(err, review.ErrNotFound) {

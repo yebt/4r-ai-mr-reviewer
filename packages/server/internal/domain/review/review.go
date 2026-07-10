@@ -82,6 +82,9 @@ type Review struct {
 	MRIID          int
 	ContextMode    ContextMode
 	Status         Status
+	// Phase reports fine-grained progress while running (e.g. the current 4R
+	// lens in a multi-pass review). Empty when not running.
+	Phase          string
 	Summary        string
 	Findings       []Finding
 	Recommendation Recommendation

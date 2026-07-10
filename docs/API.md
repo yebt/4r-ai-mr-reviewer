@@ -151,15 +151,18 @@ The repo's reviews, newest first (without findings).
 ```json
 { "repoId": "…", "mrIid": 7, "mode": "fast" }
 ```
-Creates a **pending** review and enqueues it. The review runs asynchronously;
-poll `GET /reviews/{id}` for status (`pending → running → done | error`).
+Creates a **pending** review and enqueues it. The review runs asynchronously as
+a **multi-pass 4R review** — one focused model call per lens (Risk → Readability
+→ Reliability → Resilience). Poll `GET /reviews/{id}` for status
+(`pending → running → done | error`) and `phase` (the current lens while running:
+`risk`/`readability`/`reliability`/`resilience`, empty otherwise).
 
 ### `GET /reviews/{id}` → `200`
 Full review including findings:
 ```json
 {
   "id": "…", "repoId": "…", "mrIid": 7, "contextMode": "fast",
-  "status": "done", "summary": "…",
+  "status": "done", "phase": "", "summary": "…",
   "recommendation": "request_changes", "score": 75,
   "inputTokens": 1200, "outputTokens": 300,
   "findings": [

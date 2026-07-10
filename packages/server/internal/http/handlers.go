@@ -388,6 +388,7 @@ type reviewResp struct {
 	MRIID          int           `json:"mrIid"`
 	ContextMode    string        `json:"contextMode"`
 	Status         string        `json:"status"`
+	Phase          string        `json:"phase"`
 	Summary        string        `json:"summary"`
 	Recommendation string        `json:"recommendation"`
 	Score          int           `json:"score"`
@@ -410,7 +411,7 @@ func toReview(rv review.Review) reviewResp {
 	}
 	return reviewResp{
 		ID: rv.ID, RepoID: rv.RepoID, MRIID: rv.MRIID, ContextMode: string(rv.ContextMode),
-		Status: string(rv.Status), Summary: rv.Summary, Recommendation: string(rv.Recommendation),
+		Status: string(rv.Status), Phase: rv.Phase, Summary: rv.Summary, Recommendation: string(rv.Recommendation),
 		Score: rv.Score, Error: rv.Error, InputTokens: rv.InputTokens, OutputTokens: rv.OutputTokens,
 		Findings: findings, CreatedAt: rv.CreatedAt, UpdatedAt: rv.UpdatedAt,
 	}
