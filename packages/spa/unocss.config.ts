@@ -24,6 +24,7 @@ export default defineConfig({
       'accent-ink': '#0a0a0b',
       flame: '#ff5a1f',
       danger: '#ff5a5a',
+      warn: '#ffb84d',
       ok: '#8bef8b',
     },
   },

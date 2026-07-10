@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import PageHeader from '@shared/components/ui/PageHeader.vue'
+import ScoreMeter from '@shared/components/charts/ScoreMeter.vue'
+import Sparkline from '@shared/components/charts/Sparkline.vue'
+import RecommendationBar from '@shared/components/charts/RecommendationBar.vue'
 import { useReposStore } from '@modules/repos/store'
 import { useProvidersStore } from '@modules/providers/store'
 import { useReviewsStore } from '@modules/reviews/store'
@@ -12,13 +15,32 @@ const reviews = useReviewsStore()
 onMounted(async () => {
   if (repos.items.length === 0) await repos.fetchAll()
   if (providers.items.length === 0) providers.fetchAll()
-  // Fill the review count in the background.
   void Promise.all(repos.items.map((r) => reviews.fetchReviews(r.id)))
 })
 
 const reviewCount = computed(() => reviews.allReviews.length)
 const repoCount = computed(() => repos.items.length)
 const providerCount = computed(() => providers.items.length)
+
+// Metrics from the list data (no findings needed).
+const done = computed(() => reviews.allReviews.filter((r) => r.status === 'done'))
+const hasData = computed(() => done.value.length > 0)
+const avgScore = computed(() =>
+  hasData.value ? Math.round(done.value.reduce((s, r) => s + r.score, 0) / done.value.length) : 0,
+)
+const recCounts = computed(() => {
+  let approve = 0
+  let requestChanges = 0
+  let comment = 0
+  for (const r of done.value) {
+    if (r.recommendation === 'approve') approve++
+    else if (r.recommendation === 'request_changes') requestChanges++
+    else comment++
+  }
+  return { approve, requestChanges, comment }
+})
+// Chronological, most recent 12.
+const scoreTrend = computed(() => done.value.slice(0, 12).map((r) => r.score).reverse())
 
 const shortcuts = [
   { to: '/repos', label: 'Repositories', icon: 'i-lucide-folder-git-2' },
@@ -27,6 +49,8 @@ const shortcuts = [
   { to: '/providers', label: 'AI providers', icon: 'i-lucide-cpu' },
   { to: '/skills', label: '4R skills', icon: 'i-lucide-book-open' },
 ]
+
+const cardBase = 'border border-line/60 bg-surface/40 p-5 transition-colors'
 </script>
 
 <template>
@@ -35,10 +59,7 @@ const shortcuts = [
 
     <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
       <!-- Hero stat -->
-      <RouterLink
-        to="/reviews"
-        class="group col-span-2 flex flex-col justify-between border border-line/60 bg-surface/40 p-5 transition-colors hover:border-ink"
-      >
+      <RouterLink to="/reviews" :class="[cardBase, 'group col-span-2 flex flex-col justify-between hover:border-ink']">
         <div class="label-mono">Reviews run</div>
         <div class="mt-6 font-mono text-5xl font-semibold text-ink">{{ reviewCount }}</div>
         <div class="mt-4 inline-flex items-center gap-1 text-sm text-accent">
@@ -47,23 +68,50 @@ const shortcuts = [
         </div>
       </RouterLink>
 
-      <!-- Secondary stats -->
-      <RouterLink to="/repos" class="flex flex-col justify-between border border-line/60 bg-surface/40 p-5 hover:border-ink">
+      <RouterLink to="/repos" :class="[cardBase, 'flex flex-col justify-between hover:border-ink']">
         <div class="label-mono">Repositories</div>
         <div class="mt-4 font-mono text-3xl font-semibold text-ink">{{ repoCount }}</div>
       </RouterLink>
-      <RouterLink to="/providers" class="flex flex-col justify-between border border-line/60 bg-surface/40 p-5 hover:border-ink">
+      <RouterLink to="/providers" :class="[cardBase, 'flex flex-col justify-between hover:border-ink']">
         <div class="label-mono">Providers</div>
         <div class="mt-4 font-mono text-3xl font-semibold text-ink">{{ providerCount }}</div>
       </RouterLink>
+
+      <!-- Average score -->
+      <div :class="[cardBase, 'col-span-2 flex flex-col']">
+        <div class="label-mono">Average score</div>
+        <div v-if="hasData" class="mt-2">
+          <div class="font-mono text-3xl font-semibold text-ink">{{ avgScore }}<span class="text-base text-muted">/100</span></div>
+          <ScoreMeter :value="avgScore" class="mt-3" />
+        </div>
+        <div v-else class="mt-4 text-sm text-muted">No completed reviews yet.</div>
+      </div>
+
+      <!-- Recommendation split -->
+      <div :class="[cardBase, 'col-span-2 flex flex-col']">
+        <div class="label-mono mb-3">Recommendations</div>
+        <RecommendationBar
+          v-if="hasData"
+          :approve="recCounts.approve"
+          :request-changes="recCounts.requestChanges"
+          :comment="recCounts.comment"
+        />
+        <div v-else class="text-sm text-muted">No completed reviews yet.</div>
+      </div>
+
+      <!-- Score trend -->
+      <div :class="[cardBase, 'col-span-2 flex flex-col md:col-span-4']">
+        <div class="label-mono mb-3">Score trend</div>
+        <Sparkline v-if="scoreTrend.length" :values="scoreTrend" />
+        <div v-else class="text-sm text-muted">No completed reviews yet.</div>
+      </div>
 
       <!-- Shortcuts -->
       <RouterLink
         v-for="(s, i) in shortcuts"
         :key="s.to"
         :to="s.to"
-        class="group flex items-center justify-between border border-line/60 bg-surface/40 p-4 hover:border-ink"
-        :class="i === shortcuts.length - 1 ? 'col-span-2 md:col-span-4' : ''"
+        :class="[cardBase, 'group flex items-center justify-between hover:border-ink', i === shortcuts.length - 1 ? 'col-span-2 md:col-span-4' : '']"
       >
         <div class="flex items-center gap-3">
           <span :class="s.icon" class="text-lg text-muted group-hover:text-ink" aria-hidden="true" />
