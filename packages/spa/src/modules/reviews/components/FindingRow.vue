@@ -7,11 +7,11 @@ defineEmits<{ toggle: [index: number] }>()
 </script>
 
 <template>
-  <div class="flex gap-3 border-b border-line/50 py-4">
+  <div class="border-line/50 flex gap-3 border-b py-4">
     <input
       v-if="selectable"
       type="checkbox"
-      class="mt-1 accent-accent"
+      class="accent-accent mt-1"
       :checked="selected"
       :aria-label="`Select finding ${finding.index + 1}`"
       @change="$emit('toggle', finding.index)"
@@ -26,14 +26,18 @@ defineEmits<{ toggle: [index: number] }>()
         <span v-if="finding.published" class="chip text-ok">published</span>
       </div>
 
-      <p class="mt-2 text-sm text-ink">{{ finding.issue }}</p>
+      <p class="text-ink mt-2 text-sm">{{ finding.issue }}</p>
 
-      <div v-if="finding.file" class="mt-1 font-mono text-xs text-muted">
+      <div v-if="finding.file" class="text-muted mt-1 font-mono text-xs">
         {{ finding.file }}<template v-if="finding.line">:{{ finding.line }}</template>
       </div>
 
-      <p v-if="finding.why" class="mt-2 text-sm text-muted"><span class="label-mono">why</span> {{ finding.why }}</p>
-      <p v-if="finding.fix" class="mt-1 text-sm text-muted"><span class="label-mono">fix</span> {{ finding.fix }}</p>
+      <p v-if="finding.why" class="text-muted mt-2 text-sm">
+        <span class="label-mono">why</span> {{ finding.why }}
+      </p>
+      <p v-if="finding.fix" class="text-muted mt-1 text-sm">
+        <span class="label-mono">fix</span> {{ finding.fix }}
+      </p>
     </div>
   </div>
 </template>

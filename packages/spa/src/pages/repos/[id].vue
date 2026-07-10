@@ -26,7 +26,10 @@ const mrsLoading = computed(() => reviews.mrsLoading && mrs.value.length === 0)
 const reviewsLoading = computed(() => reviews.listLoading && repoReviews.value.length === 0)
 
 watchEffect(() => {
-  setBreadcrumbs([{ label: 'Repositories', to: '/repos' }, { label: repo.value?.name ?? 'Repository' }])
+  setBreadcrumbs([
+    { label: 'Repositories', to: '/repos' },
+    { label: repo.value?.name ?? 'Repository' },
+  ])
 })
 
 onMounted(async () => {
@@ -54,7 +57,7 @@ async function startReview(iid: number, mode: string) {
 
     <section class="mb-10">
       <h2 class="section-title mb-3 flex items-center gap-2">
-        <span class="inline-block h-3.5 w-0.5 bg-accent" aria-hidden="true" />
+        <span class="bg-accent inline-block h-3.5 w-0.5" aria-hidden="true" />
         Open merge requests
       </h2>
       <MergeRequestList
@@ -68,7 +71,7 @@ async function startReview(iid: number, mode: string) {
 
     <section>
       <h2 class="section-title mb-3 flex items-center gap-2">
-        <span class="inline-block h-3.5 w-0.5 bg-accent" aria-hidden="true" />
+        <span class="bg-accent inline-block h-3.5 w-0.5" aria-hidden="true" />
         Reviews
       </h2>
       <ReviewList :items="repoReviews" :loading="reviewsLoading" :error="reviews.listError" />

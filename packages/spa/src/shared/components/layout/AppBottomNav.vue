@@ -8,7 +8,9 @@ const links = [
 </script>
 
 <template>
-  <nav class="fixed inset-x-0 bottom-0 z-30 flex border-t border-line/60 bg-canvas text-muted md:hidden">
+  <nav
+    class="border-line/60 bg-canvas text-muted fixed inset-x-0 bottom-0 z-30 flex border-t md:hidden"
+  >
     <RouterLink
       v-for="l in links"
       :key="l.to"
@@ -18,7 +20,7 @@ const links = [
       :exact-active-class="l.exact ? 'text-accent' : ''"
     >
       <span :class="l.icon" class="text-lg" aria-hidden="true" />
-      <span class="text-[0.6rem] uppercase tracking-wider">{{ l.label }}</span>
+      <span class="text-[0.6rem] tracking-wider uppercase">{{ l.label }}</span>
     </RouterLink>
   </nav>
 </template>

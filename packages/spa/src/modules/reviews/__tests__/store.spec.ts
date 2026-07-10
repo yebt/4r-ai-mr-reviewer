@@ -32,6 +32,7 @@ const review = (id: string, status: ReviewStatus = 'pending'): Review => ({
   mrIid: 7,
   contextMode: 'fast',
   status,
+  phase: '',
   summary: '',
   recommendation: 'comment',
   score: 0,

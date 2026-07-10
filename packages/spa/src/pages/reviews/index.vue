@@ -5,7 +5,12 @@ import EmptyState from '@shared/components/ui/EmptyState.vue'
 import { useReposStore } from '@modules/repos/store'
 import { useReviewsStore } from '@modules/reviews/store'
 import ReviewStatusChip from '@modules/reviews/components/ReviewStatusChip.vue'
-import { formatDateTime, recommendationClass, recommendationLabel, shortId } from '@modules/reviews/format'
+import {
+  formatDateTime,
+  recommendationClass,
+  recommendationLabel,
+  shortId,
+} from '@modules/reviews/format'
 
 const repos = useReposStore()
 const reviews = useReviewsStore()
@@ -27,7 +32,7 @@ const items = computed(() => reviews.allReviews)
   <div>
     <PageHeader title="Reviews" />
 
-    <p v-if="loading" class="py-3 text-sm text-muted">Loading…</p>
+    <p v-if="loading" class="text-muted py-3 text-sm">Loading…</p>
     <EmptyState
       v-else-if="items.length === 0"
       icon="i-lucide-list-checks"
@@ -35,11 +40,11 @@ const items = computed(() => reviews.allReviews)
       hint="Open a repository and start a review on a merge request."
     />
 
-    <ul v-else class="border-t border-line/50">
+    <ul v-else class="border-line/50 border-t">
       <li v-for="rv in items" :key="rv.id" class="row justify-between">
         <div class="min-w-0">
           <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <RouterLink :to="`/reviews/${rv.id}`" class="text-sm text-ink hover:text-accent">
+            <RouterLink :to="`/reviews/${rv.id}`" class="text-ink hover:text-accent text-sm">
               {{ repoName(rv.repoId) }} · !{{ rv.mrIid }}
             </RouterLink>
             <ReviewStatusChip :status="rv.status" />
@@ -51,7 +56,9 @@ const items = computed(() => reviews.allReviews)
           </div>
         </div>
         <div v-if="rv.status === 'done'" class="shrink-0 text-right">
-          <div class="text-sm" :class="recommendationClass[rv.recommendation]">{{ recommendationLabel(rv.recommendation) }}</div>
+          <div class="text-sm" :class="recommendationClass[rv.recommendation]">
+            {{ recommendationLabel(rv.recommendation) }}
+          </div>
           <div class="label-mono mt-0.5">score {{ rv.score }}</div>
         </div>
       </li>

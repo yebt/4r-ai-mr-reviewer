@@ -26,7 +26,9 @@ const submitting = ref(false)
 const error = ref<string | null>(null)
 
 const isEdit = computed(() => !!props.editing)
-const valid = computed(() => isEdit.value || (form.name.trim() && form.url.trim() && form.accountId))
+const valid = computed(
+  () => isEdit.value || (form.name.trim() && form.url.trim() && form.accountId),
+)
 
 // Derive fields from the pasted URL, keeping any manual edits.
 const parsed = computed(() => parseRepoUrl(form.url))
@@ -79,7 +81,10 @@ async function submit() {
   error.value = null
   try {
     if (props.editing) {
-      await repos.assign(props.editing.id, { providerId: form.providerId, model: form.model.trim() })
+      await repos.assign(props.editing.id, {
+        providerId: form.providerId,
+        model: form.model.trim(),
+      })
       toast.success('Repository updated')
     } else {
       await repos.add({
@@ -107,11 +112,18 @@ async function submit() {
     <template v-if="!isEdit">
       <div>
         <label class="field-label" for="rp-url">Project URL</label>
-        <input id="rp-url" v-model="form.url" class="field-underline" placeholder="https://gitlab.com/group/project" autocomplete="off" @blur="resolveFromUrl" />
-        <p v-if="form.url && !parsed.valid" class="mt-1.5 text-xs text-warn">
+        <input
+          id="rp-url"
+          v-model="form.url"
+          class="field-underline"
+          placeholder="https://gitlab.com/group/project"
+          autocomplete="off"
+          @blur="resolveFromUrl"
+        />
+        <p v-if="form.url && !parsed.valid" class="text-warn mt-1.5 text-xs">
           Enter a full project URL (https://host/group/project).
         </p>
-        <p v-else-if="parsed.valid" class="mt-1.5 label-mono">
+        <p v-else-if="parsed.valid" class="label-mono mt-1.5">
           {{ parsed.path }}
           <template v-if="matchedAccount"> · matched {{ matchedAccount.name }}</template>
           <template v-else-if="accounts.items.length"> · no account for this host</template>
@@ -119,34 +131,52 @@ async function submit() {
       </div>
 
       <div>
-        <label class="field-label" for="rp-name">Name <span class="text-muted/60 normal-case">— from URL, editable</span></label>
-        <input id="rp-name" v-model="form.name" class="field-underline" placeholder="project" autocomplete="off" />
+        <label class="field-label" for="rp-name"
+          >Name <span class="text-muted/60 normal-case">— from URL, editable</span></label
+        >
+        <input
+          id="rp-name"
+          v-model="form.name"
+          class="field-underline"
+          placeholder="project"
+          autocomplete="off"
+        />
       </div>
 
       <div>
         <label class="field-label" for="rp-account">Account</label>
         <select id="rp-account" v-model="form.accountId" class="field-underline">
           <option value="" disabled>Select an account…</option>
-          <option v-for="a in accounts.items" :key="a.id" :value="a.id">{{ a.name }} — {{ a.baseUrl }}</option>
+          <option v-for="a in accounts.items" :key="a.id" :value="a.id">
+            {{ a.name }} — {{ a.baseUrl }}
+          </option>
         </select>
-        <p v-if="accounts.items.length === 0" class="mt-1.5 text-xs text-muted/70">Add an account first.</p>
+        <p v-if="accounts.items.length === 0" class="text-muted/70 mt-1.5 text-xs">
+          Add an account first.
+        </p>
       </div>
     </template>
 
     <template v-else>
-      <div class="font-mono text-xs text-muted">{{ form.name }} · {{ form.url }}</div>
+      <div class="text-muted font-mono text-xs">{{ form.name }} · {{ form.url }}</div>
     </template>
 
     <div>
-      <label class="field-label" for="rp-provider">Provider <span class="text-muted/60 normal-case">— optional</span></label>
+      <label class="field-label" for="rp-provider"
+        >Provider <span class="text-muted/60 normal-case">— optional</span></label
+      >
       <select id="rp-provider" v-model="form.providerId" class="field-underline">
         <option value="">Use default provider</option>
-        <option v-for="p in providers.items" :key="p.id" :value="p.id">{{ p.name }}{{ p.isDefault ? ' (default)' : '' }}</option>
+        <option v-for="p in providers.items" :key="p.id" :value="p.id">
+          {{ p.name }}{{ p.isDefault ? ' (default)' : '' }}
+        </option>
       </select>
     </div>
 
     <div>
-      <label class="field-label" for="rp-model">Model <span class="text-muted/60 normal-case">— optional</span></label>
+      <label class="field-label" for="rp-model"
+        >Model <span class="text-muted/60 normal-case">— optional</span></label
+      >
       <input
         id="rp-model"
         v-model="form.model"
@@ -158,12 +188,12 @@ async function submit() {
       <datalist id="rp-model-presets">
         <option v-for="m in modelPresets" :key="m" :value="m" />
       </datalist>
-      <p v-if="modelPresets.length" class="mt-1.5 text-xs text-muted/70">
+      <p v-if="modelPresets.length" class="text-muted/70 mt-1.5 text-xs">
         Presets: {{ modelPresets.join(', ') }}
       </p>
     </div>
 
-    <p v-if="error" class="text-sm text-danger">{{ error }}</p>
+    <p v-if="error" class="text-danger text-sm">{{ error }}</p>
 
     <div class="flex items-center gap-3">
       <button type="submit" class="btn-accent" :disabled="!valid || submitting">

@@ -15,14 +15,16 @@ const coords = computed(() => {
   })
 })
 
-const line = computed(() => coords.value.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' '))
+const line = computed(() =>
+  coords.value.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' '),
+)
 const area = computed(() => (coords.value.length ? `0,${H} ${line.value} ${W},${H}` : ''))
 </script>
 
 <template>
   <svg
     :viewBox="`0 0 ${W} ${H}`"
-    class="h-8 w-full text-accent"
+    class="text-accent h-8 w-full"
     preserveAspectRatio="none"
     role="img"
     aria-label="Score trend"

@@ -28,10 +28,13 @@ function onKeydown(e: KeyboardEvent) {
         class="fixed inset-0 z-50 flex items-center justify-center p-4"
         @keydown="onKeydown"
       >
-        <div class="absolute inset-0 bg-canvas/80 backdrop-blur-sm" @click="resolveConfirm(false)" />
+        <div
+          class="bg-canvas/80 absolute inset-0 backdrop-blur-sm"
+          @click="resolveConfirm(false)"
+        />
 
         <div
-          class="relative w-full max-w-sm border border-line bg-surface p-6"
+          class="border-line bg-surface relative w-full max-w-sm border p-6"
           role="alertdialog"
           aria-modal="true"
         >
@@ -43,7 +46,7 @@ function onKeydown(e: KeyboardEvent) {
             />
             {{ state.title }}
           </h2>
-          <p class="mt-3 text-sm text-muted">{{ state.message }}</p>
+          <p class="text-muted mt-3 text-sm">{{ state.message }}</p>
 
           <div class="mt-6 flex justify-end gap-3">
             <button class="btn-line" @click="resolveConfirm(false)">{{ state.cancelText }}</button>

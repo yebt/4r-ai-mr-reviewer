@@ -9,9 +9,27 @@ const total = computed(() => props.approve + props.requestChanges + props.commen
 const segments = computed(() => {
   const t = total.value || 1
   return [
-    { key: 'approve', label: 'Approve', count: props.approve, cls: 'bg-ok', pct: (props.approve / t) * 100 },
-    { key: 'comment', label: 'Comment', count: props.comment, cls: 'bg-warn', pct: (props.comment / t) * 100 },
-    { key: 'request', label: 'Request changes', count: props.requestChanges, cls: 'bg-danger', pct: (props.requestChanges / t) * 100 },
+    {
+      key: 'approve',
+      label: 'Approve',
+      count: props.approve,
+      cls: 'bg-ok',
+      pct: (props.approve / t) * 100,
+    },
+    {
+      key: 'comment',
+      label: 'Comment',
+      count: props.comment,
+      cls: 'bg-warn',
+      pct: (props.comment / t) * 100,
+    },
+    {
+      key: 'request',
+      label: 'Request changes',
+      count: props.requestChanges,
+      cls: 'bg-danger',
+      pct: (props.requestChanges / t) * 100,
+    },
   ]
 })
 </script>
@@ -27,7 +45,7 @@ const segments = computed(() => {
       <li v-for="s in segments" :key="s.key" class="flex items-center gap-2 text-xs">
         <span class="inline-block h-2 w-2" :class="s.cls" aria-hidden="true" />
         <span class="text-muted">{{ s.label }}</span>
-        <span class="ml-auto font-mono text-ink">{{ s.count }}</span>
+        <span class="text-ink ml-auto font-mono">{{ s.count }}</span>
       </li>
     </ul>
   </div>

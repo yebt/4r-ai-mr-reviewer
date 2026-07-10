@@ -30,7 +30,11 @@ async function setDefault(p: Provider) {
 }
 
 async function removeProvider(p: Provider) {
-  const ok = await confirm({ title: 'Delete provider', message: `Delete "${p.name}"?`, danger: true })
+  const ok = await confirm({
+    title: 'Delete provider',
+    message: `Delete "${p.name}"?`,
+    danger: true,
+  })
   if (!ok) return
   if (await run(p.id, () => store.remove(p.id))) toast.success('Provider deleted')
 }
@@ -44,8 +48,8 @@ onMounted(() => {
   <div>
     <div class="label-mono mb-3">{{ store.items.length }} provider(s)</div>
 
-    <p v-if="store.loading" class="py-3 text-sm text-muted">Loading…</p>
-    <p v-else-if="store.error" class="py-3 text-sm text-danger">{{ store.error }}</p>
+    <p v-if="store.loading" class="text-muted py-3 text-sm">Loading…</p>
+    <p v-else-if="store.error" class="text-danger py-3 text-sm">{{ store.error }}</p>
     <EmptyState
       v-else-if="store.items.length === 0"
       icon="i-lucide-cpu"
@@ -53,14 +57,14 @@ onMounted(() => {
       hint="Add an AI provider to run reviews."
     />
 
-    <ul v-else class="border-t border-line/50">
+    <ul v-else class="border-line/50 border-t">
       <li v-for="p in store.items" :key="p.id" class="row justify-between">
         <div class="min-w-0">
           <div class="flex items-center gap-2">
-            <span class="truncate text-sm text-ink">{{ p.name }}</span>
+            <span class="text-ink truncate text-sm">{{ p.name }}</span>
             <span v-if="p.isDefault" class="chip text-accent">default</span>
           </div>
-          <div class="truncate font-mono text-xs text-muted">
+          <div class="text-muted truncate font-mono text-xs">
             {{ p.kind }}<template v-if="p.model"> · {{ p.model }}</template>
           </div>
         </div>

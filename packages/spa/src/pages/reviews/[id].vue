@@ -40,6 +40,15 @@ const publishError = ref<string | null>(null)
 
 const unpublished = computed(() => review.value?.findings.filter((f) => !f.published) ?? [])
 
+// Multi-pass progress: maps the backend phase to a labelled step (of 4).
+const phaseMap: Record<string, { label: string; step: number }> = {
+  risk: { label: 'Risk', step: 1 },
+  readability: { label: 'Readability', step: 2 },
+  reliability: { label: 'Reliability', step: 3 },
+  resilience: { label: 'Resilience', step: 4 },
+}
+const phase = computed(() => (review.value?.phase ? (phaseMap[review.value.phase] ?? null) : null))
+
 const { pause, resume } = useIntervalFn(
   async () => {
     await store.refresh(reviewId.value)
@@ -100,17 +109,29 @@ async function retry() {
       </template>
     </PageHeader>
 
-    <p v-if="store.currentLoading && !review" class="text-sm text-muted">Loading…</p>
-    <p v-else-if="store.currentError" class="text-sm text-danger">{{ store.currentError }}</p>
+    <p v-if="store.currentLoading && !review" class="text-muted text-sm">Loading…</p>
+    <p v-else-if="store.currentError" class="text-danger text-sm">{{ store.currentError }}</p>
 
     <template v-else-if="review">
-      <div v-if="review.status === 'pending' || review.status === 'running'" class="flex items-center gap-2 text-sm text-muted">
-        <span class="i-lucide-loader-circle animate-spin" aria-hidden="true" />
-        Review {{ review.status }}… updates automatically.
+      <div v-if="review.status === 'pending' || review.status === 'running'">
+        <div class="text-muted flex items-center gap-2 text-sm">
+          <span class="i-lucide-loader-circle animate-spin" aria-hidden="true" />
+          <template v-if="phase">
+            Reviewing {{ phase.label }}
+            <span class="text-muted/70 font-mono">({{ phase.step }}/4)</span>…
+          </template>
+          <template v-else>Review {{ review.status }}… updates automatically.</template>
+        </div>
+        <div v-if="phase" class="bg-line/40 mt-3 h-1 w-full max-w-xs">
+          <div
+            class="bg-accent h-full transition-all"
+            :style="{ width: `${(phase.step / 4) * 100}%` }"
+          />
+        </div>
       </div>
 
       <div v-else-if="review.status === 'error'" class="flex flex-col items-start gap-3">
-        <p class="text-sm text-danger">{{ review.error || 'Review failed.' }}</p>
+        <p class="text-danger text-sm">{{ review.error || 'Review failed.' }}</p>
         <button class="btn-line" @click="retry">
           <span class="i-lucide-refresh-cw text-sm" aria-hidden="true" />
           Retry (clones the review)
@@ -123,24 +144,38 @@ async function retry() {
         <section class="mt-6">
           <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
             <h2 class="section-title flex items-center gap-2">
-              <span class="inline-block h-3.5 w-0.5 bg-accent" aria-hidden="true" />
+              <span class="bg-accent inline-block h-3.5 w-0.5" aria-hidden="true" />
               Findings
             </h2>
             <div v-if="review.findings.length" class="flex items-center gap-2">
-              <button class="btn-ghost text-xs" :disabled="publishing || selected.length === 0" @click="publish({ indices: selected })">
+              <button
+                class="btn-ghost text-xs"
+                :disabled="publishing || selected.length === 0"
+                @click="publish({ indices: selected })"
+              >
                 Publish selected ({{ selected.length }})
               </button>
-              <button class="btn-accent text-xs" :disabled="publishing || unpublished.length === 0" @click="publish({ all: true })">
-                <span v-if="publishing" class="i-lucide-loader-circle animate-spin" aria-hidden="true" />
+              <button
+                class="btn-accent text-xs"
+                :disabled="publishing || unpublished.length === 0"
+                @click="publish({ all: true })"
+              >
+                <span
+                  v-if="publishing"
+                  class="i-lucide-loader-circle animate-spin"
+                  aria-hidden="true"
+                />
                 Comment all
               </button>
             </div>
           </div>
 
-          <p v-if="publishError" class="mb-3 text-sm text-danger">{{ publishError }}</p>
+          <p v-if="publishError" class="text-danger mb-3 text-sm">{{ publishError }}</p>
 
-          <p v-if="review.findings.length === 0" class="text-sm text-muted">No findings — clean review.</p>
-          <div v-else class="border-t border-line/50">
+          <p v-if="review.findings.length === 0" class="text-muted text-sm">
+            No findings — clean review.
+          </p>
+          <div v-else class="border-line/50 border-t">
             <FindingRow
               v-for="f in review.findings"
               :key="f.index"

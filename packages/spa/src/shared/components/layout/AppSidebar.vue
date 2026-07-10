@@ -12,9 +12,9 @@ const links = [
 </script>
 
 <template>
-  <aside class="flex w-52 shrink-0 flex-col border-r border-line/60 bg-canvas">
+  <aside class="border-line/60 bg-canvas flex w-52 shrink-0 flex-col border-r">
     <div class="px-5 py-5">
-      <div class="font-mono text-sm font-semibold tracking-tight text-ink">ai&#8209;reviewer</div>
+      <div class="text-ink font-mono text-sm font-semibold tracking-tight">ai&#8209;reviewer</div>
       <div class="label-mono mt-1">4R quality gate</div>
     </div>
     <nav class="flex flex-col">
@@ -22,7 +22,7 @@ const links = [
         v-for="link in links"
         :key="link.to"
         :to="link.to"
-        class="flex items-center gap-3 border-l-2 border-transparent px-5 py-2.5 text-sm text-muted transition-colors hover:text-ink"
+        class="text-muted hover:text-ink flex items-center gap-3 border-l-2 border-transparent px-5 py-2.5 text-sm transition-colors"
         active-class="border-accent! text-ink!"
         :exact-active-class="link.exact ? 'border-accent! text-ink!' : ''"
         @click="emit('navigate')"

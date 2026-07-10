@@ -1,13 +1,6 @@
 // Typed HTTP client for the ai-reviewer backend. All calls go through /api,
 // which Vite proxies to the server in dev (see vite.config.ts).
-import type {
-  Account,
-  MergeRequest,
-  Provider,
-  ProviderKind,
-  Repo,
-  Review,
-} from '@shared/api/types'
+import type { Account, MergeRequest, Provider, ProviderKind, Repo, Review } from '@shared/api/types'
 
 const BASE = import.meta.env.VITE_API_URL ?? '/api'
 
@@ -94,8 +87,7 @@ export const api = {
   deleteRepo: (id: string) => request<void>('DELETE', `/repos/${id}`),
   listMergeRequests: (repoId: string) =>
     request<MergeRequest[]>('GET', `/repos/${repoId}/merge-requests`),
-  listRepoReviews: (repoId: string) =>
-    request<Review[]>('GET', `/repos/${repoId}/reviews`),
+  listRepoReviews: (repoId: string) => request<Review[]>('GET', `/repos/${repoId}/reviews`),
 
   // reviews
   createReview: (input: { repoId: string; mrIid: number; mode: string }) =>

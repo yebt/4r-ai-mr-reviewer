@@ -109,57 +109,102 @@ async function submit() {
   <form class="flex flex-col gap-5" @submit.prevent="submit">
     <div>
       <label class="field-label" for="pv-name">Name</label>
-      <input id="pv-name" v-model="form.name" class="field-underline" placeholder="groq" autocomplete="off" />
+      <input
+        id="pv-name"
+        v-model="form.name"
+        class="field-underline"
+        placeholder="groq"
+        autocomplete="off"
+      />
     </div>
 
     <div>
       <label class="field-label" for="pv-kind">Kind</label>
       <select id="pv-kind" v-model="form.kind" class="field-underline">
-        <option value="openai-compat">openai-compat (Groq, OpenAI, Moonshot, Kimi, OpenRouter)</option>
+        <option value="openai-compat">
+          openai-compat (Groq, OpenAI, Moonshot, Kimi, OpenRouter)
+        </option>
         <option value="anthropic">anthropic (Claude)</option>
       </select>
     </div>
 
     <div>
-      <label class="field-label" for="pv-url">Base URL <span class="text-muted/60 normal-case">— optional</span></label>
-      <input id="pv-url" v-model="form.baseUrl" class="field-underline" placeholder="https://api.groq.com/openai/v1" autocomplete="off" />
+      <label class="field-label" for="pv-url"
+        >Base URL <span class="text-muted/60 normal-case">— optional</span></label
+      >
+      <input
+        id="pv-url"
+        v-model="form.baseUrl"
+        class="field-underline"
+        placeholder="https://api.groq.com/openai/v1"
+        autocomplete="off"
+      />
     </div>
 
     <div>
       <label class="field-label" for="pv-model">Default model</label>
-      <input id="pv-model" v-model="form.model" class="field-underline" placeholder="llama-3.3-70b-versatile" autocomplete="off" />
+      <input
+        id="pv-model"
+        v-model="form.model"
+        class="field-underline"
+        placeholder="llama-3.3-70b-versatile"
+        autocomplete="off"
+      />
     </div>
 
     <div>
       <label class="field-label" for="pv-key">
         API key <span v-if="isEdit" class="text-muted/60 normal-case">— leave blank to keep</span>
       </label>
-      <input id="pv-key" v-model="form.apiKey" type="password" class="field-underline" :placeholder="isEdit ? '••••••••' : 'sk-… / gsk_…'" autocomplete="off" />
+      <input
+        id="pv-key"
+        v-model="form.apiKey"
+        type="password"
+        class="field-underline"
+        :placeholder="isEdit ? '••••••••' : 'sk-… / gsk_…'"
+        autocomplete="off"
+      />
     </div>
 
-    <label v-if="!isEdit" class="flex cursor-pointer items-center gap-2 text-sm text-muted select-none">
+    <label
+      v-if="!isEdit"
+      class="text-muted flex cursor-pointer items-center gap-2 text-sm select-none"
+    >
       <input v-model="form.makeDefault" type="checkbox" class="accent-accent" />
       Make default
     </label>
 
     <!-- Advanced -->
-    <div class="border-t border-line/50 pt-4">
+    <div class="border-line/50 border-t pt-4">
       <button
         type="button"
-        class="flex items-center gap-1 label-mono hover:text-ink"
+        class="label-mono hover:text-ink flex items-center gap-1"
         @click="showAdvanced = !showAdvanced"
       >
-        <span :class="showAdvanced ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'" aria-hidden="true" />
+        <span
+          :class="showAdvanced ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
+          aria-hidden="true"
+        />
         Advanced
       </button>
 
       <div v-if="showAdvanced" class="mt-4 flex flex-col gap-5">
         <div>
           <label class="field-label" for="pv-temp">
-            Temperature <span class="text-muted/60 normal-case">— blank uses the model default</span>
+            Temperature
+            <span class="text-muted/60 normal-case">— blank uses the model default</span>
           </label>
-          <input id="pv-temp" v-model="form.temperature" class="field-underline" inputmode="decimal" placeholder="model default" autocomplete="off" />
-          <p class="mt-1.5 text-xs text-muted/70">Some models reject any value other than their default — leave blank for those.</p>
+          <input
+            id="pv-temp"
+            v-model="form.temperature"
+            class="field-underline"
+            inputmode="decimal"
+            placeholder="model default"
+            autocomplete="off"
+          />
+          <p class="text-muted/70 mt-1.5 text-xs">
+            Some models reject any value other than their default — leave blank for those.
+          </p>
         </div>
 
         <div>
@@ -175,19 +220,30 @@ async function submit() {
             <button type="button" class="btn-line text-xs" @click="addModel">Add</button>
           </div>
           <div v-if="form.models.length" class="mt-3 flex flex-wrap gap-2">
-            <span v-for="m in form.models" :key="m" class="inline-flex items-center gap-1 border border-line px-2 py-1 font-mono text-xs text-ink">
+            <span
+              v-for="m in form.models"
+              :key="m"
+              class="border-line text-ink inline-flex items-center gap-1 border px-2 py-1 font-mono text-xs"
+            >
               {{ m }}
-              <button type="button" class="text-muted hover:text-danger" :aria-label="`Remove ${m}`" @click="removeModel(m)">
+              <button
+                type="button"
+                class="text-muted hover:text-danger"
+                :aria-label="`Remove ${m}`"
+                @click="removeModel(m)"
+              >
                 <span class="i-lucide-x text-xs" aria-hidden="true" />
               </button>
             </span>
           </div>
-          <p class="mt-2 text-xs text-muted/70">Pick from these (no typos) when configuring a repository.</p>
+          <p class="text-muted/70 mt-2 text-xs">
+            Pick from these (no typos) when configuring a repository.
+          </p>
         </div>
       </div>
     </div>
 
-    <p v-if="error" class="text-sm text-danger">{{ error }}</p>
+    <p v-if="error" class="text-danger text-sm">{{ error }}</p>
 
     <div class="flex items-center gap-3">
       <button type="submit" class="btn-accent" :disabled="!valid || submitting">

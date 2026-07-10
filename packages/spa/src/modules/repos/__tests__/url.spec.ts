@@ -4,7 +4,12 @@ import { matchAccountId, parseRepoUrl } from '@modules/repos/url'
 describe('parseRepoUrl', () => {
   it('extracts origin, path and name', () => {
     const p = parseRepoUrl('https://gitlab.com/group/project')
-    expect(p).toEqual({ valid: true, origin: 'https://gitlab.com', path: 'group/project', name: 'project' })
+    expect(p).toEqual({
+      valid: true,
+      origin: 'https://gitlab.com',
+      path: 'group/project',
+      name: 'project',
+    })
   })
 
   it('handles nested subgroups and .git suffix and trailing slash', () => {

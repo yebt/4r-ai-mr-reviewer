@@ -40,16 +40,19 @@ const sections = computed(() =>
   <div>
     <PageHeader title="4R review skills" />
 
-    <p v-if="loading" class="py-3 text-sm text-muted">Loading…</p>
-    <p v-else-if="error" class="py-3 text-sm text-danger">{{ error }}</p>
+    <p v-if="loading" class="text-muted py-3 text-sm">Loading…</p>
+    <p v-else-if="error" class="text-danger py-3 text-sm">{{ error }}</p>
 
     <div v-else class="flex flex-col gap-10">
       <section v-for="s in sections" :key="s.key">
         <h2 class="section-title mb-3 flex items-center gap-2">
-          <span class="inline-block h-3.5 w-0.5 bg-accent" aria-hidden="true" />
+          <span class="bg-accent inline-block h-3.5 w-0.5" aria-hidden="true" />
           {{ s.key }}
         </h2>
-        <pre class="overflow-x-auto whitespace-pre-wrap border-l border-line/50 pl-4 font-mono text-xs leading-relaxed text-muted">{{ s.text }}</pre>
+        <pre
+          class="border-line/50 text-muted overflow-x-auto border-l pl-4 font-mono text-xs leading-relaxed whitespace-pre-wrap"
+          >{{ s.text }}</pre
+        >
       </section>
     </div>
   </div>

@@ -19,7 +19,12 @@ const mocked = api as unknown as {
   deleteAccount: ReturnType<typeof vi.fn>
 }
 
-const account = (id: string) => ({ id, name: `acc-${id}`, baseUrl: 'https://gitlab.com', createdAt: '' })
+const account = (id: string) => ({
+  id,
+  name: `acc-${id}`,
+  baseUrl: 'https://gitlab.com',
+  createdAt: '',
+})
 
 describe('accounts store', () => {
   beforeEach(() => {

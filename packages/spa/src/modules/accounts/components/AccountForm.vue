@@ -19,7 +19,11 @@ async function submit() {
   submitting.value = true
   error.value = null
   try {
-    await store.add({ name: form.name.trim(), baseUrl: form.baseUrl.trim(), token: form.token.trim() })
+    await store.add({
+      name: form.name.trim(),
+      baseUrl: form.baseUrl.trim(),
+      token: form.token.trim(),
+    })
     toast.success('Account added')
     form.name = ''
     form.token = ''
@@ -36,21 +40,40 @@ async function submit() {
   <form class="flex flex-col gap-5" @submit.prevent="submit">
     <div>
       <label class="field-label" for="acc-name">Name</label>
-      <input id="acc-name" v-model="form.name" class="field-underline" placeholder="work" autocomplete="off" />
+      <input
+        id="acc-name"
+        v-model="form.name"
+        class="field-underline"
+        placeholder="work"
+        autocomplete="off"
+      />
     </div>
 
     <div>
       <label class="field-label" for="acc-url">GitLab base URL</label>
-      <input id="acc-url" v-model="form.baseUrl" class="field-underline" placeholder="https://gitlab.com" autocomplete="off" />
+      <input
+        id="acc-url"
+        v-model="form.baseUrl"
+        class="field-underline"
+        placeholder="https://gitlab.com"
+        autocomplete="off"
+      />
     </div>
 
     <div>
       <label class="field-label" for="acc-token">Access token</label>
-      <input id="acc-token" v-model="form.token" type="password" class="field-underline" placeholder="glpat-…" autocomplete="off" />
-      <p class="mt-1.5 text-xs text-muted/70">Stored encrypted by the backend. Write-only.</p>
+      <input
+        id="acc-token"
+        v-model="form.token"
+        type="password"
+        class="field-underline"
+        placeholder="glpat-…"
+        autocomplete="off"
+      />
+      <p class="text-muted/70 mt-1.5 text-xs">Stored encrypted by the backend. Write-only.</p>
     </div>
 
-    <p v-if="error" class="text-sm text-danger">{{ error }}</p>
+    <p v-if="error" class="text-danger text-sm">{{ error }}</p>
 
     <button type="submit" class="btn-accent self-start" :disabled="!valid || submitting">
       <span v-if="submitting" class="i-lucide-loader-circle animate-spin" aria-hidden="true" />

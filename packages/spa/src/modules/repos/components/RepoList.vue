@@ -22,7 +22,9 @@ onMounted(() => {
   if (providers.items.length === 0) providers.fetchAll()
 })
 
-const accountName = computed(() => (id: string) => accounts.items.find((a) => a.id === id)?.name ?? '—')
+const accountName = computed(
+  () => (id: string) => accounts.items.find((a) => a.id === id)?.name ?? '—',
+)
 const providerLabel = computed(() => (repo: Repo) => {
   if (!repo.providerId) return 'default provider'
   const p = providers.items.find((x) => x.id === repo.providerId)
@@ -54,8 +56,8 @@ async function remove(id: string) {
   <div>
     <div class="label-mono mb-3">{{ repos.items.length }} repository(ies)</div>
 
-    <p v-if="repos.loading" class="py-3 text-sm text-muted">Loading…</p>
-    <p v-else-if="repos.error" class="py-3 text-sm text-danger">{{ repos.error }}</p>
+    <p v-if="repos.loading" class="text-muted py-3 text-sm">Loading…</p>
+    <p v-else-if="repos.error" class="text-danger py-3 text-sm">{{ repos.error }}</p>
     <EmptyState
       v-else-if="repos.items.length === 0"
       icon="i-lucide-folder-git-2"
@@ -63,20 +65,25 @@ async function remove(id: string) {
       hint="Track a repository to start reviewing its merge requests."
     />
 
-    <ul v-else class="border-t border-line/50">
+    <ul v-else class="border-line/50 border-t">
       <li v-for="r in repos.items" :key="r.id" class="row flex-wrap justify-between gap-y-2">
         <div class="min-w-0 flex-1">
-          <RouterLink :to="`/repos/${r.id}`" class="text-sm text-ink hover:text-accent">
+          <RouterLink :to="`/repos/${r.id}`" class="text-ink hover:text-accent text-sm">
             {{ r.name }}
           </RouterLink>
-          <div class="truncate font-mono text-xs text-muted">{{ r.url }}</div>
-          <div class="mt-0.5 label-mono">
-            {{ accountName(r.accountId) }} · {{ providerLabel(r) }}<template v-if="r.model"> · {{ r.model }}</template>
+          <div class="text-muted truncate font-mono text-xs">{{ r.url }}</div>
+          <div class="label-mono mt-0.5">
+            {{ accountName(r.accountId) }} · {{ providerLabel(r)
+            }}<template v-if="r.model"> · {{ r.model }}</template>
           </div>
         </div>
         <div class="flex w-full items-center justify-end gap-1 sm:w-auto">
           <RouterLink :to="`/repos/${r.id}`" class="btn-ghost text-xs">Open</RouterLink>
-          <button class="btn-ghost hover:text-ink" :aria-label="`Reassign ${r.name}`" @click="emit('edit', r)">
+          <button
+            class="btn-ghost hover:text-ink"
+            :aria-label="`Reassign ${r.name}`"
+            @click="emit('edit', r)"
+          >
             <span class="i-lucide-pencil text-sm" aria-hidden="true" />
           </button>
           <button

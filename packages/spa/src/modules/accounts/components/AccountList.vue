@@ -38,8 +38,8 @@ async function remove(id: string) {
   <div>
     <div class="label-mono mb-3">{{ store.items.length }} account(s)</div>
 
-    <p v-if="store.loading" class="py-3 text-sm text-muted">Loading…</p>
-    <p v-else-if="store.error" class="py-3 text-sm text-danger">{{ store.error }}</p>
+    <p v-if="store.loading" class="text-muted py-3 text-sm">Loading…</p>
+    <p v-else-if="store.error" class="text-danger py-3 text-sm">{{ store.error }}</p>
     <EmptyState
       v-else-if="store.items.length === 0"
       icon="i-lucide-users"
@@ -47,14 +47,14 @@ async function remove(id: string) {
       hint="Add a GitLab account to start tracking repositories."
     />
 
-    <ul v-else class="border-t border-line/50">
+    <ul v-else class="border-line/50 border-t">
       <li v-for="acc in store.items" :key="acc.id" class="row justify-between">
         <div class="min-w-0">
-          <div class="truncate text-sm text-ink">{{ acc.name }}</div>
-          <div class="truncate font-mono text-xs text-muted">{{ acc.baseUrl }}</div>
+          <div class="text-ink truncate text-sm">{{ acc.name }}</div>
+          <div class="text-muted truncate font-mono text-xs">{{ acc.baseUrl }}</div>
         </div>
         <button
-          class="btn-ghost shrink-0 hover:text-danger"
+          class="btn-ghost hover:text-danger shrink-0"
           :disabled="removingId === acc.id"
           :aria-label="`Delete ${acc.name}`"
           @click="remove(acc.id)"

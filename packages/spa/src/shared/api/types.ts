@@ -67,6 +67,7 @@ export interface Review {
   mrIid: number
   contextMode: ContextMode
   status: ReviewStatus
+  phase: string
   summary: string
   recommendation: Recommendation
   score: number

@@ -2,7 +2,11 @@ import { defineConfig, presetIcons, presetWebFonts, presetWind4, transformerDire
 
 export default defineConfig({
   presets: [
-    presetWind4(),
+    presetWind4({
+      preflights: {
+        reset: true,
+      }
+    }),
     presetIcons(),
     presetWebFonts(),
   ],

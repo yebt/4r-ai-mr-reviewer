@@ -40,7 +40,12 @@ const recCounts = computed(() => {
   return { approve, requestChanges, comment }
 })
 // Chronological, most recent 12.
-const scoreTrend = computed(() => done.value.slice(0, 12).map((r) => r.score).reverse())
+const scoreTrend = computed(() =>
+  done.value
+    .slice(0, 12)
+    .map((r) => r.score)
+    .reverse(),
+)
 
 const shortcuts = [
   { to: '/repos', label: 'Repositories', icon: 'i-lucide-folder-git-2' },
@@ -59,32 +64,43 @@ const cardBase = 'border border-line/60 bg-surface/40 p-5 transition-colors'
 
     <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
       <!-- Hero stat -->
-      <RouterLink to="/reviews" :class="[cardBase, 'group col-span-2 flex flex-col justify-between hover:border-ink']">
+      <RouterLink
+        to="/reviews"
+        :class="[cardBase, 'group hover:border-ink col-span-2 flex flex-col justify-between']"
+      >
         <div class="label-mono">Reviews run</div>
-        <div class="mt-6 font-mono text-5xl font-semibold text-ink">{{ reviewCount }}</div>
-        <div class="mt-4 inline-flex items-center gap-1 text-sm text-accent">
+        <div class="text-ink mt-6 font-mono text-5xl font-semibold">{{ reviewCount }}</div>
+        <div class="text-accent mt-4 inline-flex items-center gap-1 text-sm">
           View all
-          <span class="i-lucide-arrow-right transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+          <span
+            class="i-lucide-arrow-right transition-transform group-hover:translate-x-0.5"
+            aria-hidden="true"
+          />
         </div>
       </RouterLink>
 
-      <RouterLink to="/repos" :class="[cardBase, 'flex flex-col justify-between hover:border-ink']">
+      <RouterLink to="/repos" :class="[cardBase, 'hover:border-ink flex flex-col justify-between']">
         <div class="label-mono">Repositories</div>
-        <div class="mt-4 font-mono text-3xl font-semibold text-ink">{{ repoCount }}</div>
+        <div class="text-ink mt-4 font-mono text-3xl font-semibold">{{ repoCount }}</div>
       </RouterLink>
-      <RouterLink to="/providers" :class="[cardBase, 'flex flex-col justify-between hover:border-ink']">
+      <RouterLink
+        to="/providers"
+        :class="[cardBase, 'hover:border-ink flex flex-col justify-between']"
+      >
         <div class="label-mono">Providers</div>
-        <div class="mt-4 font-mono text-3xl font-semibold text-ink">{{ providerCount }}</div>
+        <div class="text-ink mt-4 font-mono text-3xl font-semibold">{{ providerCount }}</div>
       </RouterLink>
 
       <!-- Average score -->
       <div :class="[cardBase, 'col-span-2 flex flex-col']">
         <div class="label-mono">Average score</div>
         <div v-if="hasData" class="mt-2">
-          <div class="font-mono text-3xl font-semibold text-ink">{{ avgScore }}<span class="text-base text-muted">/100</span></div>
+          <div class="text-ink font-mono text-3xl font-semibold">
+            {{ avgScore }}<span class="text-muted text-base">/100</span>
+          </div>
           <ScoreMeter :value="avgScore" class="mt-3" />
         </div>
-        <div v-else class="mt-4 text-sm text-muted">No completed reviews yet.</div>
+        <div v-else class="text-muted mt-4 text-sm">No completed reviews yet.</div>
       </div>
 
       <!-- Recommendation split -->
@@ -96,14 +112,14 @@ const cardBase = 'border border-line/60 bg-surface/40 p-5 transition-colors'
           :request-changes="recCounts.requestChanges"
           :comment="recCounts.comment"
         />
-        <div v-else class="text-sm text-muted">No completed reviews yet.</div>
+        <div v-else class="text-muted text-sm">No completed reviews yet.</div>
       </div>
 
       <!-- Score trend -->
       <div :class="[cardBase, 'col-span-2 flex flex-col md:col-span-4']">
         <div class="label-mono mb-3">Score trend</div>
         <Sparkline v-if="scoreTrend.length" :values="scoreTrend" />
-        <div v-else class="text-sm text-muted">No completed reviews yet.</div>
+        <div v-else class="text-muted text-sm">No completed reviews yet.</div>
       </div>
 
       <!-- Shortcuts -->
@@ -111,13 +127,24 @@ const cardBase = 'border border-line/60 bg-surface/40 p-5 transition-colors'
         v-for="(s, i) in shortcuts"
         :key="s.to"
         :to="s.to"
-        :class="[cardBase, 'group flex items-center justify-between hover:border-ink', i === shortcuts.length - 1 ? 'col-span-2 md:col-span-4' : '']"
+        :class="[
+          cardBase,
+          'group hover:border-ink flex items-center justify-between',
+          i === shortcuts.length - 1 ? 'col-span-2 md:col-span-4' : '',
+        ]"
       >
         <div class="flex items-center gap-3">
-          <span :class="s.icon" class="text-lg text-muted group-hover:text-ink" aria-hidden="true" />
-          <span class="text-sm text-ink">{{ s.label }}</span>
+          <span
+            :class="s.icon"
+            class="text-muted group-hover:text-ink text-lg"
+            aria-hidden="true"
+          />
+          <span class="text-ink text-sm">{{ s.label }}</span>
         </div>
-        <span class="i-lucide-arrow-up-right text-muted group-hover:text-accent" aria-hidden="true" />
+        <span
+          class="i-lucide-arrow-up-right text-muted group-hover:text-accent"
+          aria-hidden="true"
+        />
       </RouterLink>
     </div>
   </div>

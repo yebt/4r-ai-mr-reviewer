@@ -29,12 +29,12 @@ function onKeydown(e: KeyboardEvent) {
         class="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4"
         @keydown="onKeydown"
       >
-        <div class="absolute inset-0 bg-canvas/80 backdrop-blur-sm" @click="emit('close')" />
+        <div class="bg-canvas/80 absolute inset-0 backdrop-blur-sm" @click="emit('close')" />
 
         <div
           ref="panel"
           tabindex="-1"
-          class="relative max-h-[90vh] w-full overflow-y-auto border border-line bg-surface p-6 outline-none sm:max-w-md"
+          class="border-line bg-surface relative max-h-[90vh] w-full overflow-y-auto border p-6 outline-none sm:max-w-md"
           role="dialog"
           aria-modal="true"
         >

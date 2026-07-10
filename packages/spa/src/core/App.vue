@@ -27,7 +27,7 @@ router.beforeEach(() => {
     <main class="flex-1 overflow-y-auto">
       <div class="mx-auto max-w-5xl px-4 py-6 pb-24 md:px-8 md:py-8 md:pb-8">
         <!-- Permanent breadcrumb bar: reserved height keeps the layout stable. -->
-        <div class="mb-6 min-h-[1.1rem]" v-if="breadcrumbs.items.length">
+        <div class="mb-6 min-h-[1.1rem]">
           <Breadcrumbs :items="breadcrumbs.items" />
         </div>
         <RouterView />
