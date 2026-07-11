@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/webcloster-dev/ai-reviewer/internal/app/accounts"
+	apphumanize "github.com/webcloster-dev/ai-reviewer/internal/app/humanize"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/profiles"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/providers"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/repos"
@@ -30,12 +31,13 @@ type Server struct {
 	profiles  *profiles.Service
 	repos     *repos.Service
 	reviews   *reviews.Service
+	humanize  *apphumanize.Service
 	skills    skills.Set
 }
 
 // NewServer wires a Server.
-func NewServer(a *accounts.Service, p *providers.Service, pr *profiles.Service, r *repos.Service, rv *reviews.Service, sk skills.Set) *Server {
-	return &Server{accounts: a, providers: p, profiles: pr, repos: r, reviews: rv, skills: sk}
+func NewServer(a *accounts.Service, p *providers.Service, pr *profiles.Service, r *repos.Service, rv *reviews.Service, hz *apphumanize.Service, sk skills.Set) *Server {
+	return &Server{accounts: a, providers: p, profiles: pr, repos: r, reviews: rv, humanize: hz, skills: sk}
 }
 
 // Routes returns the HTTP handler with every endpoint registered.
@@ -63,6 +65,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /profiles/{id}", s.getProfile)
 	mux.HandleFunc("PATCH /profiles/{id}", s.updateProfile)
 	mux.HandleFunc("DELETE /profiles/{id}", s.deleteProfile)
+	mux.HandleFunc("POST /profiles/{id}/redistill", s.redistillProfile)
 
 	mux.HandleFunc("POST /repos", s.createRepo)
 	mux.HandleFunc("GET /repos", s.listRepos)
@@ -79,6 +82,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /reviews/{id}/cancel", s.cancelReview)
 	mux.HandleFunc("POST /reviews/{id}/archive", s.archiveReview)
 	mux.HandleFunc("POST /reviews/{id}/unarchive", s.unarchiveReview)
+	mux.HandleFunc("POST /reviews/{id}/humanize", s.humanizeReview)
 
 	return mux
 }

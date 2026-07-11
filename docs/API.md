@@ -112,9 +112,25 @@ A humanization profile captures a user's writing voice, used in a later slice to
 rephrase review comments in their own style. Samples are **not** secret and are
 stored in the clear (unlike provider API keys).
 
-`styleGuide` is **server-managed**: it is an LLM-distilled cache that stays empty
-until the distillation slice is added, so it is read-only and cannot be set by
-the client.
+`styleGuide` is **server-managed**: it is an LLM-distilled cache and is read-only
+(it cannot be set by the client). Whenever a profile is created or updated **with
+non-empty `samples`**, the server distills those samples plus the knobs
+(`language`, `formality`, `emojis`) into `styleGuide` via **one asynchronous LLM
+call on the default provider**. The CRUD request does **not** block on it: the
+response returns immediately with `styleGuideStatus: "pending"`.
+
+Two read-only fields report distillation state:
+
+- `styleGuideStatus` — one of:
+  - `""` (none): no samples, so nothing to distill (any prior guide is cleared).
+  - `"pending"`: distillation was triggered and is in flight.
+  - `"ready"`: `styleGuide` holds the distilled result.
+  - `"error"`: the last attempt failed; see `styleGuideError`.
+- `styleGuideError` — the failure message when `styleGuideStatus` is `"error"`,
+  empty otherwise.
+
+Distillation survives restarts: profiles left `pending` are re-triggered at
+startup.
 
 ### `POST /profiles` → `201`
 ```json
@@ -127,8 +143,10 @@ the client.
 }
 ```
 Only `name` is required. `language` and `formality` are free text (e.g.
-`casual`, `neutral`, `formal`). Response includes `styleGuide` (empty for now),
-`createdAt` and `updatedAt`.
+`casual`, `neutral`, `formal`). The response includes `styleGuide`,
+`styleGuideStatus`, `styleGuideError`, `createdAt` and `updatedAt`. With samples,
+`styleGuideStatus` is `"pending"` on return (distillation runs in the
+background); without samples it is `""` (none).
 
 ### `GET /profiles` → `200`
 Array of profiles, ordered by name.
@@ -138,12 +156,22 @@ A single profile.
 
 ### `PATCH /profiles/{id}` → `200`
 Edits a profile. `name` is required; all fields are replaced with the payload.
-`styleGuide` is ignored (server-managed).
+`styleGuide` is ignored (server-managed). If the payload carries samples,
+distillation is re-triggered (`styleGuideStatus: "pending"`); if samples are
+removed, the guide is cleared (`styleGuideStatus: ""`).
 ```json
 { "name": "casual-es", "language": "es", "formality": "formal", "emojis": false, "samples": ["a", "b"] }
 ```
 
 ### `DELETE /profiles/{id}` → `204`
+
+### `POST /profiles/{id}/redistill` → `200`
+Manually re-runs style-guide distillation for a profile. Sets the status to
+`pending` and triggers the async LLM call. Returns `404` if the profile does not
+exist.
+```json
+{ "status": "pending" }
+```
 
 ---
 
@@ -248,6 +276,40 @@ not exist.
 ```json
 { "status": "unarchived" }
 ```
+
+### `POST /reviews/{id}/humanize` → `200`
+Rewrites a finished review's summary and every finding in a humanization
+profile's author voice, returning `count` complete variants. This is **ephemeral**:
+nothing is persisted — the variants are computed on demand and returned inline.
+It uses the **default provider** (like style-guide distillation), not the repo's
+provider.
+```json
+{ "profileId": "…", "count": 3 }
+```
+`count` defaults to `3` and is clamped to `[1, 5]`. Each variant rewrites only the
+VOICE/phrasing; the technical substance (issue, why, fix) is preserved and every
+finding is referenced back by its zero-based `index`:
+```json
+{
+  "variants": [
+    {
+      "summary": "…rephrased summary…",
+      "findings": [
+        { "index": 0, "text": "…finding 0 in the author's voice…" },
+        { "index": 1, "text": "…finding 1 in the author's voice…" }
+      ]
+    }
+  ]
+}
+```
+Guards and error codes:
+- `404` — the review or the profile does not exist.
+- `409` — the review is not `done`, or the profile's style guide is not `ready`
+  (the message includes the actual status, e.g. `style guide not ready (pending)`).
+- `502` — the upstream LLM call failed or its output could not be parsed.
+
+Finding entries whose `index` falls outside the review's finding range (a model
+hallucination) are silently dropped from the response.
 
 ### `POST /reviews/{id}/publish` → `200`
 Publishes selected findings to the merge request as inline discussions (or a

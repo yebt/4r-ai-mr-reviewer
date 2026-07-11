@@ -15,6 +15,7 @@ import (
 	"github.com/webcloster-dev/ai-reviewer/internal/adapters/crypto"
 	"github.com/webcloster-dev/ai-reviewer/internal/adapters/sqlite"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/accounts"
+	apphumanize "github.com/webcloster-dev/ai-reviewer/internal/app/humanize"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/profiles"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/providers"
 	apprepos "github.com/webcloster-dev/ai-reviewer/internal/app/repos"
@@ -62,7 +63,7 @@ func run() error {
 	// Services.
 	accountSvc := accounts.NewService(accountRepo, secrets)
 	providerSvc := providers.NewService(providerRepo, secrets)
-	profileSvc := profiles.NewService(profileStore)
+	profileSvc := profiles.NewService(profileStore, providerSvc, nil)
 	repoSvc := apprepos.NewService(repoStore, accountRepo, providerRepo)
 
 	ruleSet, err := skills.Load(cfg.SkillsDir)
@@ -70,12 +71,16 @@ func run() error {
 		return err
 	}
 	reviewSvc := reviews.NewService(reviewStore, repoStore, accountSvc, providerSvc, engine.NewMultiPass(ruleSet))
+	humanizeSvc := apphumanize.NewService(reviewStore, profileStore, providerSvc, nil)
 
 	runner := jobs.NewRunner(jobStore, reviewSvc.Handle)
 	reviewSvc.AttachRunner(runner)
 	go runner.Start(ctx)
 
-	api := httpapi.NewServer(accountSvc, providerSvc, profileSvc, repoSvc, reviewSvc, ruleSet)
+	// Re-trigger any style-guide distillations left pending by a prior crash.
+	go profileSvc.RecoverPending(context.Background())
+
+	api := httpapi.NewServer(accountSvc, providerSvc, profileSvc, repoSvc, reviewSvc, humanizeSvc, ruleSet)
 	srv := &http.Server{Addr: cfg.HTTPAddr, Handler: api.Routes()}
 
 	go func() {

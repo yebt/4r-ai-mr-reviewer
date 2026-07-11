@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/webcloster-dev/ai-reviewer/internal/adapters/gitlab"
+	apphumanize "github.com/webcloster-dev/ai-reviewer/internal/app/humanize"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/profiles"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/providers"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/repos"
@@ -237,6 +238,14 @@ func (s *Server) deleteProfile(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *Server) redistillProfile(w http.ResponseWriter, r *http.Request) {
+	if err := s.profiles.Redistill(r.Context(), r.PathValue("id")); err != nil {
+		writeErr(w, err, http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": profile.StyleStatusPending})
+}
+
 // --- repos ---
 
 func (s *Server) createRepo(w http.ResponseWriter, r *http.Request) {
@@ -422,6 +431,33 @@ func (s *Server) publishReview(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "published"})
 }
 
+// humanizeReview rewrites a finished review's summary and findings in a
+// profile's author voice, returning N ephemeral variants (nothing is persisted).
+// Error mapping: unknown review/profile → 404; review not done or style guide not
+// ready → 409; LLM/parse failure → 502.
+func (s *Server) humanizeReview(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		ProfileID string `json:"profileId"`
+		Count     int    `json:"count"`
+	}
+	if err := decode(r, &in); err != nil {
+		writeErr(w, err, http.StatusBadRequest)
+		return
+	}
+	variants, err := s.humanize.Humanize(r.Context(), r.PathValue("id"), in.ProfileID, in.Count)
+	if err != nil {
+		if errors.Is(err, apphumanize.ErrReviewNotDone) || errors.Is(err, apphumanize.ErrStyleGuideNotReady) {
+			writeErr(w, err, http.StatusConflict)
+			return
+		}
+		// isNotFound (via writeErr) still maps unknown review/profile to 404;
+		// any other failure here is an upstream LLM/parse error.
+		writeErr(w, err, http.StatusBadGateway)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"variants": variants})
+}
+
 // --- response DTOs ---
 
 type accountResp struct {
@@ -460,15 +496,17 @@ func toProvider(p provider.Provider) providerResp {
 }
 
 type profileResp struct {
-	ID         string    `json:"id"`
-	Name       string    `json:"name"`
-	Language   string    `json:"language"`
-	Formality  string    `json:"formality"`
-	Emojis     bool      `json:"emojis"`
-	Samples    []string  `json:"samples"`
-	StyleGuide string    `json:"styleGuide"`
-	CreatedAt  time.Time `json:"createdAt"`
-	UpdatedAt  time.Time `json:"updatedAt"`
+	ID               string    `json:"id"`
+	Name             string    `json:"name"`
+	Language         string    `json:"language"`
+	Formality        string    `json:"formality"`
+	Emojis           bool      `json:"emojis"`
+	Samples          []string  `json:"samples"`
+	StyleGuide       string    `json:"styleGuide"`
+	StyleGuideStatus string    `json:"styleGuideStatus"`
+	StyleGuideError  string    `json:"styleGuideError"`
+	CreatedAt        time.Time `json:"createdAt"`
+	UpdatedAt        time.Time `json:"updatedAt"`
 }
 
 func toProfile(p profile.Profile) profileResp {
@@ -479,6 +517,7 @@ func toProfile(p profile.Profile) profileResp {
 	return profileResp{
 		ID: p.ID, Name: p.Name, Language: p.Language, Formality: p.Formality,
 		Emojis: p.Emojis, Samples: samples, StyleGuide: p.StyleGuide,
+		StyleGuideStatus: p.StyleGuideStatus, StyleGuideError: p.StyleGuideError,
 		CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt,
 	}
 }
