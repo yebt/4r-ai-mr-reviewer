@@ -195,7 +195,10 @@ export const useReviewsStore = defineStore('reviews', () => {
     if (current.value?.id === id) current.value = { ...current.value, archived }
   }
 
-  async function publish(id: string, selection: { all?: boolean; indices?: number[] }) {
+  async function publish(
+    id: string,
+    selection: { all?: boolean; indices?: number[]; includeSummary?: boolean },
+  ) {
     await api.publishReview(id, selection)
     await refresh(id)
   }

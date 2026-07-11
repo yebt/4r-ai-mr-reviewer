@@ -42,6 +42,7 @@ const review = (id: string, status: ReviewStatus = 'pending'): Review => ({
   status,
   phase: '',
   archived: false,
+  summaryPublished: false,
   summary: '',
   recommendation: 'comment',
   score: 0,
@@ -155,5 +156,13 @@ describe('reviews store', () => {
     expect(mocked.publishReview).toHaveBeenCalledWith('1', { all: true })
     expect(mocked.getReview).toHaveBeenCalledWith('1')
     expect(store.current?.id).toBe('1')
+  })
+
+  it('publish forwards includeSummary to the api', async () => {
+    mocked.publishReview.mockResolvedValue({ status: 'published' })
+    mocked.getReview.mockResolvedValue(review('1', 'done'))
+    const store = useReviewsStore()
+    await store.publish('1', { indices: [0], includeSummary: false })
+    expect(mocked.publishReview).toHaveBeenCalledWith('1', { indices: [0], includeSummary: false })
   })
 })

@@ -69,6 +69,7 @@ export interface Review {
   status: ReviewStatus
   phase: string
   archived: boolean
+  summaryPublished: boolean
   summary: string
   recommendation: Recommendation
   score: number

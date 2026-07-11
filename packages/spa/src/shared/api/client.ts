@@ -99,8 +99,10 @@ export const api = {
   cancelReview: (id: string) => request<{ status: string }>('POST', `/reviews/${id}/cancel`),
   archiveReview: (id: string) => request<{ status: string }>('POST', `/reviews/${id}/archive`),
   unarchiveReview: (id: string) => request<{ status: string }>('POST', `/reviews/${id}/unarchive`),
-  publishReview: (id: string, input: { all?: boolean; indices?: number[] }) =>
-    request<{ status: string }>('POST', `/reviews/${id}/publish`, input),
+  publishReview: (
+    id: string,
+    input: { all?: boolean; indices?: number[]; includeSummary?: boolean },
+  ) => request<{ status: string }>('POST', `/reviews/${id}/publish`, input),
 
   // skills
   getSkills: () =>

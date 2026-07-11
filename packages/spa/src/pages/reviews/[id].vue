@@ -39,6 +39,18 @@ const selected = ref<number[]>([])
 const publishing = ref(false)
 const publishError = ref<string | null>(null)
 
+// The summary note posts on the first publish by default and is re-selectable
+// afterwards. Reset the default whenever the review's posted state changes (e.g.
+// after a publish refresh flips summaryPublished): checked when not yet posted.
+const includeSummary = ref(true)
+watch(
+  () => review.value?.summaryPublished,
+  (posted) => {
+    includeSummary.value = !posted
+  },
+  { immediate: true },
+)
+
 const unpublished = computed(() => review.value?.findings.filter((f) => !f.published) ?? [])
 
 // Multi-pass progress: maps the backend phase to a labelled step (of 4).
@@ -78,7 +90,7 @@ function toggle(index: number) {
   else selected.value.push(index)
 }
 
-async function publish(payload: { all?: boolean; indices?: number[] }) {
+async function publish(payload: { all?: boolean; indices?: number[]; includeSummary?: boolean }) {
   publishing.value = true
   publishError.value = null
   try {
@@ -228,10 +240,7 @@ async function remove() {
         </button>
       </div>
 
-      <div
-        v-else-if="review.status === 'cancelled'"
-        class="flex flex-col items-start gap-3"
-      >
+      <div v-else-if="review.status === 'cancelled'" class="flex flex-col items-start gap-3">
         <p class="text-muted text-sm">This review was cancelled.</p>
         <button class="btn-line" @click="retry">
           <span class="i-lucide-refresh-cw text-sm" aria-hidden="true" />
@@ -256,29 +265,38 @@ async function remove() {
               <span class="bg-accent inline-block h-3.5 w-0.5" aria-hidden="true" />
               Findings
             </h2>
-            <div v-if="review.findings.length" class="flex items-center gap-2">
-              <button
-                class="btn-ghost text-xs"
-                :disabled="publishing || selected.length === 0"
-                @click="publish({ indices: selected })"
-              >
-                Publish selected ({{ selected.length }})
-              </button>
-              <button
-                class="btn-accent text-xs"
-                :disabled="publishing || unpublished.length === 0"
-                @click="publish({ all: true })"
-              >
-                <span
-                  v-if="publishing"
-                  class="i-lucide-loader-circle animate-spin"
-                  aria-hidden="true"
-                />
-                Comment all
-              </button>
+            <div v-if="review.findings.length" class="flex flex-wrap items-center gap-3">
+              <label class="text-muted flex cursor-pointer items-center gap-1.5 text-xs">
+                <input v-model="includeSummary" type="checkbox" class="accent-accent" />
+                Include summary note
+              </label>
+              <div class="flex items-center gap-2">
+                <button
+                  class="btn-ghost text-xs"
+                  :disabled="publishing || selected.length === 0"
+                  @click="publish({ indices: selected, includeSummary })"
+                >
+                  Publish selected ({{ selected.length }})
+                </button>
+                <button
+                  class="btn-accent text-xs"
+                  :disabled="publishing || unpublished.length === 0"
+                  @click="publish({ all: true, includeSummary })"
+                >
+                  <span
+                    v-if="publishing"
+                    class="i-lucide-loader-circle animate-spin"
+                    aria-hidden="true"
+                  />
+                  Comment all
+                </button>
+              </div>
             </div>
           </div>
 
+          <p v-if="review.summaryPublished" class="text-muted/70 mb-3 text-xs">
+            Summary already posted — re-check to post again.
+          </p>
           <p v-if="publishError" class="text-danger mb-3 text-sm">{{ publishError }}</p>
 
           <p v-if="review.findings.length === 0" class="text-muted text-sm">
