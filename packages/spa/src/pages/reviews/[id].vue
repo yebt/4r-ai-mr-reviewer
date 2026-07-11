@@ -101,6 +101,39 @@ async function retry() {
   }
 }
 
+const cancelling = ref(false)
+
+async function cancel() {
+  cancelling.value = true
+  try {
+    await store.cancel(reviewId.value)
+    toast.success('Cancelling review…')
+    // Keep polling until the backend flips it to the cancelled terminal state.
+    if (review.value && !isTerminal(review.value.status)) resume()
+  } catch (e) {
+    store.currentError = errorMessage(e)
+  } finally {
+    cancelling.value = false
+  }
+}
+
+const archiving = ref(false)
+
+async function toggleArchive() {
+  const wasArchived = review.value?.archived
+  archiving.value = true
+  try {
+    if (wasArchived) await store.unarchive(reviewId.value)
+    else await store.archive(reviewId.value)
+    toast.success(wasArchived ? 'Review unarchived' : 'Review archived')
+    await store.refresh(reviewId.value)
+  } catch (e) {
+    store.currentError = errorMessage(e)
+  } finally {
+    archiving.value = false
+  }
+}
+
 const deleting = ref(false)
 
 async function remove() {
@@ -129,6 +162,25 @@ async function remove() {
     <PageHeader :title="review ? `Merge request !${review.mrIid}` : 'Review'">
       <template #actions>
         <ReviewStatusChip v-if="review" :status="review.status" />
+        <button
+          v-if="review"
+          class="btn-ghost text-xs"
+          :disabled="archiving"
+          @click="toggleArchive"
+        >
+          <span
+            v-if="archiving"
+            class="i-lucide-loader-circle animate-spin text-sm"
+            aria-hidden="true"
+          />
+          <span
+            v-else
+            :class="review.archived ? 'i-lucide-archive-restore' : 'i-lucide-archive'"
+            class="text-sm"
+            aria-hidden="true"
+          />
+          {{ review.archived ? 'Unarchive' : 'Archive' }}
+        </button>
         <button
           v-if="review"
           class="btn-ghost text-danger text-xs"
@@ -165,6 +217,26 @@ async function remove() {
             :style="{ width: `${(phase.step / 4) * 100}%` }"
           />
         </div>
+        <button class="btn-line mt-4 text-xs" :disabled="cancelling" @click="cancel">
+          <span
+            v-if="cancelling"
+            class="i-lucide-loader-circle animate-spin text-sm"
+            aria-hidden="true"
+          />
+          <span v-else class="i-lucide-ban text-sm" aria-hidden="true" />
+          Cancel review
+        </button>
+      </div>
+
+      <div
+        v-else-if="review.status === 'cancelled'"
+        class="flex flex-col items-start gap-3"
+      >
+        <p class="text-muted text-sm">This review was cancelled.</p>
+        <button class="btn-line" @click="retry">
+          <span class="i-lucide-refresh-cw text-sm" aria-hidden="true" />
+          Retry (clones the review)
+        </button>
       </div>
 
       <div v-else-if="review.status === 'error'" class="flex flex-col items-start gap-3">

@@ -5,6 +5,7 @@ export const statusClass: Record<ReviewStatus, string> = {
   running: 'text-accent',
   done: 'text-ok',
   error: 'text-danger',
+  cancelled: 'text-muted',
 }
 
 export const severityClass: Record<Severity, string> = {
@@ -38,7 +39,7 @@ export function recommendationLabel(r: Recommendation): string {
 }
 
 export function isTerminal(status: ReviewStatus): boolean {
-  return status === 'done' || status === 'error'
+  return status === 'done' || status === 'error' || status === 'cancelled'
 }
 
 /** First 8 chars of a review id, to tell same-MR reviews apart. */

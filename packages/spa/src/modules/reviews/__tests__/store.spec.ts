@@ -10,6 +10,9 @@ vi.mock('@shared/api/client', () => ({
     getReview: vi.fn(),
     deleteReview: vi.fn(),
     retryReview: vi.fn(),
+    cancelReview: vi.fn(),
+    archiveReview: vi.fn(),
+    unarchiveReview: vi.fn(),
     publishReview: vi.fn(),
   },
 }))
@@ -25,6 +28,9 @@ const mocked = api as unknown as {
   getReview: ReturnType<typeof vi.fn>
   deleteReview: ReturnType<typeof vi.fn>
   retryReview: ReturnType<typeof vi.fn>
+  cancelReview: ReturnType<typeof vi.fn>
+  archiveReview: ReturnType<typeof vi.fn>
+  unarchiveReview: ReturnType<typeof vi.fn>
   publishReview: ReturnType<typeof vi.fn>
 }
 
@@ -35,6 +41,7 @@ const review = (id: string, status: ReviewStatus = 'pending'): Review => ({
   contextMode: 'fast',
   status,
   phase: '',
+  archived: false,
   summary: '',
   recommendation: 'comment',
   score: 0,
@@ -97,6 +104,47 @@ describe('reviews store', () => {
     expect(store.reviewsById['1']).toBeUndefined()
     expect(store.reviewsFor('r1').map((r) => r.id)).toEqual(['2'])
     expect(store.current).toBeNull()
+  })
+
+  it('archive removes the review from the active list and flags it archived', async () => {
+    mocked.archiveReview.mockResolvedValue({ status: 'archived' })
+    const store = useReviewsStore()
+    store.reviewsById = { '1': review('1'), '2': review('2') }
+    store.reviewsByRepo = { r1: [review('1'), review('2')] }
+    store.current = review('1')
+
+    await store.archive('1')
+
+    expect(mocked.archiveReview).toHaveBeenCalledWith('1')
+    expect(store.reviewsFor('r1').map((r) => r.id)).toEqual(['2'])
+    expect(store.reviewsById['1']?.archived).toBe(true)
+    expect(store.current?.archived).toBe(true)
+  })
+
+  it('unarchive drops the review from the archived list and clears the flag', async () => {
+    mocked.unarchiveReview.mockResolvedValue({ status: 'unarchived' })
+    const store = useReviewsStore()
+    const archived = { ...review('1'), archived: true }
+    store.reviewsById = { '1': archived }
+    store.archivedByRepo = { r1: [archived] }
+    store.current = archived
+
+    await store.unarchive('1')
+
+    expect(mocked.unarchiveReview).toHaveBeenCalledWith('1')
+    expect(store.archivedReviewsFor('r1')).toEqual([])
+    expect(store.reviewsById['1']?.archived).toBe(false)
+    expect(store.current?.archived).toBe(false)
+  })
+
+  it('cancel calls the api then refreshes current', async () => {
+    mocked.cancelReview.mockResolvedValue({ status: 'cancelling' })
+    mocked.getReview.mockResolvedValue(review('1', 'cancelled'))
+    const store = useReviewsStore()
+    await store.cancel('1')
+    expect(mocked.cancelReview).toHaveBeenCalledWith('1')
+    expect(mocked.getReview).toHaveBeenCalledWith('1')
+    expect(store.current?.status).toBe('cancelled')
   })
 
   it('publish calls the api then refreshes current', async () => {

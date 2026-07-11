@@ -87,7 +87,8 @@ export const api = {
   deleteRepo: (id: string) => request<void>('DELETE', `/repos/${id}`),
   listMergeRequests: (repoId: string) =>
     request<MergeRequest[]>('GET', `/repos/${repoId}/merge-requests`),
-  listRepoReviews: (repoId: string) => request<Review[]>('GET', `/repos/${repoId}/reviews`),
+  listRepoReviews: (repoId: string, archived = false) =>
+    request<Review[]>('GET', `/repos/${repoId}/reviews${archived ? '?archived=1' : ''}`),
 
   // reviews
   createReview: (input: { repoId: string; mrIid: number; mode: string }) =>
@@ -95,6 +96,9 @@ export const api = {
   getReview: (id: string) => request<Review>('GET', `/reviews/${id}`),
   deleteReview: (id: string) => request<void>('DELETE', `/reviews/${id}`),
   retryReview: (id: string) => request<Review>('POST', `/reviews/${id}/retry`),
+  cancelReview: (id: string) => request<{ status: string }>('POST', `/reviews/${id}/cancel`),
+  archiveReview: (id: string) => request<{ status: string }>('POST', `/reviews/${id}/archive`),
+  unarchiveReview: (id: string) => request<{ status: string }>('POST', `/reviews/${id}/unarchive`),
   publishReview: (id: string, input: { all?: boolean; indices?: number[] }) =>
     request<{ status: string }>('POST', `/reviews/${id}/publish`, input),
 

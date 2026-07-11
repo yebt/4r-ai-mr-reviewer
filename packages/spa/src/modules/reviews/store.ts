@@ -14,6 +14,12 @@ export const useReviewsStore = defineStore('reviews', () => {
   const listLoading = ref(false)
   const listError = ref<string | null>(null)
 
+  // Archived reviews live in a separate cache slot so a "Show archived" toggle
+  // can render them without clobbering the active list.
+  const archivedByRepo = ref<Record<string, Review[]>>({})
+  const archivedLoading = ref(false)
+  const archivedError = ref<string | null>(null)
+
   // Review-detail cache keyed by review id.
   const reviewsById = ref<Record<string, Review>>({})
   const current = ref<Review | null>(null)
@@ -26,6 +32,10 @@ export const useReviewsStore = defineStore('reviews', () => {
 
   function reviewsFor(repoId: string): Review[] {
     return reviewsByRepo.value[repoId] ?? []
+  }
+
+  function archivedReviewsFor(repoId: string): Review[] {
+    return archivedByRepo.value[repoId] ?? []
   }
 
   // Flattened view of every cached review, newest first — for the global list.
@@ -58,6 +68,19 @@ export const useReviewsStore = defineStore('reviews', () => {
       listError.value = errorMessage(e)
     } finally {
       listLoading.value = false
+    }
+  }
+
+  async function fetchArchivedReviews(repoId: string) {
+    archivedLoading.value = true
+    archivedError.value = null
+    try {
+      const data = await api.listRepoReviews(repoId, true)
+      archivedByRepo.value = { ...archivedByRepo.value, [repoId]: data }
+    } catch (e) {
+      archivedError.value = errorMessage(e)
+    } finally {
+      archivedLoading.value = false
     }
   }
 
@@ -107,6 +130,13 @@ export const useReviewsStore = defineStore('reviews', () => {
     return api.retryReview(id)
   }
 
+  // cancel requests cooperative cancellation of a pending/running review, then
+  // refreshes so the UI observes the flip to the cancelled terminal state.
+  async function cancel(id: string) {
+    await api.cancelReview(id)
+    await refresh(id)
+  }
+
   // remove hard-deletes a review and purges it from every cache.
   async function remove(id: string) {
     await api.deleteReview(id)
@@ -121,6 +151,50 @@ export const useReviewsStore = defineStore('reviews', () => {
     if (current.value?.id === id) current.value = null
   }
 
+  // archive soft-hides a review: it drops out of the active repo list and its
+  // archived flag flips across the detail caches.
+  async function archive(id: string) {
+    await api.archiveReview(id)
+    setArchivedFlag(id, true)
+    // Remove from every active repo list; drop the whole archived cache slot so
+    // it is refetched fresh when the toggle is next opened.
+    reviewsByRepo.value = Object.fromEntries(
+      Object.entries(reviewsByRepo.value).map(([repoId, list]) => [
+        repoId,
+        list.filter((r) => r.id !== id),
+      ]),
+    )
+    const repoId = reviewsById.value[id]?.repoId ?? current.value?.repoId
+    if (repoId) {
+      const { [repoId]: _dropped, ...rest } = archivedByRepo.value
+      archivedByRepo.value = rest
+    }
+  }
+
+  // unarchive restores a review to the active list.
+  async function unarchive(id: string) {
+    await api.unarchiveReview(id)
+    setArchivedFlag(id, false)
+    archivedByRepo.value = Object.fromEntries(
+      Object.entries(archivedByRepo.value).map(([repoId, list]) => [
+        repoId,
+        list.filter((r) => r.id !== id),
+      ]),
+    )
+    const repoId = reviewsById.value[id]?.repoId ?? current.value?.repoId
+    if (repoId) {
+      const { [repoId]: _dropped, ...rest } = reviewsByRepo.value
+      reviewsByRepo.value = rest
+    }
+  }
+
+  // setArchivedFlag keeps the detail caches (by id + current) in sync.
+  function setArchivedFlag(id: string, archived: boolean) {
+    const cached = reviewsById.value[id]
+    if (cached) reviewsById.value[id] = { ...cached, archived }
+    if (current.value?.id === id) current.value = { ...current.value, archived }
+  }
+
   async function publish(id: string, selection: { all?: boolean; indices?: number[] }) {
     await api.publishReview(id, selection)
     await refresh(id)
@@ -133,20 +207,28 @@ export const useReviewsStore = defineStore('reviews', () => {
     reviewsByRepo,
     listLoading,
     listError,
+    archivedByRepo,
+    archivedLoading,
+    archivedError,
     reviewsById,
     current,
     currentLoading,
     currentError,
     mergeRequestsFor,
     reviewsFor,
+    archivedReviewsFor,
     allReviews,
     fetchMergeRequests,
     fetchReviews,
+    fetchArchivedReviews,
     create,
     load,
     refresh,
     retry,
+    cancel,
     remove,
+    archive,
+    unarchive,
     publish,
   }
 })

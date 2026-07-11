@@ -57,7 +57,7 @@ export interface Finding {
   published: boolean
 }
 
-export type ReviewStatus = 'pending' | 'running' | 'done' | 'error'
+export type ReviewStatus = 'pending' | 'running' | 'done' | 'error' | 'cancelled'
 export type ContextMode = 'fast' | 'deep'
 export type Recommendation = 'approve' | 'request_changes' | 'comment'
 
@@ -68,6 +68,7 @@ export interface Review {
   contextMode: ContextMode
   status: ReviewStatus
   phase: string
+  archived: boolean
   summary: string
   recommendation: Recommendation
   score: number

@@ -21,9 +21,20 @@ const creatingIid = ref<number | null>(null)
 const repo = computed(() => repos.items.find((r) => r.id === repoId) ?? null)
 const mrs = computed(() => reviews.mergeRequestsFor(repoId))
 const repoReviews = computed(() => reviews.reviewsFor(repoId))
+const archivedReviews = computed(() => reviews.archivedReviewsFor(repoId))
 // Stale-while-revalidate: only show a spinner when nothing is cached yet.
 const mrsLoading = computed(() => reviews.mrsLoading && mrs.value.length === 0)
 const reviewsLoading = computed(() => reviews.listLoading && repoReviews.value.length === 0)
+const archivedLoading = computed(
+  () => reviews.archivedLoading && archivedReviews.value.length === 0,
+)
+
+const showArchived = ref(false)
+
+function toggleArchived() {
+  showArchived.value = !showArchived.value
+  if (showArchived.value) reviews.fetchArchivedReviews(repoId)
+}
 
 watchEffect(() => {
   setBreadcrumbs([
@@ -70,11 +81,33 @@ async function startReview(iid: number, mode: string) {
     </section>
 
     <section>
-      <h2 class="section-title mb-3 flex items-center gap-2">
-        <span class="bg-accent inline-block h-3.5 w-0.5" aria-hidden="true" />
-        Reviews
-      </h2>
+      <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <h2 class="section-title flex items-center gap-2">
+          <span class="bg-accent inline-block h-3.5 w-0.5" aria-hidden="true" />
+          Reviews
+        </h2>
+        <button class="btn-ghost text-xs" @click="toggleArchived">
+          <span
+            :class="showArchived ? 'i-lucide-eye-off' : 'i-lucide-archive'"
+            class="text-sm"
+            aria-hidden="true"
+          />
+          {{ showArchived ? 'Hide archived' : 'Show archived' }}
+        </button>
+      </div>
       <ReviewList :items="repoReviews" :loading="reviewsLoading" :error="reviews.listError" />
+
+      <template v-if="showArchived">
+        <h3 class="section-title text-muted mt-6 mb-3 flex items-center gap-2">
+          <span class="bg-line inline-block h-3.5 w-0.5" aria-hidden="true" />
+          Archived
+        </h3>
+        <ReviewList
+          :items="archivedReviews"
+          :loading="archivedLoading"
+          :error="reviews.archivedError"
+        />
+      </template>
     </section>
   </div>
 </template>
