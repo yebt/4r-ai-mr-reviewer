@@ -9,11 +9,13 @@ import (
 	"net/http"
 
 	"github.com/webcloster-dev/ai-reviewer/internal/app/accounts"
+	"github.com/webcloster-dev/ai-reviewer/internal/app/profiles"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/providers"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/repos"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/reviews"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/account"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/job"
+	"github.com/webcloster-dev/ai-reviewer/internal/domain/profile"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/provider"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/repo"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/review"
@@ -25,14 +27,15 @@ import (
 type Server struct {
 	accounts  *accounts.Service
 	providers *providers.Service
+	profiles  *profiles.Service
 	repos     *repos.Service
 	reviews   *reviews.Service
 	skills    skills.Set
 }
 
 // NewServer wires a Server.
-func NewServer(a *accounts.Service, p *providers.Service, r *repos.Service, rv *reviews.Service, sk skills.Set) *Server {
-	return &Server{accounts: a, providers: p, repos: r, reviews: rv, skills: sk}
+func NewServer(a *accounts.Service, p *providers.Service, pr *profiles.Service, r *repos.Service, rv *reviews.Service, sk skills.Set) *Server {
+	return &Server{accounts: a, providers: p, profiles: pr, repos: r, reviews: rv, skills: sk}
 }
 
 // Routes returns the HTTP handler with every endpoint registered.
@@ -54,6 +57,12 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PATCH /providers/{id}", s.updateProvider)
 	mux.HandleFunc("POST /providers/{id}/default", s.setDefaultProvider)
 	mux.HandleFunc("DELETE /providers/{id}", s.deleteProvider)
+
+	mux.HandleFunc("POST /profiles", s.createProfile)
+	mux.HandleFunc("GET /profiles", s.listProfiles)
+	mux.HandleFunc("GET /profiles/{id}", s.getProfile)
+	mux.HandleFunc("PATCH /profiles/{id}", s.updateProfile)
+	mux.HandleFunc("DELETE /profiles/{id}", s.deleteProfile)
 
 	mux.HandleFunc("POST /repos", s.createRepo)
 	mux.HandleFunc("GET /repos", s.listRepos)
@@ -94,6 +103,7 @@ func writeErr(w http.ResponseWriter, err error, fallback int) {
 func isNotFound(err error) bool {
 	return errors.Is(err, account.ErrNotFound) ||
 		errors.Is(err, provider.ErrNotFound) ||
+		errors.Is(err, profile.ErrNotFound) ||
 		errors.Is(err, repo.ErrNotFound) ||
 		errors.Is(err, review.ErrNotFound) ||
 		errors.Is(err, job.ErrNotFound) ||

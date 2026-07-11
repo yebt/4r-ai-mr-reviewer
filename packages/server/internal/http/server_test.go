@@ -13,6 +13,7 @@ import (
 	"github.com/webcloster-dev/ai-reviewer/internal/adapters/crypto"
 	"github.com/webcloster-dev/ai-reviewer/internal/adapters/sqlite"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/accounts"
+	"github.com/webcloster-dev/ai-reviewer/internal/app/profiles"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/providers"
 	apprepos "github.com/webcloster-dev/ai-reviewer/internal/app/repos"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/reviews"
@@ -36,13 +37,14 @@ func newTestServer(t *testing.T) *httptest.Server {
 
 	accountSvc := accounts.NewService(sqlite.NewAccountRepo(db), secrets)
 	providerSvc := providers.NewService(sqlite.NewProviderRepo(db), secrets)
+	profileSvc := profiles.NewService(sqlite.NewProfileStore(db))
 	repoSvc := apprepos.NewService(sqlite.NewRepoStore(db), sqlite.NewAccountRepo(db), sqlite.NewProviderRepo(db))
 	set, _ := skills.Load("")
 	reviewSvc := reviews.NewService(sqlite.NewReviewStore(db), sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.New(set))
 	runner := jobs.NewRunner(sqlite.NewJobStore(db), reviewSvc.Handle, jobs.WithLogger(log.New(io.Discard, "", 0)))
 	reviewSvc.AttachRunner(runner)
 
-	srv := httptest.NewServer(NewServer(accountSvc, providerSvc, repoSvc, reviewSvc, set).Routes())
+	srv := httptest.NewServer(NewServer(accountSvc, providerSvc, profileSvc, repoSvc, reviewSvc, set).Routes())
 	t.Cleanup(srv.Close)
 	return srv
 }

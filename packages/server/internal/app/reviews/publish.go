@@ -11,10 +11,13 @@ import (
 )
 
 // Selection chooses which findings to publish: All, or specific 0-based indices
-// into the review's stored findings.
+// into the review's stored findings. IncludeSummary is a tri-state override for
+// posting the summary note: nil defaults to posting only on the first publish,
+// while a non-nil value forces (true) or suppresses (false) the summary.
 type Selection struct {
-	All     bool
-	Indices []int
+	All            bool
+	Indices        []int
+	IncludeSummary *bool
 }
 
 // Publish posts the review summary and the selected findings to the merge
@@ -43,11 +46,20 @@ func (s *Service) Publish(ctx context.Context, reviewID string, sel Selection) e
 	}
 	refs := ch.DiffRefs
 
-	if err := gl.CreateNote(ctx, projectID, rv.MRIID, formatSummary(rv)); err != nil {
-		return err
+	postSummary := !rv.SummaryPublished // default: only if not already posted
+	if sel.IncludeSummary != nil {
+		postSummary = *sel.IncludeSummary // explicit override (re-selectable)
+	}
+	if postSummary {
+		if err := gl.CreateNote(ctx, projectID, rv.MRIID, formatSummary(rv)); err != nil {
+			return err
+		}
+		if err := s.reviews.MarkSummaryPublished(ctx, reviewID); err != nil {
+			return err
+		}
 	}
 
-	indices := resolveIndices(sel, len(rv.Findings))
+	indices := resolveIndices(sel, rv.Findings)
 	published := make([]int, 0, len(indices))
 	for _, i := range indices {
 		f := rv.Findings[i]
@@ -94,17 +106,24 @@ func (s *Service) gitlabFor(ctx context.Context, rp repo.Repo) (*gitlab.Client, 
 }
 
 // resolveIndices expands a Selection into valid, in-range finding indices.
-func resolveIndices(sel Selection, n int) []int {
+//
+// "All" posts only findings that are not yet published, so a repeated
+// "publish all" never re-comments what is already on the merge request.
+// Explicit indices are honored as-is: selecting a specific finding is a
+// deliberate re-selection and may re-post one that was already published.
+func resolveIndices(sel Selection, findings []review.Finding) []int {
 	if sel.All {
-		out := make([]int, n)
-		for i := range out {
-			out[i] = i
+		out := make([]int, 0, len(findings))
+		for i, f := range findings {
+			if !f.Published {
+				out = append(out, i)
+			}
 		}
 		return out
 	}
 	out := make([]int, 0, len(sel.Indices))
 	for _, i := range sel.Indices {
-		if i >= 0 && i < n {
+		if i >= 0 && i < len(findings) {
 			out = append(out, i)
 		}
 	}

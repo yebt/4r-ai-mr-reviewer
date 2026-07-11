@@ -124,6 +124,141 @@ func TestPublishSelectedFindings(t *testing.T) {
 	}
 }
 
+func ptr[T any](v T) *T { return &v }
+
+// setupPublishTest wires a done review ready to publish, returning the service,
+// the recording GitLab stub, and the review id.
+func setupPublishTest(t *testing.T) (context.Context, *Service, *recordingGitLab, string) {
+	t.Helper()
+	ctx := context.Background()
+
+	gl := newRecordingGitLab(t)
+	// One inline finding (file+line) and one general finding (no line).
+	reviewJSON := `{"summary":"issues","findings":[
+		{"dimension":"risk","severity":"high","file":"a.go","line":3,"issue":"secret","blocking":true},
+		{"dimension":"readability","severity":"low","file":"","line":0,"issue":"vague description"}
+	]}`
+	aiSrv := aiStub(t, reviewJSON)
+	defer aiSrv.Close()
+
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+
+	salt, _ := crypto.NewSalt()
+	key, _ := crypto.DeriveKey("pw", salt)
+	cipher, _ := crypto.NewCipher(key)
+	secrets := sqlite.NewSecretStore(db, cipher)
+	accountSvc := accounts.NewService(sqlite.NewAccountRepo(db), secrets)
+	providerSvc := providers.NewService(sqlite.NewProviderRepo(db), secrets)
+	repoSvc := appRepos.NewService(sqlite.NewRepoStore(db), sqlite.NewAccountRepo(db), sqlite.NewProviderRepo(db))
+	reviewStore := sqlite.NewReviewStore(db)
+
+	acc, _ := accountSvc.Add(ctx, "acc", gl.URL, "token")
+	prov, _ := providerSvc.Add(ctx, providers.AddInput{Name: "p", Kind: provider.KindOpenAICompat, BaseURL: aiSrv.URL, Model: "m", APIKey: "k"})
+	rp, _ := repoSvc.Add(ctx, appRepos.AddInput{Name: "web", URL: "https://gitlab.test/group/project", AccountID: acc.ID, ProviderID: prov.ID})
+
+	set, _ := skills.Load("")
+	svc := NewService(reviewStore, sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.New(set))
+	runner := jobs.NewRunner(sqlite.NewJobStore(db), svc.Handle, jobs.WithLogger(log.New(io.Discard, "", 0)))
+	svc.AttachRunner(runner)
+
+	rv, _ := svc.Create(ctx, rp.ID, 7, review.ModeFast)
+	runner.Drain(ctx)
+
+	return ctx, svc, gl, rv.ID
+}
+
+// TestPublishAllPostsEachThingOnce verifies that a repeated "publish all"
+// re-posts nothing: the summary is suppressed after the first publish and
+// already-published findings are skipped, so the MR is never spammed.
+func TestPublishAllPostsEachThingOnce(t *testing.T) {
+	ctx, svc, gl, rvID := setupPublishTest(t)
+
+	if err := svc.Publish(ctx, rvID, Selection{All: true}); err != nil {
+		t.Fatalf("first Publish: %v", err)
+	}
+	gl.mu.Lock()
+	notes, discussions := gl.notes, gl.discussions
+	gl.mu.Unlock()
+	// 1 summary note + 1 note for the line-less finding = 2 notes; 1 inline.
+	if notes != 2 || discussions != 1 {
+		t.Fatalf("after first publish = %d notes / %d discussions, want 2 / 1", notes, discussions)
+	}
+
+	// Second "publish all" with no override: summary suppressed AND both findings
+	// already published, so nothing new posts.
+	if err := svc.Publish(ctx, rvID, Selection{All: true}); err != nil {
+		t.Fatalf("second Publish: %v", err)
+	}
+	gl.mu.Lock()
+	notes, discussions = gl.notes, gl.discussions
+	gl.mu.Unlock()
+	if notes != 2 || discussions != 1 {
+		t.Fatalf("after second publish = %d notes / %d discussions, want 2 / 1 (nothing re-posted)", notes, discussions)
+	}
+}
+
+// TestPublishExplicitIndexRepostsPublished verifies that explicitly selecting a
+// finding re-posts it even if already published — the deliberate re-selection
+// escape hatch (unlike "publish all", which skips published findings).
+func TestPublishExplicitIndexRepostsPublished(t *testing.T) {
+	ctx, svc, gl, rvID := setupPublishTest(t)
+
+	if err := svc.Publish(ctx, rvID, Selection{All: true}); err != nil {
+		t.Fatalf("first Publish: %v", err)
+	}
+	gl.mu.Lock()
+	notes := gl.notes
+	gl.mu.Unlock()
+	if notes != 2 {
+		t.Fatalf("after first publish = %d notes, want 2", notes)
+	}
+
+	// Re-select the line-less finding (index 1) explicitly; it re-posts as a note.
+	if err := svc.Publish(ctx, rvID, Selection{Indices: []int{1}, IncludeSummary: ptr(false)}); err != nil {
+		t.Fatalf("re-select Publish: %v", err)
+	}
+	gl.mu.Lock()
+	notes = gl.notes
+	gl.mu.Unlock()
+	// +1 general finding note; no summary (explicitly suppressed).
+	if notes != 3 {
+		t.Fatalf("after re-select = %d notes, want 3 (finding re-posted, no summary)", notes)
+	}
+}
+
+// TestPublishSummaryReselectable verifies IncludeSummary=true re-posts the
+// summary even after it was already posted once.
+func TestPublishSummaryReselectable(t *testing.T) {
+	ctx, svc, gl, rvID := setupPublishTest(t)
+
+	if err := svc.Publish(ctx, rvID, Selection{All: true}); err != nil {
+		t.Fatalf("first Publish: %v", err)
+	}
+	gl.mu.Lock()
+	notes := gl.notes
+	gl.mu.Unlock()
+	if notes != 2 {
+		t.Fatalf("after first publish = %d notes, want 2", notes)
+	}
+
+	// Explicit override re-posts the summary. The findings are already published,
+	// and "All" skips them, so only the summary note is added.
+	if err := svc.Publish(ctx, rvID, Selection{All: true, IncludeSummary: ptr(true)}); err != nil {
+		t.Fatalf("second Publish: %v", err)
+	}
+	gl.mu.Lock()
+	notes = gl.notes
+	gl.mu.Unlock()
+	// +1 summary note = 3 total (findings skipped, already published).
+	if notes != 3 {
+		t.Fatalf("after re-selected publish = %d notes, want 3 (summary re-posted, findings skipped)", notes)
+	}
+}
+
 func TestPublishRejectsUnfinishedReview(t *testing.T) {
 	ctx := context.Background()
 	db, err := sqlite.Open(filepath.Join(t.TempDir(), "test.db"))

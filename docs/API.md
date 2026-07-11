@@ -106,6 +106,47 @@ Makes this provider the sole default.
 
 ---
 
+## Humanization profiles
+
+A humanization profile captures a user's writing voice, used in a later slice to
+rephrase review comments in their own style. Samples are **not** secret and are
+stored in the clear (unlike provider API keys).
+
+`styleGuide` is **server-managed**: it is an LLM-distilled cache that stays empty
+until the distillation slice is added, so it is read-only and cannot be set by
+the client.
+
+### `POST /profiles` → `201`
+```json
+{
+  "name": "casual-es",
+  "language": "es-AR",
+  "formality": "casual",
+  "emojis": true,
+  "samples": ["che, mirá esto", "buenísimo el cambio"]
+}
+```
+Only `name` is required. `language` and `formality` are free text (e.g.
+`casual`, `neutral`, `formal`). Response includes `styleGuide` (empty for now),
+`createdAt` and `updatedAt`.
+
+### `GET /profiles` → `200`
+Array of profiles, ordered by name.
+
+### `GET /profiles/{id}` → `200`
+A single profile.
+
+### `PATCH /profiles/{id}` → `200`
+Edits a profile. `name` is required; all fields are replaced with the payload.
+`styleGuide` is ignored (server-managed).
+```json
+{ "name": "casual-es", "language": "es", "formality": "formal", "emojis": false, "samples": ["a", "b"] }
+```
+
+### `DELETE /profiles/{id}` → `204`
+
+---
+
 ## Repositories
 
 ### `POST /repos` → `201`
@@ -165,7 +206,7 @@ Full review including findings. `status` is one of
 ```json
 {
   "id": "…", "repoId": "…", "mrIid": 7, "contextMode": "fast",
-  "status": "done", "phase": "", "archived": false, "summary": "…",
+  "status": "done", "phase": "", "archived": false, "summaryPublished": false, "summary": "…",
   "recommendation": "request_changes", "score": 75,
   "inputTokens": 1200, "outputTokens": 300,
   "findings": [
@@ -214,11 +255,22 @@ general note when a finding has no line), plus a summary note.
 ```json
 { "all": true }
 ```
-or select specific findings by their `index`:
+`all` posts only findings that are **not yet published**, so a repeated
+"publish all" never re-comments what is already on the merge request. To
+re-post a specific finding deliberately, select it by `index` — explicit
+indices are honored as-is (a re-selection may re-post an already-published one):
 ```json
 { "indices": [0, 2] }
 ```
-Published findings are marked so a re-publish will not duplicate them.
+The summary note posts on the **first** publish only. Pass the optional
+`includeSummary` flag to override this: `true` re-posts the summary even if it
+was already posted (re-selectable), `false` suppresses it. When omitted, the
+summary posts only while `summaryPublished` is still `false`.
+```json
+{ "all": true, "includeSummary": true }
+```
+Published findings are marked so a re-publish will not duplicate them, and
+`summaryPublished` flips to `true` once the summary has been posted.
 
 ---
 

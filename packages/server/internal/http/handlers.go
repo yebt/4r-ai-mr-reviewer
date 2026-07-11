@@ -6,10 +6,12 @@ import (
 	"time"
 
 	"github.com/webcloster-dev/ai-reviewer/internal/adapters/gitlab"
+	"github.com/webcloster-dev/ai-reviewer/internal/app/profiles"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/providers"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/repos"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/reviews"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/account"
+	"github.com/webcloster-dev/ai-reviewer/internal/domain/profile"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/provider"
 	domainrepo "github.com/webcloster-dev/ai-reviewer/internal/domain/repo"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/review"
@@ -151,6 +153,84 @@ func (s *Server) setDefaultProvider(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) deleteProvider(w http.ResponseWriter, r *http.Request) {
 	if err := s.providers.Remove(r.Context(), r.PathValue("id")); err != nil {
+		writeErr(w, err, http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// --- profiles ---
+
+func (s *Server) createProfile(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Name      string   `json:"name"`
+		Language  string   `json:"language"`
+		Formality string   `json:"formality"`
+		Emojis    bool     `json:"emojis"`
+		Samples   []string `json:"samples"`
+	}
+	if err := decode(r, &in); err != nil {
+		writeErr(w, err, http.StatusBadRequest)
+		return
+	}
+	p, err := s.profiles.Add(r.Context(), profiles.AddInput{
+		Name: in.Name, Language: in.Language, Formality: in.Formality,
+		Emojis: in.Emojis, Samples: in.Samples,
+	})
+	if err != nil {
+		writeErr(w, err, http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, http.StatusCreated, toProfile(p))
+}
+
+func (s *Server) listProfiles(w http.ResponseWriter, r *http.Request) {
+	ps, err := s.profiles.List(r.Context())
+	if err != nil {
+		writeErr(w, err, http.StatusInternalServerError)
+		return
+	}
+	out := make([]profileResp, 0, len(ps))
+	for _, p := range ps {
+		out = append(out, toProfile(p))
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) getProfile(w http.ResponseWriter, r *http.Request) {
+	p, err := s.profiles.Get(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeErr(w, err, http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, toProfile(p))
+}
+
+func (s *Server) updateProfile(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Name      string   `json:"name"`
+		Language  string   `json:"language"`
+		Formality string   `json:"formality"`
+		Emojis    bool     `json:"emojis"`
+		Samples   []string `json:"samples"`
+	}
+	if err := decode(r, &in); err != nil {
+		writeErr(w, err, http.StatusBadRequest)
+		return
+	}
+	p, err := s.profiles.Update(r.Context(), r.PathValue("id"), profiles.UpdateInput{
+		Name: in.Name, Language: in.Language, Formality: in.Formality,
+		Emojis: in.Emojis, Samples: in.Samples,
+	})
+	if err != nil {
+		writeErr(w, err, http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, http.StatusOK, toProfile(p))
+}
+
+func (s *Server) deleteProfile(w http.ResponseWriter, r *http.Request) {
+	if err := s.profiles.Delete(r.Context(), r.PathValue("id")); err != nil {
 		writeErr(w, err, http.StatusBadRequest)
 		return
 	}
@@ -327,14 +407,15 @@ func (s *Server) unarchiveReview(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) publishReview(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		All     bool  `json:"all"`
-		Indices []int `json:"indices"`
+		All            bool  `json:"all"`
+		Indices        []int `json:"indices"`
+		IncludeSummary *bool `json:"includeSummary"`
 	}
 	if err := decode(r, &in); err != nil {
 		writeErr(w, err, http.StatusBadRequest)
 		return
 	}
-	if err := s.reviews.Publish(r.Context(), r.PathValue("id"), reviews.Selection{All: in.All, Indices: in.Indices}); err != nil {
+	if err := s.reviews.Publish(r.Context(), r.PathValue("id"), reviews.Selection{All: in.All, Indices: in.Indices, IncludeSummary: in.IncludeSummary}); err != nil {
 		writeErr(w, err, http.StatusBadGateway)
 		return
 	}
@@ -375,6 +456,30 @@ func toProvider(p provider.Provider) providerResp {
 		ID: p.ID, Name: p.Name, Kind: string(p.Kind), BaseURL: p.BaseURL,
 		Model: p.Model, IsDefault: p.IsDefault, Temperature: p.Temperature,
 		Models: models, CreatedAt: p.CreatedAt,
+	}
+}
+
+type profileResp struct {
+	ID         string    `json:"id"`
+	Name       string    `json:"name"`
+	Language   string    `json:"language"`
+	Formality  string    `json:"formality"`
+	Emojis     bool      `json:"emojis"`
+	Samples    []string  `json:"samples"`
+	StyleGuide string    `json:"styleGuide"`
+	CreatedAt  time.Time `json:"createdAt"`
+	UpdatedAt  time.Time `json:"updatedAt"`
+}
+
+func toProfile(p profile.Profile) profileResp {
+	samples := p.Samples
+	if samples == nil {
+		samples = []string{}
+	}
+	return profileResp{
+		ID: p.ID, Name: p.Name, Language: p.Language, Formality: p.Formality,
+		Emojis: p.Emojis, Samples: samples, StyleGuide: p.StyleGuide,
+		CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt,
 	}
 }
 
@@ -426,22 +531,23 @@ type findingResp struct {
 }
 
 type reviewResp struct {
-	ID             string        `json:"id"`
-	RepoID         string        `json:"repoId"`
-	MRIID          int           `json:"mrIid"`
-	ContextMode    string        `json:"contextMode"`
-	Status         string        `json:"status"`
-	Phase          string        `json:"phase"`
-	Archived       bool          `json:"archived"`
-	Summary        string        `json:"summary"`
-	Recommendation string        `json:"recommendation"`
-	Score          int           `json:"score"`
-	Error          string        `json:"error,omitempty"`
-	InputTokens    int           `json:"inputTokens"`
-	OutputTokens   int           `json:"outputTokens"`
-	Findings       []findingResp `json:"findings"`
-	CreatedAt      time.Time     `json:"createdAt"`
-	UpdatedAt      time.Time     `json:"updatedAt"`
+	ID               string        `json:"id"`
+	RepoID           string        `json:"repoId"`
+	MRIID            int           `json:"mrIid"`
+	ContextMode      string        `json:"contextMode"`
+	Status           string        `json:"status"`
+	Phase            string        `json:"phase"`
+	Archived         bool          `json:"archived"`
+	SummaryPublished bool          `json:"summaryPublished"`
+	Summary          string        `json:"summary"`
+	Recommendation   string        `json:"recommendation"`
+	Score            int           `json:"score"`
+	Error            string        `json:"error,omitempty"`
+	InputTokens      int           `json:"inputTokens"`
+	OutputTokens     int           `json:"outputTokens"`
+	Findings         []findingResp `json:"findings"`
+	CreatedAt        time.Time     `json:"createdAt"`
+	UpdatedAt        time.Time     `json:"updatedAt"`
 }
 
 func toReview(rv review.Review) reviewResp {
@@ -455,7 +561,7 @@ func toReview(rv review.Review) reviewResp {
 	}
 	return reviewResp{
 		ID: rv.ID, RepoID: rv.RepoID, MRIID: rv.MRIID, ContextMode: string(rv.ContextMode),
-		Status: string(rv.Status), Phase: rv.Phase, Archived: rv.Archived, Summary: rv.Summary, Recommendation: string(rv.Recommendation),
+		Status: string(rv.Status), Phase: rv.Phase, Archived: rv.Archived, SummaryPublished: rv.SummaryPublished, Summary: rv.Summary, Recommendation: string(rv.Recommendation),
 		Score: rv.Score, Error: rv.Error, InputTokens: rv.InputTokens, OutputTokens: rv.OutputTokens,
 		Findings: findings, CreatedAt: rv.CreatedAt, UpdatedAt: rv.UpdatedAt,
 	}

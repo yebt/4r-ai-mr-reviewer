@@ -29,7 +29,7 @@ func (r *ProviderRepo) Create(ctx context.Context, p provider.Provider) error {
 	_, err := r.db.ExecContext(ctx,
 		`INSERT INTO providers(`+providerCols+`) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		p.ID, p.Name, string(p.Kind), p.BaseURL, p.Model, p.APIKeyRef, boolToInt(p.IsDefault),
-		nullFloat(p.Temperature), marshalModels(p.Models), formatTime(p.CreatedAt))
+		nullFloat(p.Temperature), marshalStringList(p.Models), formatTime(p.CreatedAt))
 	if err != nil {
 		return fmt.Errorf("provider repo: create: %w", err)
 	}
@@ -40,7 +40,7 @@ func (r *ProviderRepo) Create(ctx context.Context, p provider.Provider) error {
 func (r *ProviderRepo) Update(ctx context.Context, p provider.Provider) error {
 	res, err := r.db.ExecContext(ctx,
 		`UPDATE providers SET name = ?, kind = ?, base_url = ?, model = ?, temperature = ?, models = ? WHERE id = ?`,
-		p.Name, string(p.Kind), p.BaseURL, p.Model, nullFloat(p.Temperature), marshalModels(p.Models), p.ID)
+		p.Name, string(p.Kind), p.BaseURL, p.Model, nullFloat(p.Temperature), marshalStringList(p.Models), p.ID)
 	if err != nil {
 		return fmt.Errorf("provider repo: update: %w", err)
 	}
@@ -151,7 +151,7 @@ func scanProvider(s scanner) (provider.Provider, error) {
 		v := temp.Float64
 		p.Temperature = &v
 	}
-	p.Models = unmarshalModels(modelsJSON)
+	p.Models = unmarshalStringList(modelsJSON)
 	t, err := parseTime(createdAt)
 	if err != nil {
 		return provider.Provider{}, err
@@ -175,7 +175,7 @@ func nullFloat(f *float64) any {
 	return *f
 }
 
-func marshalModels(models []string) string {
+func marshalStringList(models []string) string {
 	if len(models) == 0 {
 		return "[]"
 	}
@@ -186,7 +186,7 @@ func marshalModels(models []string) string {
 	return string(b)
 }
 
-func unmarshalModels(raw string) []string {
+func unmarshalStringList(raw string) []string {
 	if raw == "" {
 		return nil
 	}

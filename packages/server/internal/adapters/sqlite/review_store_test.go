@@ -170,6 +170,35 @@ func TestReviewSetArchivedMissing(t *testing.T) {
 	}
 }
 
+func TestReviewMarkSummaryPublished(t *testing.T) {
+	ctx := context.Background()
+	s, repoID := newReviewStore(t)
+	rv := review.Review{ID: id.New(), RepoID: repoID, MRIID: 1, Status: review.StatusDone}
+	if err := s.Create(ctx, rv); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	got, _ := s.Get(ctx, rv.ID)
+	if got.SummaryPublished {
+		t.Fatalf("SummaryPublished = %v, want false by default", got.SummaryPublished)
+	}
+
+	if err := s.MarkSummaryPublished(ctx, rv.ID); err != nil {
+		t.Fatalf("MarkSummaryPublished: %v", err)
+	}
+	got, _ = s.Get(ctx, rv.ID)
+	if !got.SummaryPublished {
+		t.Fatalf("SummaryPublished = %v, want true", got.SummaryPublished)
+	}
+}
+
+func TestReviewMarkSummaryPublishedMissing(t *testing.T) {
+	s, _ := newReviewStore(t)
+	if err := s.MarkSummaryPublished(context.Background(), "nope"); !errors.Is(err, review.ErrNotFound) {
+		t.Fatalf("got %v, want ErrNotFound", err)
+	}
+}
+
 func TestReviewListArchivedByRepo(t *testing.T) {
 	ctx := context.Background()
 	s, repoID := newReviewStore(t)

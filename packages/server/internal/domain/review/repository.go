@@ -32,6 +32,9 @@ type Repository interface {
 	// MarkFindingsPublished flags the findings at the given positions (0-based,
 	// in stored order) as published to the platform.
 	MarkFindingsPublished(ctx context.Context, reviewID string, positions []int) error
+	// MarkSummaryPublished flags the review's summary as posted to the platform.
+	// Returns ErrNotFound if the review does not exist.
+	MarkSummaryPublished(ctx context.Context, id string) error
 	// Delete hard-removes a review and its findings. Returns ErrNotFound if the
 	// review does not exist.
 	Delete(ctx context.Context, id string) error

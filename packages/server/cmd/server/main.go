@@ -15,6 +15,7 @@ import (
 	"github.com/webcloster-dev/ai-reviewer/internal/adapters/crypto"
 	"github.com/webcloster-dev/ai-reviewer/internal/adapters/sqlite"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/accounts"
+	"github.com/webcloster-dev/ai-reviewer/internal/app/profiles"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/providers"
 	apprepos "github.com/webcloster-dev/ai-reviewer/internal/app/repos"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/reviews"
@@ -53,6 +54,7 @@ func run() error {
 	secrets := sqlite.NewSecretStore(db, cipher)
 	accountRepo := sqlite.NewAccountRepo(db)
 	providerRepo := sqlite.NewProviderRepo(db)
+	profileStore := sqlite.NewProfileStore(db)
 	repoStore := sqlite.NewRepoStore(db)
 	reviewStore := sqlite.NewReviewStore(db)
 	jobStore := sqlite.NewJobStore(db)
@@ -60,6 +62,7 @@ func run() error {
 	// Services.
 	accountSvc := accounts.NewService(accountRepo, secrets)
 	providerSvc := providers.NewService(providerRepo, secrets)
+	profileSvc := profiles.NewService(profileStore)
 	repoSvc := apprepos.NewService(repoStore, accountRepo, providerRepo)
 
 	ruleSet, err := skills.Load(cfg.SkillsDir)
@@ -72,7 +75,7 @@ func run() error {
 	reviewSvc.AttachRunner(runner)
 	go runner.Start(ctx)
 
-	api := httpapi.NewServer(accountSvc, providerSvc, repoSvc, reviewSvc, ruleSet)
+	api := httpapi.NewServer(accountSvc, providerSvc, profileSvc, repoSvc, reviewSvc, ruleSet)
 	srv := &http.Server{Addr: cfg.HTTPAddr, Handler: api.Routes()}
 
 	go func() {

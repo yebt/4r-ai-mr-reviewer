@@ -89,26 +89,30 @@ type Finding struct {
 
 // Review is a completed (or in-flight) review of one merge request.
 type Review struct {
-	ID             string
-	RepoID         string
-	MRIID          int
-	ContextMode    ContextMode
-	Status         Status
+	ID          string
+	RepoID      string
+	MRIID       int
+	ContextMode ContextMode
+	Status      Status
 	// Phase reports fine-grained progress while running (e.g. the current 4R
 	// lens in a multi-pass review). Empty when not running.
-	Phase          string
+	Phase string
 	// Archived soft-hides the review from the main list while keeping its
 	// history. Managed independently of the review lifecycle.
-	Archived       bool
-	Summary        string
-	Findings       []Finding
-	Recommendation Recommendation
-	Score          int
-	Error          string
-	InputTokens    int
-	OutputTokens   int
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	Archived bool
+	// SummaryPublished reports whether the summary/score header has been posted
+	// to the merge request. Set on the first publish so subsequent publishes do
+	// not re-post it unless explicitly requested.
+	SummaryPublished bool
+	Summary          string
+	Findings         []Finding
+	Recommendation   Recommendation
+	Score            int
+	Error            string
+	InputTokens      int
+	OutputTokens     int
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 // Score weights per finding, subtracted from a perfect 100.
