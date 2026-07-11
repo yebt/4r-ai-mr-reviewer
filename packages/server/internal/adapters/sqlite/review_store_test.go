@@ -138,6 +138,67 @@ func TestReviewSetPhase(t *testing.T) {
 	}
 }
 
+func TestReviewSetArchived(t *testing.T) {
+	ctx := context.Background()
+	s, repoID := newReviewStore(t)
+	rv := review.Review{ID: id.New(), RepoID: repoID, MRIID: 1, Status: review.StatusDone}
+	if err := s.Create(ctx, rv); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	if err := s.SetArchived(ctx, rv.ID, true); err != nil {
+		t.Fatalf("SetArchived: %v", err)
+	}
+	got, _ := s.Get(ctx, rv.ID)
+	if !got.Archived {
+		t.Fatalf("Archived = %v, want true", got.Archived)
+	}
+
+	if err := s.SetArchived(ctx, rv.ID, false); err != nil {
+		t.Fatalf("SetArchived unarchive: %v", err)
+	}
+	got, _ = s.Get(ctx, rv.ID)
+	if got.Archived {
+		t.Fatalf("Archived = %v, want false", got.Archived)
+	}
+}
+
+func TestReviewSetArchivedMissing(t *testing.T) {
+	s, _ := newReviewStore(t)
+	if err := s.SetArchived(context.Background(), "nope", true); !errors.Is(err, review.ErrNotFound) {
+		t.Fatalf("got %v, want ErrNotFound", err)
+	}
+}
+
+func TestReviewListArchivedByRepo(t *testing.T) {
+	ctx := context.Background()
+	s, repoID := newReviewStore(t)
+
+	active := review.Review{ID: id.New(), RepoID: repoID, MRIID: 1, Status: review.StatusDone}
+	_ = s.Create(ctx, active)
+	archived := review.Review{ID: id.New(), RepoID: repoID, MRIID: 2, Status: review.StatusDone}
+	_ = s.Create(ctx, archived)
+	if err := s.SetArchived(ctx, archived.ID, true); err != nil {
+		t.Fatalf("SetArchived: %v", err)
+	}
+
+	activeList, err := s.ListByRepo(ctx, repoID)
+	if err != nil {
+		t.Fatalf("ListByRepo: %v", err)
+	}
+	if len(activeList) != 1 || activeList[0].ID != active.ID {
+		t.Fatalf("active list should exclude archived, got %+v", activeList)
+	}
+
+	archivedList, err := s.ListArchivedByRepo(ctx, repoID)
+	if err != nil {
+		t.Fatalf("ListArchivedByRepo: %v", err)
+	}
+	if len(archivedList) != 1 || archivedList[0].ID != archived.ID {
+		t.Fatalf("archived list should include only archived, got %+v", archivedList)
+	}
+}
+
 func TestReviewGetMissing(t *testing.T) {
 	s, _ := newReviewStore(t)
 	if _, err := s.Get(context.Background(), "nope"); !errors.Is(err, review.ErrNotFound) {

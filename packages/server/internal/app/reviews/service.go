@@ -5,7 +5,9 @@ package reviews
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/webcloster-dev/ai-reviewer/internal/adapters/ai"
 	"github.com/webcloster-dev/ai-reviewer/internal/adapters/gitlab"
@@ -20,6 +22,10 @@ import (
 	reviewctx "github.com/webcloster-dev/ai-reviewer/internal/review/context"
 )
 
+// ErrNotCancelable is returned when a review is already in a terminal state and
+// therefore cannot be cancelled. The HTTP layer maps it to 409 Conflict.
+var ErrNotCancelable = errors.New("reviews: review is not cancelable")
+
 // Service orchestrates reviews.
 type Service struct {
 	reviews   review.Repository
@@ -28,6 +34,13 @@ type Service struct {
 	providers *providers.Service
 	strategy  engine.Strategy
 	runner    *jobs.Runner
+
+	// Cancellation state. Jobs run sequentially on the runner's shared context,
+	// so each running review gets its own cancelable context registered here;
+	// an HTTP-triggered Cancel (on another goroutine) fires it by id.
+	mu        sync.Mutex
+	cancels   map[string]context.CancelFunc // reviewID -> cancel of the running job's ctx
+	requested map[string]bool               // reviewID -> cancel requested (covers pending / pre-registration)
 }
 
 // NewService wires the orchestrator. Call AttachRunner before creating reviews.
@@ -38,7 +51,69 @@ func NewService(
 	providers *providers.Service,
 	strategy engine.Strategy,
 ) *Service {
-	return &Service{reviews: reviews, repos: repos, accounts: accounts, providers: providers, strategy: strategy}
+	return &Service{
+		reviews:   reviews,
+		repos:     repos,
+		accounts:  accounts,
+		providers: providers,
+		strategy:  strategy,
+		cancels:   make(map[string]context.CancelFunc),
+		requested: make(map[string]bool),
+	}
+}
+
+// markRequested records a cancellation request and, if the job is already
+// running, fires its context immediately.
+func (s *Service) markRequested(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.requested[id] = true
+	if cancel := s.cancels[id]; cancel != nil {
+		cancel()
+	}
+}
+
+// isRequested reports whether a cancellation was requested for id.
+func (s *Service) isRequested(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.requested[id]
+}
+
+// registerCancel stores the running job's cancel func. If a cancel was already
+// requested before registration (the race where Cancel arrives first), it fires
+// immediately.
+func (s *Service) registerCancel(id string, cancel context.CancelFunc) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.cancels[id] = cancel
+	if s.requested[id] {
+		cancel()
+	}
+}
+
+// clearCancel drops all cancellation state for a finished job.
+func (s *Service) clearCancel(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.cancels, id)
+	delete(s.requested, id)
+}
+
+// Cancel requests cooperative cancellation of a pending or running review. It
+// never writes the terminal status itself — Handle is the sole terminal-status
+// writer — so callers observe the flip to "cancelled" via polling. A review in
+// a terminal state returns ErrNotCancelable.
+func (s *Service) Cancel(ctx context.Context, reviewID string) error {
+	rv, err := s.reviews.Get(ctx, reviewID)
+	if err != nil {
+		return err
+	}
+	if rv.Status.Terminal() {
+		return ErrNotCancelable
+	}
+	s.markRequested(reviewID)
+	return nil
 }
 
 // AttachRunner sets the job runner used to enqueue reviews. This breaks the
@@ -69,9 +144,15 @@ func (s *Service) Create(ctx context.Context, repoID string, mrIID int, mode rev
 	return rv, nil
 }
 
-// List returns a repo's reviews (without findings), newest first.
+// List returns a repo's active (non-archived) reviews (without findings),
+// newest first.
 func (s *Service) List(ctx context.Context, repoID string) ([]review.Review, error) {
 	return s.reviews.ListByRepo(ctx, repoID)
+}
+
+// ListArchived returns a repo's archived reviews (without findings), newest first.
+func (s *Service) ListArchived(ctx context.Context, repoID string) ([]review.Review, error) {
+	return s.reviews.ListArchivedByRepo(ctx, repoID)
 }
 
 // Get returns a review with its findings.
@@ -82,6 +163,16 @@ func (s *Service) Get(ctx context.Context, reviewID string) (review.Review, erro
 // Delete hard-removes a review and its findings.
 func (s *Service) Delete(ctx context.Context, reviewID string) error {
 	return s.reviews.Delete(ctx, reviewID)
+}
+
+// Archive soft-hides a review from the active list, keeping its history.
+func (s *Service) Archive(ctx context.Context, reviewID string) error {
+	return s.reviews.SetArchived(ctx, reviewID, true)
+}
+
+// Unarchive restores an archived review to the active list.
+func (s *Service) Unarchive(ctx context.Context, reviewID string) error {
+	return s.reviews.SetArchived(ctx, reviewID, false)
 }
 
 // ListOpenMergeRequests lists the open MRs of a repo's GitLab project.
@@ -110,6 +201,14 @@ func (s *Service) Retry(ctx context.Context, reviewID string) (review.Review, er
 // Handle is the job handler: it executes one review by id and persists the
 // outcome. It returns an error only when the job itself should be marked failed.
 func (s *Service) Handle(ctx context.Context, reviewID string) error {
+	// Fast path: cancel requested before we even start (e.g. a pending job).
+	if s.isRequested(reviewID) {
+		_ = s.reviews.SetStatus(ctx, reviewID, review.StatusCancelled, "")
+		_ = s.reviews.SetPhase(ctx, reviewID, "")
+		s.clearCancel(reviewID)
+		return nil // job done — do NOT fail/retry
+	}
+
 	rv, err := s.reviews.Get(ctx, reviewID)
 	if err != nil {
 		return err
@@ -118,8 +217,24 @@ func (s *Service) Handle(ctx context.Context, reviewID string) error {
 		return err
 	}
 
-	result, err := s.execute(ctx, rv)
+	// Per-review cancelable context so an HTTP Cancel(id) can abort this job
+	// without touching the runner's shared, long-lived ctx.
+	cctx, cancel := context.WithCancel(ctx)
+	s.registerCancel(reviewID, cancel)
+	defer func() {
+		cancel()
+		s.clearCancel(reviewID)
+	}()
+
+	result, err := s.execute(cctx, rv)
 	if err != nil {
+		// Distinguish a cancellation from a genuine failure.
+		if cctx.Err() == context.Canceled || s.isRequested(reviewID) {
+			// Use the PARENT ctx for these writes — cctx is already cancelled.
+			_ = s.reviews.SetStatus(ctx, reviewID, review.StatusCancelled, "")
+			_ = s.reviews.SetPhase(ctx, reviewID, "")
+			return nil // job completes; no retry
+		}
 		// Record the failure on the review; the job also fails so it can retry.
 		_ = s.reviews.SetStatus(ctx, reviewID, review.StatusError, err.Error())
 		return err

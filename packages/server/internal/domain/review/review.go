@@ -46,11 +46,23 @@ const (
 type Status string
 
 const (
-	StatusPending Status = "pending"
-	StatusRunning Status = "running"
-	StatusDone    Status = "done"
-	StatusError   Status = "error"
+	StatusPending   Status = "pending"
+	StatusRunning   Status = "running"
+	StatusDone      Status = "done"
+	StatusError     Status = "error"
+	StatusCancelled Status = "cancelled"
 )
+
+// Terminal reports whether the status is a final lifecycle state that no longer
+// changes on its own (done, error or cancelled).
+func (s Status) Terminal() bool {
+	switch s {
+	case StatusDone, StatusError, StatusCancelled:
+		return true
+	default:
+		return false
+	}
+}
 
 // ContextMode selects how much material the engine sees: Fast is the diff plus
 // touched files; Deep clones the repo for surrounding context.
@@ -85,6 +97,9 @@ type Review struct {
 	// Phase reports fine-grained progress while running (e.g. the current 4R
 	// lens in a multi-pass review). Empty when not running.
 	Phase          string
+	// Archived soft-hides the review from the main list while keeping its
+	// history. Managed independently of the review lifecycle.
+	Archived       bool
 	Summary        string
 	Findings       []Finding
 	Recommendation Recommendation

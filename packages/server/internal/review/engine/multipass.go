@@ -49,6 +49,11 @@ func (m *MultiPass) Run(ctx context.Context, client llm.Client, model string, te
 		outputTokens int
 	)
 	for _, p := range passes {
+		// Cooperative cancellation between passes, in case the AI adapter did
+		// not honour ctx on the in-flight call.
+		if err := ctx.Err(); err != nil {
+			return review.Review{}, err
+		}
 		reportPhase(onPhase, p.phase)
 
 		resp, err := client.Complete(ctx, llm.Request{

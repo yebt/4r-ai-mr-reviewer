@@ -59,6 +59,10 @@ func (e *Engine) Run(ctx context.Context, client llm.Client, model string, tempe
 	if in.Diff == "" {
 		return review.Review{}, fmt.Errorf("engine: empty diff")
 	}
+	// Cooperative cancellation before the (single) LLM call.
+	if err := ctx.Err(); err != nil {
+		return review.Review{}, err
+	}
 	reportPhase(onPhase, "reviewing")
 
 	resp, err := client.Complete(ctx, llm.Request{

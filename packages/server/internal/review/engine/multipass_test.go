@@ -92,6 +92,27 @@ func TestMultiPassEmptyDiff(t *testing.T) {
 	}
 }
 
+// failClient fails the test if Complete is ever called — used to prove
+// cancellation short-circuits before any LLM call.
+type failClient struct{ t *testing.T }
+
+func (c *failClient) Complete(_ context.Context, _ llm.Request) (llm.Response, error) {
+	c.t.Fatal("Complete must not be called on an already-cancelled context")
+	return llm.Response{}, nil
+}
+
+func TestMultiPassCancelledContext(t *testing.T) {
+	mp := newMultiPass(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel before Run so the first pass check trips.
+
+	_, err := mp.Run(ctx, &failClient{t: t}, "m", nil, sampleInput(), nil)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+}
+
 func equalStrings(a, b []string) bool {
 	if len(a) != len(b) {
 		return false

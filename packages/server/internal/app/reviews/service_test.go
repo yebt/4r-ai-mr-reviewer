@@ -3,6 +3,7 @@ package reviews
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"net/http"
@@ -128,6 +129,113 @@ func TestReviewEndToEnd(t *testing.T) {
 	}
 	if got.InputTokens != 50 || got.OutputTokens != 20 {
 		t.Fatalf("tokens = %d/%d, want 50/20", got.InputTokens, got.OutputTokens)
+	}
+}
+
+// TestCancelPendingBeforeRun cancels a pending review, then runs the handler
+// directly: the fast path must mark it cancelled and return nil (no retry),
+// without ever reaching the engine.
+func TestCancelPendingBeforeRun(t *testing.T) {
+	ctx := context.Background()
+
+	gl := gitlabStub(t)
+	defer gl.Close()
+	aiSrv := aiStub(t, `{"findings":[]}`)
+	defer aiSrv.Close()
+
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer db.Close()
+
+	salt, _ := crypto.NewSalt()
+	key, _ := crypto.DeriveKey("pw", salt)
+	cipher, _ := crypto.NewCipher(key)
+	secrets := sqlite.NewSecretStore(db, cipher)
+	accountSvc := accounts.NewService(sqlite.NewAccountRepo(db), secrets)
+	providerSvc := providers.NewService(sqlite.NewProviderRepo(db), secrets)
+	repoSvc := appRepos.NewService(sqlite.NewRepoStore(db), sqlite.NewAccountRepo(db), sqlite.NewProviderRepo(db))
+	reviewStore := sqlite.NewReviewStore(db)
+
+	acc, _ := accountSvc.Add(ctx, "acc", gl.URL, "token")
+	prov, _ := providerSvc.Add(ctx, providers.AddInput{Name: "p", Kind: provider.KindOpenAICompat, BaseURL: aiSrv.URL, Model: "m", APIKey: "k"})
+	rp, _ := repoSvc.Add(ctx, appRepos.AddInput{Name: "web", URL: "https://gitlab.test/group/project", AccountID: acc.ID, ProviderID: prov.ID})
+
+	set, _ := skills.Load("")
+	svc := NewService(reviewStore, sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.NewMultiPass(set))
+	runner := jobs.NewRunner(sqlite.NewJobStore(db), svc.Handle, jobs.WithLogger(log.New(io.Discard, "", 0)))
+	svc.AttachRunner(runner)
+
+	rv, err := svc.Create(ctx, rp.ID, 7, review.ModeFast)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	if err := svc.Cancel(ctx, rv.ID); err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+	if err := svc.Handle(ctx, rv.ID); err != nil {
+		t.Fatalf("Handle after cancel = %v, want nil (no retry)", err)
+	}
+
+	got, err := reviewStore.Get(ctx, rv.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Status != review.StatusCancelled {
+		t.Fatalf("status = %s, want cancelled", got.Status)
+	}
+	if got.Phase != "" {
+		t.Fatalf("phase = %q, want empty", got.Phase)
+	}
+}
+
+// TestCancelTerminalRejected asserts Cancel refuses a review already in a
+// terminal state.
+func TestCancelTerminalRejected(t *testing.T) {
+	ctx := context.Background()
+
+	gl := gitlabStub(t)
+	defer gl.Close()
+	aiSrv := aiStub(t, `{"findings":[]}`)
+	defer aiSrv.Close()
+
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer db.Close()
+
+	salt, _ := crypto.NewSalt()
+	key, _ := crypto.DeriveKey("pw", salt)
+	cipher, _ := crypto.NewCipher(key)
+	secrets := sqlite.NewSecretStore(db, cipher)
+	accountSvc := accounts.NewService(sqlite.NewAccountRepo(db), secrets)
+	providerSvc := providers.NewService(sqlite.NewProviderRepo(db), secrets)
+	repoSvc := appRepos.NewService(sqlite.NewRepoStore(db), sqlite.NewAccountRepo(db), sqlite.NewProviderRepo(db))
+	reviewStore := sqlite.NewReviewStore(db)
+
+	acc, _ := accountSvc.Add(ctx, "acc", gl.URL, "token")
+	prov, _ := providerSvc.Add(ctx, providers.AddInput{Name: "p", Kind: provider.KindOpenAICompat, BaseURL: aiSrv.URL, Model: "m", APIKey: "k"})
+	rp, _ := repoSvc.Add(ctx, appRepos.AddInput{Name: "web", URL: "https://gitlab.test/group/project", AccountID: acc.ID, ProviderID: prov.ID})
+
+	set, _ := skills.Load("")
+	svc := NewService(reviewStore, sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.NewMultiPass(set))
+	runner := jobs.NewRunner(sqlite.NewJobStore(db), svc.Handle, jobs.WithLogger(log.New(io.Discard, "", 0)))
+	svc.AttachRunner(runner)
+
+	rv, err := svc.Create(ctx, rp.ID, 7, review.ModeFast)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	// Force a terminal state directly on the store.
+	if err := reviewStore.SetStatus(ctx, rv.ID, review.StatusDone, ""); err != nil {
+		t.Fatalf("SetStatus: %v", err)
+	}
+
+	if err := svc.Cancel(ctx, rv.ID); !errors.Is(err, ErrNotCancelable) {
+		t.Fatalf("Cancel on terminal = %v, want ErrNotCancelable", err)
 	}
 }
 

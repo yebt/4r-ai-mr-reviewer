@@ -141,7 +141,9 @@ Live-fetches the repo's **open** MRs from GitLab.
 ```
 
 ### `GET /repos/{id}/reviews` → `200`
-The repo's reviews, newest first (without findings).
+The repo's **active** reviews, newest first (without findings). Pass
+`?archived=1` (or `?archived=true`) to return the repo's **archived** reviews
+instead; the default returns active only.
 
 ---
 
@@ -154,15 +156,16 @@ The repo's reviews, newest first (without findings).
 Creates a **pending** review and enqueues it. The review runs asynchronously as
 a **multi-pass 4R review** — one focused model call per lens (Risk → Readability
 → Reliability → Resilience). Poll `GET /reviews/{id}` for status
-(`pending → running → done | error`) and `phase` (the current lens while running:
-`risk`/`readability`/`reliability`/`resilience`, empty otherwise).
+(`pending → running → done | error | cancelled`) and `phase` (the current lens
+while running: `risk`/`readability`/`reliability`/`resilience`, empty otherwise).
 
 ### `GET /reviews/{id}` → `200`
-Full review including findings:
+Full review including findings. `status` is one of
+`pending`/`running`/`done`/`error`/`cancelled`:
 ```json
 {
   "id": "…", "repoId": "…", "mrIid": 7, "contextMode": "fast",
-  "status": "done", "phase": "", "summary": "…",
+  "status": "done", "phase": "", "archived": false, "summary": "…",
   "recommendation": "request_changes", "score": 75,
   "inputTokens": 1200, "outputTokens": 300,
   "findings": [
@@ -180,6 +183,30 @@ Hard-removes the review and all its findings. Returns `404` if it does not exist
 ### `POST /reviews/{id}/retry` → `201`
 Clones the review's configuration into a fresh pending review. The original
 (errored) review is kept for history.
+
+### `POST /reviews/{id}/cancel` → `200`
+Requests cooperative cancellation of a **pending** or **running** review. The
+request returns immediately; a running review aborts its in-flight model call and
+flips to the `cancelled` terminal state shortly after (observe it by polling
+`GET /reviews/{id}`). Returns `409` if the review is already in a terminal state
+(`done`/`error`/`cancelled`), and `404` if it does not exist.
+```json
+{ "status": "cancelling" }
+```
+
+### `POST /reviews/{id}/archive` → `200`
+Soft-hides the review from the active list (`GET /repos/{id}/reviews`) while
+keeping its full history. Returns `404` if the review does not exist.
+```json
+{ "status": "archived" }
+```
+
+### `POST /reviews/{id}/unarchive` → `200`
+Restores an archived review to the active list. Returns `404` if the review does
+not exist.
+```json
+{ "status": "unarchived" }
+```
 
 ### `POST /reviews/{id}/publish` → `200`
 Publishes selected findings to the merge request as inline discussions (or a

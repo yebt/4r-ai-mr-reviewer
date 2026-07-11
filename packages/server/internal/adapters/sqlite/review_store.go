@@ -24,7 +24,7 @@ func NewReviewStore(db *sql.DB) *ReviewStore {
 
 var _ review.Repository = (*ReviewStore)(nil)
 
-const reviewCols = `id, repo_id, mr_iid, context_mode, status, phase, summary, recommendation, score, error, input_tokens, output_tokens, created_at, updated_at`
+const reviewCols = `id, repo_id, mr_iid, context_mode, status, phase, archived, summary, recommendation, score, error, input_tokens, output_tokens, created_at, updated_at`
 
 // Create inserts a new review row (findings, if any, are written too).
 func (r *ReviewStore) Create(ctx context.Context, rv review.Review) error {
@@ -33,8 +33,8 @@ func (r *ReviewStore) Create(ctx context.Context, rv review.Review) error {
 		rv.ContextMode = review.ModeFast
 	}
 	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO reviews(`+reviewCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		rv.ID, rv.RepoID, rv.MRIID, string(rv.ContextMode), string(rv.Status), rv.Phase, rv.Summary, string(rv.Recommendation),
+		`INSERT INTO reviews(`+reviewCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		rv.ID, rv.RepoID, rv.MRIID, string(rv.ContextMode), string(rv.Status), rv.Phase, boolToInt(rv.Archived), rv.Summary, string(rv.Recommendation),
 		rv.Score, rv.Error, rv.InputTokens, rv.OutputTokens, now, now)
 	if err != nil {
 		return fmt.Errorf("review store: create: %w", err)
@@ -114,10 +114,22 @@ func (r *ReviewStore) Get(ctx context.Context, id string) (review.Review, error)
 	return rv, rows.Err()
 }
 
-// ListByRepo returns a repo's reviews without findings, newest first.
+// ListByRepo returns a repo's active (non-archived) reviews without findings,
+// newest first.
 func (r *ReviewStore) ListByRepo(ctx context.Context, repoID string) ([]review.Review, error) {
+	return r.listByRepo(ctx, repoID, false)
+}
+
+// ListArchivedByRepo returns a repo's archived reviews without findings,
+// newest first.
+func (r *ReviewStore) ListArchivedByRepo(ctx context.Context, repoID string) ([]review.Review, error) {
+	return r.listByRepo(ctx, repoID, true)
+}
+
+func (r *ReviewStore) listByRepo(ctx context.Context, repoID string, archived bool) ([]review.Review, error) {
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT `+reviewCols+` FROM reviews WHERE repo_id = ? ORDER BY created_at DESC`, repoID)
+		`SELECT `+reviewCols+` FROM reviews WHERE repo_id = ? AND archived = ? ORDER BY created_at DESC`,
+		repoID, boolToInt(archived))
 	if err != nil {
 		return nil, fmt.Errorf("review store: list: %w", err)
 	}
@@ -164,6 +176,20 @@ func (r *ReviewStore) SetPhase(ctx context.Context, id string, phase string) err
 	return nil
 }
 
+// SetArchived updates only the archived flag.
+func (r *ReviewStore) SetArchived(ctx context.Context, id string, archived bool) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE reviews SET archived = ?, updated_at = ? WHERE id = ?`,
+		boolToInt(archived), formatTime(time.Now().UTC()), id)
+	if err != nil {
+		return fmt.Errorf("review store: set archived: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return review.ErrNotFound
+	}
+	return nil
+}
+
 // SetStatus updates only status and error.
 func (r *ReviewStore) SetStatus(ctx context.Context, id string, status review.Status, errMsg string) error {
 	res, err := r.db.ExecContext(ctx,
@@ -203,15 +229,17 @@ func scanReview(s scanner) (review.Review, error) {
 	var (
 		rv                 review.Review
 		mode, status, rec  string
+		archived           int
 		createdAt, updated string
 	)
-	if err := s.Scan(&rv.ID, &rv.RepoID, &rv.MRIID, &mode, &status, &rv.Phase, &rv.Summary, &rec,
+	if err := s.Scan(&rv.ID, &rv.RepoID, &rv.MRIID, &mode, &status, &rv.Phase, &archived, &rv.Summary, &rec,
 		&rv.Score, &rv.Error, &rv.InputTokens, &rv.OutputTokens, &createdAt, &updated); err != nil {
 		return review.Review{}, err
 	}
 	rv.ContextMode = review.ContextMode(mode)
 	rv.Status = review.Status(status)
 	rv.Recommendation = review.Recommendation(rec)
+	rv.Archived = archived != 0
 
 	ct, err := parseTime(createdAt)
 	if err != nil {

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
@@ -234,7 +235,11 @@ func (s *Server) listMergeRequests(w http.ResponseWriter, r *http.Request) {
 // --- reviews ---
 
 func (s *Server) listReviews(w http.ResponseWriter, r *http.Request) {
-	rvs, err := s.reviews.List(r.Context(), r.PathValue("id"))
+	list := s.reviews.List
+	if q := r.URL.Query().Get("archived"); q == "1" || q == "true" {
+		list = s.reviews.ListArchived
+	}
+	rvs, err := list(r.Context(), r.PathValue("id"))
 	if err != nil {
 		writeErr(w, err, http.StatusInternalServerError)
 		return
@@ -288,6 +293,36 @@ func (s *Server) deleteReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) cancelReview(w http.ResponseWriter, r *http.Request) {
+	if err := s.reviews.Cancel(r.Context(), r.PathValue("id")); err != nil {
+		if errors.Is(err, reviews.ErrNotCancelable) {
+			writeErr(w, err, http.StatusConflict)
+			return
+		}
+		writeErr(w, err, http.StatusInternalServerError)
+		return
+	}
+	// Cancellation is cooperative: a running review flips to "cancelled"
+	// shortly after, which the client observes by polling.
+	writeJSON(w, http.StatusOK, map[string]string{"status": "cancelling"})
+}
+
+func (s *Server) archiveReview(w http.ResponseWriter, r *http.Request) {
+	if err := s.reviews.Archive(r.Context(), r.PathValue("id")); err != nil {
+		writeErr(w, err, http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "archived"})
+}
+
+func (s *Server) unarchiveReview(w http.ResponseWriter, r *http.Request) {
+	if err := s.reviews.Unarchive(r.Context(), r.PathValue("id")); err != nil {
+		writeErr(w, err, http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "unarchived"})
 }
 
 func (s *Server) publishReview(w http.ResponseWriter, r *http.Request) {
@@ -397,6 +432,7 @@ type reviewResp struct {
 	ContextMode    string        `json:"contextMode"`
 	Status         string        `json:"status"`
 	Phase          string        `json:"phase"`
+	Archived       bool          `json:"archived"`
 	Summary        string        `json:"summary"`
 	Recommendation string        `json:"recommendation"`
 	Score          int           `json:"score"`
@@ -419,7 +455,7 @@ func toReview(rv review.Review) reviewResp {
 	}
 	return reviewResp{
 		ID: rv.ID, RepoID: rv.RepoID, MRIID: rv.MRIID, ContextMode: string(rv.ContextMode),
-		Status: string(rv.Status), Phase: rv.Phase, Summary: rv.Summary, Recommendation: string(rv.Recommendation),
+		Status: string(rv.Status), Phase: rv.Phase, Archived: rv.Archived, Summary: rv.Summary, Recommendation: string(rv.Recommendation),
 		Score: rv.Score, Error: rv.Error, InputTokens: rv.InputTokens, OutputTokens: rv.OutputTokens,
 		Findings: findings, CreatedAt: rv.CreatedAt, UpdatedAt: rv.UpdatedAt,
 	}
