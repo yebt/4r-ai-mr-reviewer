@@ -2,6 +2,7 @@
 // which Vite proxies to the server in dev (see vite.config.ts).
 import type {
   Account,
+  HumanizeFindingText,
   HumanizeVariant,
   MergeRequest,
   Profile,
@@ -130,7 +131,16 @@ export const api = {
   unarchiveReview: (id: string) => request<{ status: string }>('POST', `/reviews/${id}/unarchive`),
   publishReview: (
     id: string,
-    input: { all?: boolean; indices?: number[]; includeSummary?: boolean },
+    input: {
+      all?: boolean
+      indices?: number[]
+      includeSummary?: boolean
+      // Per-publish overrides: replace the generated summary body and/or the
+      // generated body of individual findings with user-chosen (humanized) text.
+      // Omitted fields keep today's behavior (generated text is posted).
+      summaryOverride?: string
+      findingOverrides?: HumanizeFindingText[]
+    },
   ) => request<{ status: string }>('POST', `/reviews/${id}/publish`, input),
   // Ephemeral: rewrites a finished review in a profile's voice. Nothing is
   // persisted; the call runs a synchronous LLM completion so it may be slow.

@@ -416,15 +416,33 @@ func (s *Server) unarchiveReview(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) publishReview(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		All            bool  `json:"all"`
-		Indices        []int `json:"indices"`
-		IncludeSummary *bool `json:"includeSummary"`
+		All              bool    `json:"all"`
+		Indices          []int   `json:"indices"`
+		IncludeSummary   *bool   `json:"includeSummary"`
+		SummaryOverride  *string `json:"summaryOverride"`
+		FindingOverrides []struct {
+			Index int    `json:"index"`
+			Text  string `json:"text"`
+		} `json:"findingOverrides"`
 	}
 	if err := decode(r, &in); err != nil {
 		writeErr(w, err, http.StatusBadRequest)
 		return
 	}
-	if err := s.reviews.Publish(r.Context(), r.PathValue("id"), reviews.Selection{All: in.All, Indices: in.Indices, IncludeSummary: in.IncludeSummary}); err != nil {
+	var findingOverrides map[int]string
+	if len(in.FindingOverrides) > 0 {
+		findingOverrides = make(map[int]string, len(in.FindingOverrides))
+		for _, o := range in.FindingOverrides {
+			findingOverrides[o.Index] = o.Text
+		}
+	}
+	if err := s.reviews.Publish(r.Context(), r.PathValue("id"), reviews.Selection{
+		All:              in.All,
+		Indices:          in.Indices,
+		IncludeSummary:   in.IncludeSummary,
+		SummaryOverride:  in.SummaryOverride,
+		FindingOverrides: findingOverrides,
+	}); err != nil {
 		writeErr(w, err, http.StatusBadGateway)
 		return
 	}

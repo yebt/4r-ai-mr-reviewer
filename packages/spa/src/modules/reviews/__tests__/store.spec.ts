@@ -168,6 +168,24 @@ describe('reviews store', () => {
     expect(mocked.publishReview).toHaveBeenCalledWith('1', { indices: [0], includeSummary: false })
   })
 
+  it('publish forwards summaryOverride and findingOverrides to the api', async () => {
+    mocked.publishReview.mockResolvedValue({ status: 'published' })
+    mocked.getReview.mockResolvedValue(review('1', 'done'))
+    const store = useReviewsStore()
+    await store.publish('1', {
+      all: true,
+      includeSummary: true,
+      summaryOverride: 'nicer summary',
+      findingOverrides: [{ index: 0, text: 'kinder finding' }],
+    })
+    expect(mocked.publishReview).toHaveBeenCalledWith('1', {
+      all: true,
+      includeSummary: true,
+      summaryOverride: 'nicer summary',
+      findingOverrides: [{ index: 0, text: 'kinder finding' }],
+    })
+  })
+
   it('humanize calls the api with the right args and returns the variants', async () => {
     const variants = [{ summary: 'nicer', findings: [{ index: 0, text: 'kinder' }] }]
     mocked.humanizeReview.mockResolvedValue({ variants })

@@ -24,13 +24,16 @@ import (
 	"github.com/webcloster-dev/ai-reviewer/internal/review/skills"
 )
 
-// recordingGitLab serves /changes (with diff_refs) and counts posted notes and
-// inline discussions.
+// recordingGitLab serves /changes (with diff_refs), counts posted notes and
+// inline discussions, and captures their "body" form values so tests can assert
+// the exact text posted.
 type recordingGitLab struct {
 	*httptest.Server
-	mu          sync.Mutex
-	notes       int
-	discussions int
+	mu               sync.Mutex
+	notes            int
+	discussions      int
+	noteBodies       []string
+	discussionBodies []string
 }
 
 func newRecordingGitLab(t *testing.T) *recordingGitLab {
@@ -47,13 +50,17 @@ func newRecordingGitLab(t *testing.T) *recordingGitLab {
 				"changes":       []map[string]any{{"old_path": "a.go", "new_path": "a.go", "diff": "@@ @@"}},
 			})
 		case strings.HasSuffix(r.URL.Path, "/discussions"):
+			body := r.FormValue("body")
 			g.mu.Lock()
 			g.discussions++
+			g.discussionBodies = append(g.discussionBodies, body)
 			g.mu.Unlock()
 			w.WriteHeader(http.StatusCreated)
 		case strings.HasSuffix(r.URL.Path, "/notes"):
+			body := r.FormValue("body")
 			g.mu.Lock()
 			g.notes++
+			g.noteBodies = append(g.noteBodies, body)
 			g.mu.Unlock()
 			w.WriteHeader(http.StatusCreated)
 		default:
@@ -256,6 +263,77 @@ func TestPublishSummaryReselectable(t *testing.T) {
 	// +1 summary note = 3 total (findings skipped, already published).
 	if notes != 3 {
 		t.Fatalf("after re-selected publish = %d notes, want 3 (summary re-posted, findings skipped)", notes)
+	}
+}
+
+// TestPublishUsesFindingOverride verifies that a FindingOverrides entry replaces
+// the generated body for that finding as-is (no dimension/severity header), while
+// a non-overridden finding still uses formatFinding output.
+func TestPublishUsesFindingOverride(t *testing.T) {
+	ctx, svc, gl, rvID := setupPublishTest(t)
+
+	// Index 0 is the inline finding (a.go:3). Override its body; leave index 1
+	// (the line-less general finding) untouched.
+	sel := Selection{
+		All:              true,
+		FindingOverrides: map[int]string{0: "humanized inline text"},
+	}
+	if err := svc.Publish(ctx, rvID, sel); err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+
+	gl.mu.Lock()
+	discussionBodies := append([]string(nil), gl.discussionBodies...)
+	noteBodies := append([]string(nil), gl.noteBodies...)
+	gl.mu.Unlock()
+
+	// The overridden inline finding posts as a discussion with the exact override.
+	if len(discussionBodies) != 1 {
+		t.Fatalf("discussions = %d, want 1", len(discussionBodies))
+	}
+	if discussionBodies[0] != "humanized inline text" {
+		t.Fatalf("discussion body = %q, want %q", discussionBodies[0], "humanized inline text")
+	}
+	if strings.Contains(discussionBodies[0], "Risk") {
+		t.Fatalf("override body should not carry the dimension header, got %q", discussionBodies[0])
+	}
+
+	// The non-overridden general finding still uses formatFinding output. Notes are
+	// [summary, general finding]; the finding note carries the dimension label.
+	found := false
+	for _, b := range noteBodies {
+		if strings.Contains(b, "Readability") && strings.Contains(b, "vague description") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("non-overridden finding note not found in %q", noteBodies)
+	}
+}
+
+// TestPublishUsesSummaryOverride verifies that SummaryOverride replaces the
+// generated summary body as-is.
+func TestPublishUsesSummaryOverride(t *testing.T) {
+	ctx, svc, gl, rvID := setupPublishTest(t)
+
+	sel := Selection{
+		All:             true,
+		SummaryOverride: ptr("humanized summary"),
+	}
+	if err := svc.Publish(ctx, rvID, sel); err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+
+	gl.mu.Lock()
+	noteBodies := append([]string(nil), gl.noteBodies...)
+	gl.mu.Unlock()
+
+	// Summary is the first note posted.
+	if len(noteBodies) == 0 {
+		t.Fatalf("no notes posted")
+	}
+	if noteBodies[0] != "humanized summary" {
+		t.Fatalf("summary body = %q, want %q", noteBodies[0], "humanized summary")
 	}
 }
 

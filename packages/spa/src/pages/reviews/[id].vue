@@ -315,7 +315,11 @@ async function remove() {
           </div>
         </section>
 
-        <HumanizePanel :review-id="review.id" :findings="review.findings" />
+        <HumanizePanel
+          :review-id="review.id"
+          :findings="review.findings"
+          :include-summary="includeSummary"
+        />
       </template>
     </template>
   </div>

@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { api, errorMessage } from '@shared/api/client'
-import type { HumanizeVariant, MergeRequest, Review } from '@shared/api/types'
+import type { HumanizeFindingText, HumanizeVariant, MergeRequest, Review } from '@shared/api/types'
 
 export const useReviewsStore = defineStore('reviews', () => {
   // Caches keyed by repo id, so revisiting a repo shows its previous MRs/reviews
@@ -197,7 +197,14 @@ export const useReviewsStore = defineStore('reviews', () => {
 
   async function publish(
     id: string,
-    selection: { all?: boolean; indices?: number[]; includeSummary?: boolean },
+    selection: {
+      all?: boolean
+      indices?: number[]
+      includeSummary?: boolean
+      // Optional per-publish overrides (humanized summary / finding bodies).
+      summaryOverride?: string
+      findingOverrides?: HumanizeFindingText[]
+    },
   ) {
     await api.publishReview(id, selection)
     await refresh(id)

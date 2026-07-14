@@ -14,10 +14,18 @@ import (
 // into the review's stored findings. IncludeSummary is a tri-state override for
 // posting the summary note: nil defaults to posting only on the first publish,
 // while a non-nil value forces (true) or suppresses (false) the summary.
+//
+// SummaryOverride and FindingOverrides carry humanized text that REPLACES the
+// generated body as-is: a non-nil SummaryOverride is posted instead of
+// formatSummary(rv), and FindingOverrides[i] (keyed by finding index) is posted
+// instead of formatFinding(rv.Findings[i]). Overrides are self-contained
+// comments in the user's voice, so no dimension/severity header is prepended.
 type Selection struct {
-	All            bool
-	Indices        []int
-	IncludeSummary *bool
+	All              bool
+	Indices          []int
+	IncludeSummary   *bool
+	SummaryOverride  *string
+	FindingOverrides map[int]string
 }
 
 // Publish posts the review summary and the selected findings to the merge
@@ -51,7 +59,11 @@ func (s *Service) Publish(ctx context.Context, reviewID string, sel Selection) e
 		postSummary = *sel.IncludeSummary // explicit override (re-selectable)
 	}
 	if postSummary {
-		if err := gl.CreateNote(ctx, projectID, rv.MRIID, formatSummary(rv)); err != nil {
+		body := formatSummary(rv)
+		if sel.SummaryOverride != nil {
+			body = *sel.SummaryOverride // humanized summary replaces the generated body
+		}
+		if err := gl.CreateNote(ctx, projectID, rv.MRIID, body); err != nil {
 			return err
 		}
 		if err := s.reviews.MarkSummaryPublished(ctx, reviewID); err != nil {
@@ -64,6 +76,9 @@ func (s *Service) Publish(ctx context.Context, reviewID string, sel Selection) e
 	for _, i := range indices {
 		f := rv.Findings[i]
 		body := formatFinding(f)
+		if text, ok := sel.FindingOverrides[i]; ok {
+			body = text // humanized text replaces the generated body as-is
+		}
 
 		var perr error
 		if f.File != "" && f.Line > 0 {

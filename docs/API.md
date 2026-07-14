@@ -331,6 +331,21 @@ summary posts only while `summaryPublished` is still `false`.
 ```json
 { "all": true, "includeSummary": true }
 ```
+Optionally override the posted text with humanized versions. `summaryOverride`
+(string) replaces the generated summary body, and `findingOverrides`
+(`[{ "index", "text" }]`) replaces the generated body of each listed finding.
+When provided, the humanized text is posted **as-is** — it is treated as a
+self-contained comment, so the dimension/severity/blocking header is **not**
+prepended. Omit them to keep the generated bodies unchanged.
+```json
+{
+  "all": true,
+  "summaryOverride": "Nice work overall — a couple of things to tighten up.",
+  "findingOverrides": [
+    { "index": 0, "text": "This log line leaks the API token; let's redact it." }
+  ]
+}
+```
 Published findings are marked so a re-publish will not duplicate them, and
 `summaryPublished` flips to `true` once the summary has been posted.
 

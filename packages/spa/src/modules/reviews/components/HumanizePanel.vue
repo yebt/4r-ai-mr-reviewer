@@ -7,8 +7,16 @@ import type { Finding, HumanizeVariant } from '@shared/api/types'
 import { useReviewsStore } from '@modules/reviews/store'
 import { useProfilesStore } from '@modules/profiles/store'
 import { dimensionLabel } from '@modules/reviews/format'
+import {
+  ORIGINAL,
+  buildOverrides,
+  variantFindingText,
+} from '@modules/reviews/humanize-overrides'
 
-const props = defineProps<{ reviewId: string; findings: Finding[] }>()
+// includeSummary is lifted from the parent ([id].vue) rather than duplicated as
+// a second checkbox here: the user's "Include summary note" intent has a single
+// source of truth, and "Publish humanized" reuses it verbatim.
+const props = defineProps<{ reviewId: string; findings: Finding[]; includeSummary: boolean }>()
 
 const store = useReviewsStore()
 const profiles = useProfilesStore()
@@ -40,6 +48,35 @@ const findingByIndex = computed(() => {
 
 const current = computed<HumanizeVariant | null>(() => variants.value[activeVariant.value] ?? null)
 
+// Per-finding + summary source selection for the "Publish humanized" action.
+// ORIGINAL means "post the generated text" (no override); a variant index picks
+// that variant's humanized text. Defaults to ORIGINAL everywhere.
+const summarySource = ref(ORIGINAL)
+const findingSources = ref<Record<number, number>>({})
+const publishing = ref(false)
+const publishError = ref<string | null>(null)
+
+// Only offer a summary source selector when at least one variant carries a
+// summary — some reviews (or profiles) may return finding-only rewrites.
+const hasSummaryVariant = computed(() => variants.value.some((v) => v.summary))
+
+function findingSource(index: number): number {
+  return findingSources.value[index] ?? ORIGINAL
+}
+
+function setFindingSource(index: number, source: number) {
+  findingSources.value[index] = source
+}
+
+function findingText(source: number, index: number): string {
+  return variantFindingText(variants.value, source, index)
+}
+
+function resetSelection() {
+  summarySource.value = ORIGINAL
+  findingSources.value = {}
+}
+
 async function toggle() {
   open.value = !open.value
   if (open.value && profiles.items.length === 0) await profiles.fetchAll()
@@ -52,6 +89,7 @@ async function run() {
   try {
     variants.value = await store.humanize(props.reviewId, profileId.value, count.value)
     activeVariant.value = 0
+    resetSelection()
     if (variants.value.length === 0) {
       error.value = 'No variants were returned.'
     }
@@ -90,6 +128,35 @@ async function copyAll() {
   if (!v) return
   const parts = [v.summary, ...v.findings.map((f) => f.text)].filter(Boolean)
   await copy(parts.join('\n\n'))
+}
+
+// Publishes to the MR using the per-finding / summary source selections: any
+// finding (or the summary) left on Original posts its generated text; the rest
+// post the chosen variant's humanized text. Kept visually separate from the
+// main publish buttons in [id].vue so it is clear this posts humanized copy.
+async function publishHumanized() {
+  if (publishing.value || variants.value.length === 0) return
+  publishing.value = true
+  publishError.value = null
+  try {
+    const overrides = buildOverrides(
+      { summary: summarySource.value, findings: findingSources.value },
+      variants.value,
+      props.findings,
+    )
+    await store.publish(props.reviewId, {
+      all: true,
+      includeSummary: props.includeSummary,
+      ...overrides,
+    })
+    toast.success('Published')
+  } catch (e) {
+    // Surface raw publish failures (409 conflict, 502 GitLab error, etc.).
+    publishError.value = errorMessage(e)
+    toast.error(publishError.value)
+  } finally {
+    publishing.value = false
+  }
 }
 </script>
 
@@ -197,6 +264,125 @@ async function copyAll() {
                 </button>
               </div>
               <p class="text-ink text-sm leading-relaxed whitespace-pre-wrap">{{ ft.text }}</p>
+            </div>
+          </div>
+
+          <!-- Publish to MR: pick Original or a variant per finding / summary. -->
+          <div class="border-accent/40 mt-8 border-t-2 pt-5">
+            <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <span class="section-title flex items-center gap-2">
+                  <span class="i-lucide-send text-sm" aria-hidden="true" />
+                  Publish humanized
+                </span>
+                <p class="text-muted mt-1 text-xs">
+                  Posts to the MR. Findings left on Original keep the generated
+                  text{{ props.includeSummary ? '; the summary note is included' : '' }}.
+                </p>
+              </div>
+              <button
+                class="btn-accent text-xs"
+                :disabled="publishing || !variants.length"
+                @click="publishHumanized"
+              >
+                <span
+                  v-if="publishing"
+                  class="i-lucide-loader-circle animate-spin text-sm"
+                  aria-hidden="true"
+                />
+                <span v-else class="i-lucide-send text-sm" aria-hidden="true" />
+                Publish humanized
+              </button>
+            </div>
+
+            <p v-if="publishError" class="text-danger mb-3 text-sm">{{ publishError }}</p>
+
+            <!-- Summary source -->
+            <div v-if="hasSummaryVariant" class="mb-2">
+              <span class="label-mono">Summary</span>
+              <div class="mt-1.5 flex flex-wrap gap-1" role="group" aria-label="Summary source">
+                <button
+                  class="border px-2 py-1 text-xs transition-colors"
+                  :class="
+                    summarySource === ORIGINAL
+                      ? 'border-accent text-ink bg-accent/10'
+                      : 'border-line text-muted hover:text-ink'
+                  "
+                  :aria-pressed="summarySource === ORIGINAL"
+                  @click="summarySource = ORIGINAL"
+                >
+                  Original
+                </button>
+                <button
+                  v-for="(v, i) in variants"
+                  :key="i"
+                  class="border px-2 py-1 text-xs transition-colors"
+                  :class="
+                    summarySource === i
+                      ? 'border-accent text-ink bg-accent/10'
+                      : 'border-line text-muted hover:text-ink'
+                  "
+                  :aria-pressed="summarySource === i"
+                  @click="summarySource = i"
+                >
+                  Variant {{ i + 1 }}
+                </button>
+              </div>
+              <p
+                v-if="summarySource !== ORIGINAL"
+                class="text-ink mt-2 text-sm leading-relaxed whitespace-pre-wrap"
+              >
+                {{ variants[summarySource]?.summary }}
+              </p>
+              <p v-else class="text-muted/70 mt-2 text-xs">Generated summary will be posted.</p>
+            </div>
+
+            <!-- Per-finding source -->
+            <div
+              v-for="f in props.findings"
+              :key="f.index"
+              class="border-line/50 mt-3 border-t pt-3"
+            >
+              <span class="text-muted font-mono text-xs">{{ findingLabel(f.index) }}</span>
+              <div
+                class="mt-1.5 flex flex-wrap gap-1"
+                role="group"
+                :aria-label="`Source for ${findingLabel(f.index)}`"
+              >
+                <button
+                  class="border px-2 py-1 text-xs transition-colors"
+                  :class="
+                    findingSource(f.index) === ORIGINAL
+                      ? 'border-accent text-ink bg-accent/10'
+                      : 'border-line text-muted hover:text-ink'
+                  "
+                  :aria-pressed="findingSource(f.index) === ORIGINAL"
+                  @click="setFindingSource(f.index, ORIGINAL)"
+                >
+                  Original
+                </button>
+                <button
+                  v-for="(v, i) in variants"
+                  :key="i"
+                  class="border px-2 py-1 text-xs transition-colors"
+                  :class="
+                    findingSource(f.index) === i
+                      ? 'border-accent text-ink bg-accent/10'
+                      : 'border-line text-muted hover:text-ink'
+                  "
+                  :aria-pressed="findingSource(f.index) === i"
+                  @click="setFindingSource(f.index, i)"
+                >
+                  Variant {{ i + 1 }}
+                </button>
+              </div>
+              <p
+                v-if="findingSource(f.index) !== ORIGINAL"
+                class="text-ink mt-2 text-sm leading-relaxed whitespace-pre-wrap"
+              >
+                {{ findingText(findingSource(f.index), f.index) }}
+              </p>
+              <p v-else class="text-muted/70 mt-2 text-xs">Generated finding will be posted.</p>
             </div>
           </div>
         </div>
