@@ -7,6 +7,7 @@ const links = [
   { to: '/reviews', label: 'Reviews', icon: 'i-lucide-list-checks' },
   { to: '/accounts', label: 'Accounts', icon: 'i-lucide-users' },
   { to: '/providers', label: 'AI providers', icon: 'i-lucide-cpu' },
+  { to: '/profiles', label: 'Profiles', icon: 'i-lucide-feather' },
   { to: '/skills', label: 'Skills', icon: 'i-lucide-book-open' },
 ]
 </script>

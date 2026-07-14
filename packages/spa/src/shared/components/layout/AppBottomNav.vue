@@ -9,7 +9,7 @@ const links = [
 
 <template>
   <nav
-    class="border-line/60 bg-canvas text-muted fixed inset-x-0 bottom-0 z-30 flex border-t md:hidden"
+    class="border-line/60 bg-canvas text-muted fixed inset-x-0 bottom-0 z-30  border-t md:hidden flex"
   >
     <RouterLink
       v-for="l in links"

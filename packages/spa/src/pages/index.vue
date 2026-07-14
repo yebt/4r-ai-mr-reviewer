@@ -52,6 +52,7 @@ const shortcuts = [
   { to: '/reviews', label: 'Reviews', icon: 'i-lucide-list-checks' },
   { to: '/accounts', label: 'GitLab accounts', icon: 'i-lucide-users' },
   { to: '/providers', label: 'AI providers', icon: 'i-lucide-cpu' },
+  { to: '/profiles', label: 'Profiles', icon: 'i-lucide-feather' },
   { to: '/skills', label: '4R skills', icon: 'i-lucide-book-open' },
 ]
 

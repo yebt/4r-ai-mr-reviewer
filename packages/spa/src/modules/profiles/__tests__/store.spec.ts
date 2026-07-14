@@ -58,7 +58,13 @@ describe('profiles store', () => {
     mocked.createProfile.mockResolvedValue(profile('2', { styleGuideStatus: 'pending' }))
     const store = useProfilesStore()
     store.items = [profile('1')]
-    await store.create({ name: 'voice-2', language: 'en', formality: '', emojis: false, samples: ['x'] })
+    await store.create({
+      name: 'voice-2',
+      language: 'en',
+      formality: '',
+      emojis: false,
+      samples: ['x'],
+    })
     expect(store.items.map((p) => p.id)).toEqual(['2', '1'])
     expect(mocked.createProfile).toHaveBeenCalledOnce()
   })
@@ -67,7 +73,13 @@ describe('profiles store', () => {
     mocked.updateProfile.mockResolvedValue(profile('1', { name: 'renamed' }))
     const store = useProfilesStore()
     store.items = [profile('1'), profile('2')]
-    await store.update('1', { name: 'renamed', language: 'en', formality: '', emojis: false, samples: [] })
+    await store.update('1', {
+      name: 'renamed',
+      language: 'en',
+      formality: '',
+      emojis: false,
+      samples: [],
+    })
     expect(store.items.find((p) => p.id === '1')?.name).toBe('renamed')
     expect(store.items.map((p) => p.id)).toEqual(['1', '2'])
   })
@@ -91,7 +103,9 @@ describe('profiles store', () => {
   })
 
   it('refreshOne updates a single profile without reordering', async () => {
-    mocked.getProfile.mockResolvedValue(profile('2', { styleGuideStatus: 'ready', styleGuide: 'g' }))
+    mocked.getProfile.mockResolvedValue(
+      profile('2', { styleGuideStatus: 'ready', styleGuide: 'g' }),
+    )
     const store = useProfilesStore()
     store.items = [profile('1'), profile('2')]
     await store.refreshOne('2')
