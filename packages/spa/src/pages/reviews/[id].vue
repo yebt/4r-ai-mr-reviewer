@@ -13,6 +13,7 @@ import { isTerminal } from '@modules/reviews/format'
 import ReviewStatusChip from '@modules/reviews/components/ReviewStatusChip.vue'
 import ReviewSummary from '@modules/reviews/components/ReviewSummary.vue'
 import FindingRow from '@modules/reviews/components/FindingRow.vue'
+import HumanizePanel from '@modules/reviews/components/HumanizePanel.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -313,6 +314,8 @@ async function remove() {
             />
           </div>
         </section>
+
+        <HumanizePanel :review-id="review.id" :findings="review.findings" />
       </template>
     </template>
   </div>

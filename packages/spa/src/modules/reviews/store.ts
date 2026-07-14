@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { api, errorMessage } from '@shared/api/client'
-import type { MergeRequest, Review } from '@shared/api/types'
+import type { HumanizeVariant, MergeRequest, Review } from '@shared/api/types'
 
 export const useReviewsStore = defineStore('reviews', () => {
   // Caches keyed by repo id, so revisiting a repo shows its previous MRs/reviews
@@ -203,6 +203,13 @@ export const useReviewsStore = defineStore('reviews', () => {
     await refresh(id)
   }
 
+  // humanize returns ephemeral rewritten variants of a finished review in the
+  // given profile's voice. Nothing is persisted, so callers own the result.
+  async function humanize(id: string, profileId: string, count = 3): Promise<HumanizeVariant[]> {
+    const { variants } = await api.humanizeReview(id, { profileId, count })
+    return variants
+  }
+
   return {
     mrsByRepo,
     mrsLoading,
@@ -233,5 +240,6 @@ export const useReviewsStore = defineStore('reviews', () => {
     archive,
     unarchive,
     publish,
+    humanize,
   }
 })

@@ -75,6 +75,18 @@ export interface Finding {
   published: boolean
 }
 
+// Ephemeral humanized rewrite of a review, keyed back to findings by index.
+// Nothing is persisted server-side — these are preview-only variants.
+export interface HumanizeFindingText {
+  index: number
+  text: string
+}
+
+export interface HumanizeVariant {
+  summary: string
+  findings: HumanizeFindingText[]
+}
+
 export type ReviewStatus = 'pending' | 'running' | 'done' | 'error' | 'cancelled'
 export type ContextMode = 'fast' | 'deep'
 export type Recommendation = 'approve' | 'request_changes' | 'comment'

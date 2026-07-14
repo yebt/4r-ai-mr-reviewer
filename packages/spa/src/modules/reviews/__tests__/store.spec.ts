@@ -14,6 +14,7 @@ vi.mock('@shared/api/client', () => ({
     archiveReview: vi.fn(),
     unarchiveReview: vi.fn(),
     publishReview: vi.fn(),
+    humanizeReview: vi.fn(),
   },
 }))
 
@@ -32,6 +33,7 @@ const mocked = api as unknown as {
   archiveReview: ReturnType<typeof vi.fn>
   unarchiveReview: ReturnType<typeof vi.fn>
   publishReview: ReturnType<typeof vi.fn>
+  humanizeReview: ReturnType<typeof vi.fn>
 }
 
 const review = (id: string, status: ReviewStatus = 'pending'): Review => ({
@@ -164,5 +166,27 @@ describe('reviews store', () => {
     const store = useReviewsStore()
     await store.publish('1', { indices: [0], includeSummary: false })
     expect(mocked.publishReview).toHaveBeenCalledWith('1', { indices: [0], includeSummary: false })
+  })
+
+  it('humanize calls the api with the right args and returns the variants', async () => {
+    const variants = [{ summary: 'nicer', findings: [{ index: 0, text: 'kinder' }] }]
+    mocked.humanizeReview.mockResolvedValue({ variants })
+    const store = useReviewsStore()
+    const result = await store.humanize('1', 'p1', 2)
+    expect(mocked.humanizeReview).toHaveBeenCalledWith('1', { profileId: 'p1', count: 2 })
+    expect(result).toEqual(variants)
+  })
+
+  it('humanize defaults count to 3', async () => {
+    mocked.humanizeReview.mockResolvedValue({ variants: [] })
+    const store = useReviewsStore()
+    await store.humanize('1', 'p1')
+    expect(mocked.humanizeReview).toHaveBeenCalledWith('1', { profileId: 'p1', count: 3 })
+  })
+
+  it('humanize propagates api errors', async () => {
+    mocked.humanizeReview.mockRejectedValue(new Error('style guide not ready'))
+    const store = useReviewsStore()
+    await expect(store.humanize('1', 'p1', 3)).rejects.toThrow('style guide not ready')
   })
 })

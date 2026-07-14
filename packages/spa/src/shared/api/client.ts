@@ -2,6 +2,7 @@
 // which Vite proxies to the server in dev (see vite.config.ts).
 import type {
   Account,
+  HumanizeVariant,
   MergeRequest,
   Profile,
   Provider,
@@ -131,6 +132,10 @@ export const api = {
     id: string,
     input: { all?: boolean; indices?: number[]; includeSummary?: boolean },
   ) => request<{ status: string }>('POST', `/reviews/${id}/publish`, input),
+  // Ephemeral: rewrites a finished review in a profile's voice. Nothing is
+  // persisted; the call runs a synchronous LLM completion so it may be slow.
+  humanizeReview: (id: string, body: { profileId: string; count?: number }) =>
+    request<{ variants: HumanizeVariant[] }>('POST', `/reviews/${id}/humanize`, body),
 
   // skills
   getSkills: () =>
