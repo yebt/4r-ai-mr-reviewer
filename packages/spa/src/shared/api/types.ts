@@ -75,16 +75,24 @@ export interface Finding {
   published: boolean
 }
 
-// Ephemeral humanized rewrite of a review, keyed back to findings by index.
-// Nothing is persisted server-side — these are preview-only variants.
+// Per-publish override for a single finding: replaces that finding's generated
+// body with user-chosen (humanized) text. Keyed back to the finding by index.
 export interface HumanizeFindingText {
   index: number
   text: string
 }
 
-export interface HumanizeVariant {
+// Structured humanization of one finding, each part rewritten in the author's
+// voice. A part is empty when the original finding left it empty.
+export interface FindingHumanized {
+  issue: string
+  why: string
+  fix: string
+}
+
+// Structured humanization of the review summary.
+export interface SummaryHumanized {
   summary: string
-  findings: HumanizeFindingText[]
 }
 
 export type ReviewStatus = 'pending' | 'running' | 'done' | 'error' | 'cancelled'

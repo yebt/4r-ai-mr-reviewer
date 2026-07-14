@@ -1,58 +1,22 @@
-// Pure helpers that turn per-finding / summary source selections into the
-// override payload the publish endpoint accepts. Kept framework-free so it can
-// be unit-tested in isolation (see __tests__/humanize-overrides.spec.ts).
-import type { Finding, HumanizeFindingText, HumanizeVariant } from '@shared/api/types'
+// Pure helper that assembles a finding's humanized parts into the Markdown body
+// posted to the MR. Kept framework-free so it can be unit-tested in isolation
+// (see __tests__/humanize-overrides.spec.ts).
+//
+// The structure mirrors the server's formatFinding (packages/server .../publish.go)
+// so humanized comments read consistently with generated ones — just in the
+// user's voice. The frontend still owns the finding, so we can restore the
+// dimension/severity header tag that a raw text override would otherwise drop.
+import type { Finding, FindingHumanized } from '@shared/api/types'
+import { dimensionLabel } from '@modules/reviews/format'
 
-// Sentinel meaning "post the generated text" (no override). Any value >= 0 is an
-// index into the variants array.
+// Sentinel meaning "Original" — post the generated text (no humanized override).
+// Any value >= 0 is an index into a card's humanize tabs.
 export const ORIGINAL = -1
 
-export interface OverrideSelections {
-  // Selected source for the summary: ORIGINAL or a variant index.
-  summary: number
-  // Selected source per finding index: ORIGINAL or a variant index.
-  findings: Record<number, number>
-}
-
-export interface PublishOverrides {
-  summaryOverride?: string
-  findingOverrides?: HumanizeFindingText[]
-}
-
-// Looks up a variant's rewritten text for a given finding index.
-export function variantFindingText(
-  variants: HumanizeVariant[],
-  variantIndex: number,
-  findingIndex: number,
-): string {
-  const variant = variants[variantIndex]
-  if (!variant) return ''
-  return variant.findings.find((f) => f.index === findingIndex)?.text ?? ''
-}
-
-// Builds the { summaryOverride?, findingOverrides? } payload. Sources left on
-// ORIGINAL are omitted so those parts publish with the generated text. Empty
-// variant text is treated as "no override" to avoid posting blank comments.
-export function buildOverrides(
-  selections: OverrideSelections,
-  variants: HumanizeVariant[],
-  findings: Finding[],
-): PublishOverrides {
-  const out: PublishOverrides = {}
-
-  if (selections.summary !== ORIGINAL) {
-    const summary = variants[selections.summary]?.summary ?? ''
-    if (summary) out.summaryOverride = summary
-  }
-
-  const findingOverrides: HumanizeFindingText[] = []
-  for (const f of findings) {
-    const source = selections.findings[f.index] ?? ORIGINAL
-    if (source === ORIGINAL) continue
-    const text = variantFindingText(variants, source, f.index)
-    if (text) findingOverrides.push({ index: f.index, text })
-  }
-  if (findingOverrides.length) out.findingOverrides = findingOverrides
-
-  return out
+export function buildFindingBody(finding: Finding, humanized: FindingHumanized): string {
+  let body = `**[${dimensionLabel[finding.dimension]} · ${finding.severity.toUpperCase()}]** ${humanized.issue}\n\n`
+  if (humanized.why) body += `**Why:** ${humanized.why}\n\n`
+  if (humanized.fix) body += `**Suggested fix:** ${humanized.fix}\n`
+  if (finding.blocking) body += `\n_Blocking._`
+  return body
 }

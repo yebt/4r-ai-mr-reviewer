@@ -1,7 +1,31 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { api, errorMessage } from '@shared/api/client'
-import type { HumanizeFindingText, HumanizeVariant, MergeRequest, Review } from '@shared/api/types'
+import type {
+  FindingHumanized,
+  HumanizeFindingText,
+  MergeRequest,
+  Review,
+  SummaryHumanized,
+} from '@shared/api/types'
+import { ORIGINAL } from '@modules/reviews/humanize-overrides'
+
+// Per-review humanize state. Accumulating tabs of structured humanized output
+// plus the selected tab per card, kept in the store (keyed by reviewId) so it
+// survives in-session navigation away and back. Full page-reload persistence is
+// out of scope.
+interface HumanizedState {
+  summary: SummaryHumanized[] // tabs 0..n; Original is implicit (ORIGINAL)
+  findings: Record<number, FindingHumanized[]> // per finding index → tabs
+}
+interface SelectedState {
+  summary: number // ORIGINAL (-1) or a tab index
+  findings: Record<number, number> // per finding index → ORIGINAL or tab index
+}
+interface HumanizingState {
+  summary: boolean
+  findings: Record<number, boolean>
+}
 
 export const useReviewsStore = defineStore('reviews', () => {
   // Caches keyed by repo id, so revisiting a repo shows its previous MRs/reviews
@@ -25,6 +49,94 @@ export const useReviewsStore = defineStore('reviews', () => {
   const current = ref<Review | null>(null)
   const currentLoading = ref(false)
   const currentError = ref<string | null>(null)
+
+  // In-session humanize caches, keyed by reviewId. See the interfaces above.
+  const humanized = ref<Record<string, HumanizedState>>({})
+  const selected = ref<Record<string, SelectedState>>({})
+  const humanizing = ref<Record<string, HumanizingState>>({})
+
+  // Lazy initializers — nested records are created on first touch so callers
+  // never read undefined (noUncheckedIndexedAccess is on).
+  function ensureHumanized(reviewId: string): HumanizedState {
+    const existing = humanized.value[reviewId]
+    if (existing) return existing
+    const created: HumanizedState = { summary: [], findings: {} }
+    humanized.value[reviewId] = created
+    return created
+  }
+  function ensureSelected(reviewId: string): SelectedState {
+    const existing = selected.value[reviewId]
+    if (existing) return existing
+    const created: SelectedState = { summary: ORIGINAL, findings: {} }
+    selected.value[reviewId] = created
+    return created
+  }
+  function ensureHumanizing(reviewId: string): HumanizingState {
+    const existing = humanizing.value[reviewId]
+    if (existing) return existing
+    const created: HumanizingState = { summary: false, findings: {} }
+    humanizing.value[reviewId] = created
+    return created
+  }
+
+  // Read-only helpers with safe defaults for templates.
+  function summaryTabs(reviewId: string): SummaryHumanized[] {
+    return humanized.value[reviewId]?.summary ?? []
+  }
+  function findingTabs(reviewId: string, index: number): FindingHumanized[] {
+    return humanized.value[reviewId]?.findings[index] ?? []
+  }
+  function selectedSummaryTab(reviewId: string): number {
+    return selected.value[reviewId]?.summary ?? ORIGINAL
+  }
+  function selectedFindingTab(reviewId: string, index: number): number {
+    return selected.value[reviewId]?.findings[index] ?? ORIGINAL
+  }
+  function summaryHumanizing(reviewId: string): boolean {
+    return humanizing.value[reviewId]?.summary ?? false
+  }
+  function findingHumanizing(reviewId: string, index: number): boolean {
+    return humanizing.value[reviewId]?.findings[index] ?? false
+  }
+
+  function selectSummaryTab(reviewId: string, tab: number) {
+    ensureSelected(reviewId).summary = tab
+  }
+  function selectFindingTab(reviewId: string, index: number, tab: number) {
+    ensureSelected(reviewId).findings[index] = tab
+  }
+
+  // humanizeSummary appends a structured summary rewrite as a new tab and
+  // auto-selects it. Concurrency-safe and independent of every other card: it
+  // only touches its own reviewId/summary slot. Rethrows so callers can toast.
+  async function humanizeSummary(reviewId: string, profileId: string) {
+    ensureHumanizing(reviewId).summary = true
+    try {
+      const result = await api.humanizeSummary(reviewId, profileId)
+      const entry = ensureHumanized(reviewId)
+      entry.summary.push(result)
+      ensureSelected(reviewId).summary = entry.summary.length - 1
+    } finally {
+      ensureHumanizing(reviewId).summary = false
+    }
+  }
+
+  // humanizeFinding appends a structured rewrite for one finding as a new tab
+  // and auto-selects it. Independent per finding index, so many can be in flight
+  // at once. Rethrows so callers can toast.
+  async function humanizeFinding(reviewId: string, profileId: string, index: number) {
+    ensureHumanizing(reviewId).findings[index] = true
+    try {
+      const result = await api.humanizeFinding(reviewId, profileId, index)
+      const entry = ensureHumanized(reviewId)
+      const tabs = entry.findings[index] ?? []
+      tabs.push(result)
+      entry.findings[index] = tabs
+      ensureSelected(reviewId).findings[index] = tabs.length - 1
+    } finally {
+      ensureHumanizing(reviewId).findings[index] = false
+    }
+  }
 
   function mergeRequestsFor(repoId: string): MergeRequest[] {
     return mrsByRepo.value[repoId] ?? []
@@ -210,13 +322,6 @@ export const useReviewsStore = defineStore('reviews', () => {
     await refresh(id)
   }
 
-  // humanize returns ephemeral rewritten variants of a finished review in the
-  // given profile's voice. Nothing is persisted, so callers own the result.
-  async function humanize(id: string, profileId: string, count = 3): Promise<HumanizeVariant[]> {
-    const { variants } = await api.humanizeReview(id, { profileId, count })
-    return variants
-  }
-
   return {
     mrsByRepo,
     mrsLoading,
@@ -231,6 +336,9 @@ export const useReviewsStore = defineStore('reviews', () => {
     current,
     currentLoading,
     currentError,
+    humanized,
+    selected,
+    humanizing,
     mergeRequestsFor,
     reviewsFor,
     archivedReviewsFor,
@@ -247,6 +355,15 @@ export const useReviewsStore = defineStore('reviews', () => {
     archive,
     unarchive,
     publish,
-    humanize,
+    summaryTabs,
+    findingTabs,
+    selectedSummaryTab,
+    selectedFindingTab,
+    summaryHumanizing,
+    findingHumanizing,
+    selectSummaryTab,
+    selectFindingTab,
+    humanizeSummary,
+    humanizeFinding,
   }
 })

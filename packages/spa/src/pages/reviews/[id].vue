@@ -9,16 +9,47 @@ import { toast } from '@shared/composables/useToast'
 import PageHeader from '@shared/components/ui/PageHeader.vue'
 import { useReviewsStore } from '@modules/reviews/store'
 import { useReposStore } from '@modules/repos/store'
+import { useProfilesStore } from '@modules/profiles/store'
 import { isTerminal } from '@modules/reviews/format'
 import ReviewStatusChip from '@modules/reviews/components/ReviewStatusChip.vue'
-import ReviewSummary from '@modules/reviews/components/ReviewSummary.vue'
-import FindingRow from '@modules/reviews/components/FindingRow.vue'
-import HumanizePanel from '@modules/reviews/components/HumanizePanel.vue'
+import SummaryCard from '@modules/reviews/components/SummaryCard.vue'
+import FindingCard from '@modules/reviews/components/FindingCard.vue'
 
 const route = useRoute()
 const router = useRouter()
 const store = useReviewsStore()
 const repos = useReposStore()
+const profiles = useProfilesStore()
+
+// Only profiles whose style guide finished distilling can rewrite text.
+const readyProfiles = computed(() => profiles.items.filter((p) => p.styleGuideStatus === 'ready'))
+// Globally selected humanization profile — drives every card's Humanize button
+// and "Humanize all". Defaults to the first ready profile once they load.
+const profileId = ref('')
+watch(readyProfiles, (list) => {
+  if (list.length && !list.some((p) => p.id === profileId.value)) profileId.value = list[0]?.id ?? ''
+})
+
+const humanizingAll = ref(false)
+
+// Fires humanize for the summary and every finding concurrently with the
+// selected profile. Each job is independent (per-card spinners show progress);
+// per-card failures toast without aborting the rest.
+async function humanizeAll() {
+  const rv = review.value
+  if (!rv || !profileId.value || humanizingAll.value) return
+  humanizingAll.value = true
+  try {
+    const jobs = [
+      store.humanizeSummary(rv.id, profileId.value),
+      ...rv.findings.map((f) => store.humanizeFinding(rv.id, profileId.value, f.index)),
+    ]
+    const results = await Promise.allSettled(jobs)
+    if (results.some((r) => r.status === 'rejected')) toast.error('Some cards failed to humanize.')
+  } finally {
+    humanizingAll.value = false
+  }
+}
 
 const reviewId = computed(() => (route.params as { id: string }).id)
 const review = computed(() => store.current)
@@ -78,6 +109,7 @@ watch(
     pause()
     selected.value = []
     if (repos.items.length === 0) repos.fetchAll()
+    if (profiles.items.length === 0) profiles.fetchAll()
     await store.load(id)
     if (review.value && !isTerminal(review.value.status)) resume()
   },
@@ -258,7 +290,37 @@ async function remove() {
       </div>
 
       <template v-else>
-        <ReviewSummary :review="review" />
+        <!-- Global humanize bar: pick a ready profile, then Humanize all fires
+             the summary + every finding concurrently with per-card spinners. -->
+        <div class="border-line/50 mb-6 flex flex-wrap items-end gap-4 border-b pb-4">
+          <template v-if="readyProfiles.length">
+            <label class="block">
+              <span class="field-label">Humanize profile</span>
+              <select v-model="profileId" class="field-underline min-w-48">
+                <option v-for="p in readyProfiles" :key="p.id" :value="p.id">{{ p.name }}</option>
+              </select>
+            </label>
+            <button
+              class="btn-line text-xs"
+              :disabled="!profileId || humanizingAll"
+              @click="humanizeAll"
+            >
+              <span
+                v-if="humanizingAll"
+                class="i-lucide-loader-circle animate-spin text-sm"
+                aria-hidden="true"
+              />
+              <span v-else class="i-lucide-feather text-sm" aria-hidden="true" />
+              Humanize all
+            </button>
+          </template>
+          <p v-else class="text-muted text-sm">
+            No ready humanization profiles.
+            <RouterLink to="/profiles" class="text-accent hover:underline">Manage profiles</RouterLink>
+          </p>
+        </div>
+
+        <SummaryCard :review="review" :profile-id="profileId" />
 
         <section class="mt-6">
           <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -304,22 +366,18 @@ async function remove() {
             No findings — clean review.
           </p>
           <div v-else class="border-line/50 border-t">
-            <FindingRow
+            <FindingCard
               v-for="f in review.findings"
               :key="f.index"
               :finding="f"
+              :review-id="review.id"
+              :profile-id="profileId"
               :selectable="!f.published"
               :selected="selected.includes(f.index)"
               @toggle="toggle"
             />
           </div>
         </section>
-
-        <HumanizePanel
-          :review-id="review.id"
-          :findings="review.findings"
-          :include-summary="includeSummary"
-        />
       </template>
     </template>
   </div>

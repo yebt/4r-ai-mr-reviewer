@@ -14,7 +14,8 @@ vi.mock('@shared/api/client', () => ({
     archiveReview: vi.fn(),
     unarchiveReview: vi.fn(),
     publishReview: vi.fn(),
-    humanizeReview: vi.fn(),
+    humanizeFinding: vi.fn(),
+    humanizeSummary: vi.fn(),
   },
 }))
 
@@ -33,7 +34,8 @@ const mocked = api as unknown as {
   archiveReview: ReturnType<typeof vi.fn>
   unarchiveReview: ReturnType<typeof vi.fn>
   publishReview: ReturnType<typeof vi.fn>
-  humanizeReview: ReturnType<typeof vi.fn>
+  humanizeFinding: ReturnType<typeof vi.fn>
+  humanizeSummary: ReturnType<typeof vi.fn>
 }
 
 const review = (id: string, status: ReviewStatus = 'pending'): Review => ({
@@ -186,25 +188,110 @@ describe('reviews store', () => {
     })
   })
 
-  it('humanize calls the api with the right args and returns the variants', async () => {
-    const variants = [{ summary: 'nicer', findings: [{ index: 0, text: 'kinder' }] }]
-    mocked.humanizeReview.mockResolvedValue({ variants })
+  it('humanizeFinding appends a tab, auto-selects it, and clears the flag', async () => {
+    mocked.humanizeFinding.mockResolvedValue({ issue: 'kind', why: 'w', fix: 'f' })
     const store = useReviewsStore()
-    const result = await store.humanize('1', 'p1', 2)
-    expect(mocked.humanizeReview).toHaveBeenCalledWith('1', { profileId: 'p1', count: 2 })
-    expect(result).toEqual(variants)
+
+    await store.humanizeFinding('1', 'p1', 0)
+
+    expect(mocked.humanizeFinding).toHaveBeenCalledWith('1', 'p1', 0)
+    expect(store.findingTabs('1', 0)).toEqual([{ issue: 'kind', why: 'w', fix: 'f' }])
+    expect(store.selectedFindingTab('1', 0)).toBe(0)
+    expect(store.findingHumanizing('1', 0)).toBe(false)
   })
 
-  it('humanize defaults count to 3', async () => {
-    mocked.humanizeReview.mockResolvedValue({ variants: [] })
+  it('humanizeFinding accumulates tabs and auto-selects the newest', async () => {
+    mocked.humanizeFinding
+      .mockResolvedValueOnce({ issue: 'v1', why: '', fix: '' })
+      .mockResolvedValueOnce({ issue: 'v2', why: '', fix: '' })
     const store = useReviewsStore()
-    await store.humanize('1', 'p1')
-    expect(mocked.humanizeReview).toHaveBeenCalledWith('1', { profileId: 'p1', count: 3 })
+
+    await store.humanizeFinding('1', 'p1', 0)
+    await store.humanizeFinding('1', 'p1', 0)
+
+    expect(store.findingTabs('1', 0).map((t) => t.issue)).toEqual(['v1', 'v2'])
+    expect(store.selectedFindingTab('1', 0)).toBe(1)
   })
 
-  it('humanize propagates api errors', async () => {
-    mocked.humanizeReview.mockRejectedValue(new Error('style guide not ready'))
+  it('humanizeFinding sets the flag while in flight and rethrows on error', async () => {
+    let reject: (e: unknown) => void = () => {}
+    mocked.humanizeFinding.mockReturnValue(
+      new Promise((_res, rej) => {
+        reject = rej
+      }),
+    )
     const store = useReviewsStore()
-    await expect(store.humanize('1', 'p1', 3)).rejects.toThrow('style guide not ready')
+
+    const pending = store.humanizeFinding('1', 'p1', 0)
+    expect(store.findingHumanizing('1', 0)).toBe(true)
+
+    reject(new Error('style guide not ready'))
+    await expect(pending).rejects.toThrow('style guide not ready')
+    expect(store.findingHumanizing('1', 0)).toBe(false)
+    expect(store.findingTabs('1', 0)).toEqual([])
+  })
+
+  it('humanizeSummary appends a tab, auto-selects it, and clears the flag', async () => {
+    mocked.humanizeSummary.mockResolvedValue({ summary: 'nicer summary' })
+    const store = useReviewsStore()
+
+    await store.humanizeSummary('1', 'p1')
+
+    expect(mocked.humanizeSummary).toHaveBeenCalledWith('1', 'p1')
+    expect(store.summaryTabs('1')).toEqual([{ summary: 'nicer summary' }])
+    expect(store.selectedSummaryTab('1')).toBe(0)
+    expect(store.summaryHumanizing('1')).toBe(false)
+  })
+
+  it('humanizeSummary clears the flag and rethrows on error', async () => {
+    mocked.humanizeSummary.mockRejectedValue(new Error('not ready'))
+    const store = useReviewsStore()
+
+    await expect(store.humanizeSummary('1', 'p1')).rejects.toThrow('not ready')
+    expect(store.summaryHumanizing('1')).toBe(false)
+    expect(store.summaryTabs('1')).toEqual([])
+  })
+
+  it('selectFindingTab and selectSummaryTab update the selection', () => {
+    const store = useReviewsStore()
+    store.selectFindingTab('1', 0, 2)
+    store.selectSummaryTab('1', 1)
+    expect(store.selectedFindingTab('1', 0)).toBe(2)
+    expect(store.selectedSummaryTab('1')).toBe(1)
+  })
+
+  it('defaults every card selection to Original (-1)', () => {
+    const store = useReviewsStore()
+    expect(store.selectedFindingTab('1', 0)).toBe(-1)
+    expect(store.selectedSummaryTab('1')).toBe(-1)
+  })
+
+  it('publish forwards the assembled findingOverrides for a humanized finding tab', async () => {
+    mocked.publishReview.mockResolvedValue({ status: 'published' })
+    mocked.getReview.mockResolvedValue(review('1', 'done'))
+    const store = useReviewsStore()
+
+    // Mirror what FindingCard assembles for a selected humanized tab.
+    await store.publish('1', {
+      indices: [0],
+      includeSummary: false,
+      findingOverrides: [{ index: 0, text: '**[R1 Risk · HIGH]** kind\n\n' }],
+    })
+
+    expect(mocked.publishReview).toHaveBeenCalledWith('1', {
+      indices: [0],
+      includeSummary: false,
+      findingOverrides: [{ index: 0, text: '**[R1 Risk · HIGH]** kind\n\n' }],
+    })
+  })
+
+  it('publish forwards no overrides for an Original finding tab', async () => {
+    mocked.publishReview.mockResolvedValue({ status: 'published' })
+    mocked.getReview.mockResolvedValue(review('1', 'done'))
+    const store = useReviewsStore()
+
+    await store.publish('1', { indices: [0], includeSummary: false })
+
+    expect(mocked.publishReview).toHaveBeenCalledWith('1', { indices: [0], includeSummary: false })
   })
 })

@@ -2,14 +2,15 @@
 // which Vite proxies to the server in dev (see vite.config.ts).
 import type {
   Account,
+  FindingHumanized,
   HumanizeFindingText,
-  HumanizeVariant,
   MergeRequest,
   Profile,
   Provider,
   ProviderKind,
   Repo,
   Review,
+  SummaryHumanized,
 } from '@shared/api/types'
 
 // Create/update body for a humanization profile. styleGuide* fields are
@@ -142,10 +143,18 @@ export const api = {
       findingOverrides?: HumanizeFindingText[]
     },
   ) => request<{ status: string }>('POST', `/reviews/${id}/publish`, input),
-  // Ephemeral: rewrites a finished review in a profile's voice. Nothing is
-  // persisted; the call runs a synchronous LLM completion so it may be slow.
-  humanizeReview: (id: string, body: { profileId: string; count?: number }) =>
-    request<{ variants: HumanizeVariant[] }>('POST', `/reviews/${id}/humanize`, body),
+  // Humanize rewrites a single finding's issue/why/fix in the profile's voice.
+  // Ephemeral: nothing is persisted; runs a synchronous LLM completion so it may
+  // be slow. A part comes back empty when the original finding left it empty.
+  humanizeFinding: (id: string, profileId: string, index: number) =>
+    request<FindingHumanized>('POST', `/reviews/${id}/humanize`, {
+      profileId,
+      target: 'finding',
+      index,
+    }),
+  // Humanize rewrites the review summary in the profile's voice. Ephemeral.
+  humanizeSummary: (id: string, profileId: string) =>
+    request<SummaryHumanized>('POST', `/reviews/${id}/humanize`, { profileId, target: 'summary' }),
 
   // skills
   getSkills: () =>
