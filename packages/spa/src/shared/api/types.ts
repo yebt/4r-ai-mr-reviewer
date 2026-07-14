@@ -21,6 +21,24 @@ export interface Provider {
   createdAt: string
 }
 
+// Style-guide distillation state for a humanization profile. Empty string means
+// no samples were provided (nothing to distill).
+export type ProfileStyleStatus = '' | 'pending' | 'ready' | 'error'
+
+export interface Profile {
+  id: string
+  name: string
+  language: string
+  formality: string
+  emojis: boolean
+  samples: string[]
+  styleGuide: string
+  styleGuideStatus: ProfileStyleStatus
+  styleGuideError: string
+  createdAt: string
+  updatedAt: string
+}
+
 export interface Repo {
   id: string
   name: string

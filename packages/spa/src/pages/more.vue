@@ -15,6 +15,12 @@ const items = [
     hint: 'Configure models and keys',
   },
   {
+    to: '/profiles',
+    label: 'Humanization profiles',
+    icon: 'i-lucide-feather',
+    hint: 'Capture your writing voice',
+  },
+  {
     to: '/skills',
     label: '4R review skills',
     icon: 'i-lucide-book-open',

@@ -1,6 +1,24 @@
 // Typed HTTP client for the ai-reviewer backend. All calls go through /api,
 // which Vite proxies to the server in dev (see vite.config.ts).
-import type { Account, MergeRequest, Provider, ProviderKind, Repo, Review } from '@shared/api/types'
+import type {
+  Account,
+  MergeRequest,
+  Profile,
+  Provider,
+  ProviderKind,
+  Repo,
+  Review,
+} from '@shared/api/types'
+
+// Create/update body for a humanization profile. styleGuide* fields are
+// server-managed and never sent.
+export interface ProfileInput {
+  name: string
+  language: string
+  formality: string
+  emojis: boolean
+  samples: string[]
+}
 
 const BASE = import.meta.env.VITE_API_URL ?? '/api'
 
@@ -72,6 +90,16 @@ export const api = {
   ) => request<Provider>('PATCH', `/providers/${id}`, input),
   setDefaultProvider: (id: string) => request<void>('POST', `/providers/${id}/default`),
   deleteProvider: (id: string) => request<void>('DELETE', `/providers/${id}`),
+
+  // profiles (humanization)
+  listProfiles: () => request<Profile[]>('GET', '/profiles'),
+  getProfile: (id: string) => request<Profile>('GET', `/profiles/${id}`),
+  createProfile: (input: ProfileInput) => request<Profile>('POST', '/profiles', input),
+  updateProfile: (id: string, input: ProfileInput) =>
+    request<Profile>('PATCH', `/profiles/${id}`, input),
+  deleteProfile: (id: string) => request<void>('DELETE', `/profiles/${id}`),
+  redistillProfile: (id: string) =>
+    request<{ status: string }>('POST', `/profiles/${id}/redistill`),
 
   // repos
   listRepos: () => request<Repo[]>('GET', '/repos'),
