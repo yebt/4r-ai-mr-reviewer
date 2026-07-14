@@ -1,6 +1,6 @@
-// import 'virtual:uno.css'
-import 'uno.css'
-import 'virtual:unocss-devtools'
+ import 'virtual:uno.css'
+// import 'uno.css'
+// import 'virtual:unocss-devtools'
 
 import '@shared/assets/main.css'
 
