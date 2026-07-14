@@ -3,6 +3,7 @@ package humanize
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"net/http"
@@ -123,98 +124,92 @@ func seedProfile(t *testing.T, repo profile.Repository, status string) string {
 	return p.ID
 }
 
-const twoVariants = `{"variants":[
-	{"summary":"che, quedó lindo","findings":[{"index":0,"text":"ojo con el secreto"},{"index":1,"text":"renombralo"}]},
-	{"summary":"buen laburo","findings":[{"index":0,"text":"sacá el secreto"},{"index":1,"text":"mejor nombre"}]}
-]}`
+const findingJSON = `{"issue":"che, acá el token está hardcodeado","why":"filtra credenciales","fix":"leelo del env"}`
 
-func TestHumanizeReturnsVariants(t *testing.T) {
-	srv := aiStub(t, twoVariants)
+const summaryJSON = `{"summary":"che, en gral quedó lindo"}`
+
+func TestHumanizeFindingReturnsStructured(t *testing.T) {
+	srv := aiStub(t, findingJSON)
 	defer srv.Close()
 	f := newFixture(t, srv.URL)
 
 	reviewID := seedReview(t, f.reviews, f.repoID, review.StatusDone)
 	profileID := seedProfile(t, f.profiles, profile.StyleStatusReady)
 
-	vs, err := f.svc.Humanize(context.Background(), reviewID, profileID, 2)
+	fh, err := f.svc.HumanizeFinding(context.Background(), reviewID, profileID, 0)
 	if err != nil {
-		t.Fatalf("Humanize: %v", err)
+		t.Fatalf("HumanizeFinding: %v", err)
 	}
-	if len(vs) != 2 {
-		t.Fatalf("variants len = %d, want 2", len(vs))
+	if fh.Issue != "che, acá el token está hardcodeado" {
+		t.Fatalf("issue = %q", fh.Issue)
 	}
-	for i, v := range vs {
-		if v.Summary == "" {
-			t.Fatalf("variant %d has empty summary", i)
-		}
-		if len(v.Findings) != 2 {
-			t.Fatalf("variant %d findings len = %d, want 2", i, len(v.Findings))
-		}
-		for _, ft := range v.Findings {
-			if ft.Text == "" {
-				t.Fatalf("variant %d finding %d has empty text", i, ft.Index)
-			}
-			if ft.Index < 0 || ft.Index > 1 {
-				t.Fatalf("variant %d finding index %d out of range", i, ft.Index)
-			}
-		}
+	if fh.Why != "filtra credenciales" || fh.Fix != "leelo del env" {
+		t.Fatalf("parts not parsed: %+v", fh)
+	}
+}
+
+func TestHumanizeSummaryReturnsStructured(t *testing.T) {
+	srv := aiStub(t, summaryJSON)
+	defer srv.Close()
+	f := newFixture(t, srv.URL)
+
+	reviewID := seedReview(t, f.reviews, f.repoID, review.StatusDone)
+	profileID := seedProfile(t, f.profiles, profile.StyleStatusReady)
+
+	sh, err := f.svc.HumanizeSummary(context.Background(), reviewID, profileID)
+	if err != nil {
+		t.Fatalf("HumanizeSummary: %v", err)
+	}
+	if sh.Summary != "che, en gral quedó lindo" {
+		t.Fatalf("summary = %q", sh.Summary)
+	}
+}
+
+func TestHumanizeFindingOutOfRange(t *testing.T) {
+	srv := aiStub(t, findingJSON)
+	defer srv.Close()
+	f := newFixture(t, srv.URL)
+
+	reviewID := seedReview(t, f.reviews, f.repoID, review.StatusDone)
+	profileID := seedProfile(t, f.profiles, profile.StyleStatusReady)
+
+	if _, err := f.svc.HumanizeFinding(context.Background(), reviewID, profileID, 9); !errors.Is(err, ErrFindingIndexOutOfRange) {
+		t.Fatalf("expected ErrFindingIndexOutOfRange, got: %v", err)
+	}
+	if _, err := f.svc.HumanizeFinding(context.Background(), reviewID, profileID, -1); !errors.Is(err, ErrFindingIndexOutOfRange) {
+		t.Fatalf("expected ErrFindingIndexOutOfRange for negative index, got: %v", err)
 	}
 }
 
 func TestHumanizeRejectsUnfinishedReview(t *testing.T) {
-	srv := aiStub(t, twoVariants)
+	srv := aiStub(t, findingJSON)
 	defer srv.Close()
 	f := newFixture(t, srv.URL)
 
 	reviewID := seedReview(t, f.reviews, f.repoID, review.StatusRunning)
 	profileID := seedProfile(t, f.profiles, profile.StyleStatusReady)
 
-	if _, err := f.svc.Humanize(context.Background(), reviewID, profileID, 3); err == nil {
-		t.Fatal("expected an error for a review that is not done")
+	if _, err := f.svc.HumanizeFinding(context.Background(), reviewID, profileID, 0); !errors.Is(err, ErrReviewNotDone) {
+		t.Fatalf("expected ErrReviewNotDone for HumanizeFinding, got: %v", err)
+	}
+	if _, err := f.svc.HumanizeSummary(context.Background(), reviewID, profileID); !errors.Is(err, ErrReviewNotDone) {
+		t.Fatalf("expected ErrReviewNotDone for HumanizeSummary, got: %v", err)
 	}
 }
 
 func TestHumanizeRejectsProfileNotReady(t *testing.T) {
-	srv := aiStub(t, twoVariants)
+	srv := aiStub(t, findingJSON)
 	defer srv.Close()
 	f := newFixture(t, srv.URL)
 
 	reviewID := seedReview(t, f.reviews, f.repoID, review.StatusDone)
 	profileID := seedProfile(t, f.profiles, profile.StyleStatusPending)
 
-	_, err := f.svc.Humanize(context.Background(), reviewID, profileID, 3)
-	if err == nil {
-		t.Fatal("expected an error for a profile whose style guide is not ready")
+	_, err := f.svc.HumanizeFinding(context.Background(), reviewID, profileID, 0)
+	if !errors.Is(err, ErrStyleGuideNotReady) {
+		t.Fatalf("expected ErrStyleGuideNotReady, got: %v", err)
 	}
 	if !strings.Contains(err.Error(), "pending") {
 		t.Fatalf("error should include the actual status, got: %v", err)
-	}
-}
-
-func TestHumanizeDropsOutOfRangeIndex(t *testing.T) {
-	// The stub references index 9, which the review does not have; it must be
-	// dropped while the valid index 0 survives.
-	const withBadIndex = `{"variants":[
-		{"summary":"s","findings":[{"index":0,"text":"ok"},{"index":9,"text":"ghost"}]}
-	]}`
-	srv := aiStub(t, withBadIndex)
-	defer srv.Close()
-	f := newFixture(t, srv.URL)
-
-	reviewID := seedReview(t, f.reviews, f.repoID, review.StatusDone)
-	profileID := seedProfile(t, f.profiles, profile.StyleStatusReady)
-
-	vs, err := f.svc.Humanize(context.Background(), reviewID, profileID, 1)
-	if err != nil {
-		t.Fatalf("Humanize: %v", err)
-	}
-	if len(vs) != 1 {
-		t.Fatalf("variants len = %d, want 1", len(vs))
-	}
-	if len(vs[0].Findings) != 1 {
-		t.Fatalf("findings len = %d, want 1 (bad index dropped)", len(vs[0].Findings))
-	}
-	if vs[0].Findings[0].Index != 0 {
-		t.Fatalf("surviving finding index = %d, want 0", vs[0].Findings[0].Index)
 	}
 }

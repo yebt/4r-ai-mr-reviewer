@@ -1,6 +1,8 @@
-// Package humanize rewrites a finished review's summary and findings in a
-// profile's author voice, returning N complete variants. It is ephemeral: the
-// variants are computed on demand from the default provider and never persisted.
+// Package humanize rewrites a finished review's parts in a profile's author
+// voice, one target at a time. It is ephemeral: each rewrite is computed on
+// demand from the default provider and never persisted. The frontend fires one
+// call per target (a finding or the summary), so a rewrite always returns the
+// structured parts of exactly one target.
 package humanize
 
 import (
@@ -25,12 +27,9 @@ var ErrReviewNotDone = errors.New("humanize: review is not done")
 // distilled yet. The HTTP layer maps it to 409 Conflict.
 var ErrStyleGuideNotReady = errors.New("humanize: style guide not ready")
 
-// Count bounds: the model returns between 1 and 5 variants; 3 is the default.
-const (
-	defaultCount = 3
-	minCount     = 1
-	maxCount     = 5
-)
+// ErrFindingIndexOutOfRange is returned when the requested finding index does
+// not exist in the review. The HTTP layer maps it to 400 Bad Request.
+var ErrFindingIndexOutOfRange = errors.New("humanize: finding index out of range")
 
 // Service rewrites finished reviews in an author's voice.
 type Service struct {
@@ -49,93 +48,91 @@ func NewService(reviews review.Repository, profiles profile.Repository, provider
 	return &Service{reviews: reviews, profiles: profiles, providers: providers, logger: logger}
 }
 
-// Humanize rewrites a finished review's summary and findings in the profile's
-// author voice and returns count variants (clamped to [1,5], defaulting to 3).
-// The review must be done and the profile's style guide must be ready. Variants
-// are returned, not persisted.
-func (s *Service) Humanize(ctx context.Context, reviewID, profileID string, count int) ([]humanize.Variant, error) {
-	count = clampCount(count)
+// HumanizeFinding rewrites a single finding's issue/why/fix parts in the
+// profile's author voice. The review must be done, the profile's style guide
+// must be ready, and index must be within the review's findings. The rewritten
+// parts are returned, not persisted.
+func (s *Service) HumanizeFinding(ctx context.Context, reviewID, profileID string, index int) (humanize.FindingHumanized, error) {
+	rv, p, err := s.resolve(ctx, reviewID, profileID)
+	if err != nil {
+		return humanize.FindingHumanized{}, err
+	}
+	if index < 0 || index >= len(rv.Findings) {
+		return humanize.FindingHumanized{}, fmt.Errorf("%w: index %d, %d finding(s)", ErrFindingIndexOutOfRange, index, len(rv.Findings))
+	}
 
+	content, err := s.complete(ctx, humanize.BuildFindingMessages(p.StyleGuide, rv.Findings[index]))
+	if err != nil {
+		return humanize.FindingHumanized{}, err
+	}
+	return humanize.ParseFindingHumanized(content)
+}
+
+// HumanizeSummary rewrites the review summary in the profile's author voice. The
+// review must be done and the profile's style guide must be ready. The rewritten
+// summary is returned, not persisted.
+func (s *Service) HumanizeSummary(ctx context.Context, reviewID, profileID string) (humanize.SummaryHumanized, error) {
+	rv, p, err := s.resolve(ctx, reviewID, profileID)
+	if err != nil {
+		return humanize.SummaryHumanized{}, err
+	}
+
+	content, err := s.complete(ctx, humanize.BuildSummaryMessages(p.StyleGuide, rv))
+	if err != nil {
+		return humanize.SummaryHumanized{}, err
+	}
+	return humanize.ParseSummaryHumanized(content)
+}
+
+// resolve loads and guards the review and profile shared by both humanize paths:
+// the review must be done and the profile's style guide must be ready.
+func (s *Service) resolve(ctx context.Context, reviewID, profileID string) (review.Review, profile.Profile, error) {
 	rv, err := s.reviews.Get(ctx, reviewID)
 	if err != nil {
-		return nil, err
+		return review.Review{}, profile.Profile{}, err
 	}
 	if rv.Status != review.StatusDone {
-		return nil, fmt.Errorf("%w: cannot humanize a review in status %q", ErrReviewNotDone, rv.Status)
+		return review.Review{}, profile.Profile{}, fmt.Errorf("%w: cannot humanize a review in status %q", ErrReviewNotDone, rv.Status)
 	}
 
 	p, err := s.profiles.Get(ctx, profileID)
 	if err != nil {
-		return nil, err
+		return review.Review{}, profile.Profile{}, err
 	}
 	if p.StyleGuideStatus != profile.StyleStatusReady {
-		return nil, fmt.Errorf("%w (%s)", ErrStyleGuideNotReady, statusLabel(p.StyleGuideStatus))
+		return review.Review{}, profile.Profile{}, fmt.Errorf("%w (%s)", ErrStyleGuideNotReady, statusLabel(p.StyleGuideStatus))
 	}
-
-	variants, err := s.complete(ctx, p.StyleGuide, rv, count)
-	if err != nil {
-		return nil, err
-	}
-	return dropInvalidIndices(variants, len(rv.Findings)), nil
+	return rv, p, nil
 }
 
 // complete resolves the default provider, builds the AI client, runs the single
-// rewrite completion, and parses the returned variants.
-func (s *Service) complete(ctx context.Context, styleGuide string, rv review.Review, count int) ([]humanize.Variant, error) {
+// rewrite completion, and returns the raw model content for the caller to parse.
+func (s *Service) complete(ctx context.Context, msgs []llm.Message) (string, error) {
 	prov, err := s.providers.Default(ctx)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	apiKey, err := s.providers.APIKey(ctx, prov.ID)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	model := prov.Model
 	if model == "" {
-		return nil, fmt.Errorf("humanize: no model set on default provider %q", prov.Name)
+		return "", fmt.Errorf("humanize: no model set on default provider %q", prov.Name)
 	}
 	client, err := ai.New(prov, apiKey)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	resp, err := client.Complete(ctx, llm.Request{
 		Model:       model,
-		Messages:    humanize.BuildHumanizeMessages(styleGuide, rv, count),
+		Messages:    msgs,
 		Temperature: prov.Temperature,
 	})
 	if err != nil {
-		return nil, err
+		return "", err
 	}
-	return humanize.ParseVariants(resp.Content)
-}
-
-// clampCount defaults a non-positive count to 3 and clamps to [1,5].
-func clampCount(count int) int {
-	if count <= 0 {
-		return defaultCount
-	}
-	if count < minCount {
-		return minCount
-	}
-	if count > maxCount {
-		return maxCount
-	}
-	return count
-}
-
-// dropInvalidIndices removes finding entries whose index is out of range for the
-// review, defending against a hallucinated index the model may return.
-func dropInvalidIndices(variants []humanize.Variant, findingCount int) []humanize.Variant {
-	for i := range variants {
-		kept := make([]humanize.FindingText, 0, len(variants[i].Findings))
-		for _, f := range variants[i].Findings {
-			if f.Index >= 0 && f.Index < findingCount {
-				kept = append(kept, f)
-			}
-		}
-		variants[i].Findings = kept
-	}
-	return variants
+	return resp.Content, nil
 }
 
 // statusLabel renders a style-guide status for an error message, mapping the

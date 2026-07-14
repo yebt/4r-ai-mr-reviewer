@@ -449,31 +449,60 @@ func (s *Server) publishReview(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "published"})
 }
 
-// humanizeReview rewrites a finished review's summary and findings in a
-// profile's author voice, returning N ephemeral variants (nothing is persisted).
+// humanizeReview rewrites ONE target of a finished review — a single finding's
+// issue/why/fix parts, or the summary — in a profile's author voice, returning
+// the structured parts. It is ephemeral: nothing is persisted. The frontend
+// fires one call per target so each rewrite is independent.
+//
+// Request: {profileId, target:"finding", index} or {profileId, target:"summary"}.
 // Error mapping: unknown review/profile → 404; review not done or style guide not
-// ready → 409; LLM/parse failure → 502.
+// ready → 409; unknown/missing target or out-of-range index → 400; LLM/parse
+// failure → 502.
 func (s *Server) humanizeReview(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		ProfileID string `json:"profileId"`
-		Count     int    `json:"count"`
+		Target    string `json:"target"`
+		Index     int    `json:"index"`
 	}
 	if err := decode(r, &in); err != nil {
 		writeErr(w, err, http.StatusBadRequest)
 		return
 	}
-	variants, err := s.humanize.Humanize(r.Context(), r.PathValue("id"), in.ProfileID, in.Count)
-	if err != nil {
-		if errors.Is(err, apphumanize.ErrReviewNotDone) || errors.Is(err, apphumanize.ErrStyleGuideNotReady) {
-			writeErr(w, err, http.StatusConflict)
+
+	switch in.Target {
+	case "summary":
+		out, err := s.humanize.HumanizeSummary(r.Context(), r.PathValue("id"), in.ProfileID)
+		if err != nil {
+			s.writeHumanizeErr(w, err)
 			return
 		}
+		writeJSON(w, http.StatusOK, out)
+	case "finding":
+		out, err := s.humanize.HumanizeFinding(r.Context(), r.PathValue("id"), in.ProfileID, in.Index)
+		if err != nil {
+			s.writeHumanizeErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	default:
+		writeErr(w, errors.New(`humanize: target must be "finding" or "summary"`), http.StatusBadRequest)
+	}
+}
+
+// writeHumanizeErr maps humanize service errors to HTTP status codes: unknown
+// review/profile → 404 (via writeErr); review not done / style guide not ready →
+// 409; out-of-range finding index → 400; any other failure (LLM/parse) → 502.
+func (s *Server) writeHumanizeErr(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, apphumanize.ErrReviewNotDone), errors.Is(err, apphumanize.ErrStyleGuideNotReady):
+		writeErr(w, err, http.StatusConflict)
+	case errors.Is(err, apphumanize.ErrFindingIndexOutOfRange):
+		writeErr(w, err, http.StatusBadRequest)
+	default:
 		// isNotFound (via writeErr) still maps unknown review/profile to 404;
 		// any other failure here is an upstream LLM/parse error.
 		writeErr(w, err, http.StatusBadGateway)
-		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"variants": variants})
 }
 
 // --- response DTOs ---

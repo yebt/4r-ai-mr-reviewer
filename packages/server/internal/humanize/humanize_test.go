@@ -26,9 +26,10 @@ func sampleReview() review.Review {
 	}
 }
 
-func TestBuildHumanizeMessages(t *testing.T) {
+func TestBuildFindingMessages(t *testing.T) {
 	const guide = "Voice: warm and terse. Uses voseo."
-	msgs := BuildHumanizeMessages(guide, sampleReview(), 3)
+	f := sampleReview().Findings[0]
+	msgs := BuildFindingMessages(guide, f)
 
 	if len(msgs) != 2 {
 		t.Fatalf("messages len = %d, want 2", len(msgs))
@@ -41,61 +42,104 @@ func TestBuildHumanizeMessages(t *testing.T) {
 	if !strings.Contains(sys, guide) {
 		t.Fatal("system prompt must include the style guide verbatim")
 	}
-	if !strings.Contains(sys, "exactly 3") {
-		t.Fatalf("system prompt must state the count instruction, got: %q", sys)
-	}
-	if !strings.Contains(sys, `"variants"`) {
-		t.Fatal("system prompt must describe the variants JSON contract")
+	if !strings.Contains(sys, `"issue"`) || !strings.Contains(sys, `"why"`) || !strings.Contains(sys, `"fix"`) {
+		t.Fatalf("system prompt must describe the issue/why/fix JSON contract, got: %q", sys)
 	}
 
 	user := msgs[1].Content
-	for _, want := range []string{"hardcoded secret", "unclear name", "index 0", "index 1", "auth.go:42"} {
+	for _, want := range []string{"hardcoded secret", "leaks credentials", "read from env", "auth.go:42"} {
 		if !strings.Contains(user, want) {
 			t.Fatalf("user prompt missing %q, got: %q", want, user)
 		}
 	}
 }
 
-func TestParseVariantsPlain(t *testing.T) {
-	const content = `{"variants":[
-		{"summary":"che, quedó lindo","findings":[{"index":0,"text":"ojo con el secreto"}]},
-		{"summary":"buen laburo","findings":[{"index":0,"text":"sacá el secreto"},{"index":1,"text":"renombralo"}]}
-	]}`
+func TestBuildSummaryMessages(t *testing.T) {
+	const guide = "Voice: warm and terse. Uses voseo."
+	msgs := BuildSummaryMessages(guide, sampleReview())
 
-	vs, err := ParseVariants(content)
-	if err != nil {
-		t.Fatalf("ParseVariants: %v", err)
+	if len(msgs) != 2 {
+		t.Fatalf("messages len = %d, want 2", len(msgs))
 	}
-	if len(vs) != 2 {
-		t.Fatalf("variants len = %d, want 2", len(vs))
+	if msgs[0].Role != llm.RoleSystem || msgs[1].Role != llm.RoleUser {
+		t.Fatalf("unexpected roles: %+v", msgs)
 	}
-	if vs[0].Summary != "che, quedó lindo" {
-		t.Fatalf("summary = %q", vs[0].Summary)
+
+	sys := msgs[0].Content
+	if !strings.Contains(sys, guide) {
+		t.Fatal("system prompt must include the style guide verbatim")
 	}
-	if len(vs[1].Findings) != 2 || vs[1].Findings[1].Index != 1 || vs[1].Findings[1].Text != "renombralo" {
-		t.Fatalf("findings not parsed: %+v", vs[1].Findings)
+	if !strings.Contains(sys, `"summary"`) {
+		t.Fatalf("system prompt must describe the summary JSON contract, got: %q", sys)
+	}
+
+	user := msgs[1].Content
+	if !strings.Contains(user, "Overall solid, a couple of issues.") {
+		t.Fatalf("user prompt must include the review summary, got: %q", user)
 	}
 }
 
-func TestParseVariantsFenced(t *testing.T) {
+func TestParseFindingHumanizedPlain(t *testing.T) {
+	const content = `{"issue":"ojo con el secreto","why":"filtra credenciales","fix":"leelo del env"}`
+
+	fh, err := ParseFindingHumanized(content)
+	if err != nil {
+		t.Fatalf("ParseFindingHumanized: %v", err)
+	}
+	if fh.Issue != "ojo con el secreto" || fh.Why != "filtra credenciales" || fh.Fix != "leelo del env" {
+		t.Fatalf("parts not parsed: %+v", fh)
+	}
+}
+
+func TestParseFindingHumanizedFenced(t *testing.T) {
 	content := "```json\n" +
-		`{"variants":[{"summary":"s","findings":[{"index":0,"text":"t"}]}]}` +
+		`{"issue":"i","why":"","fix":"f"}` +
 		"\n```"
 
-	vs, err := ParseVariants(content)
+	fh, err := ParseFindingHumanized(content)
 	if err != nil {
-		t.Fatalf("ParseVariants (fenced): %v", err)
+		t.Fatalf("ParseFindingHumanized (fenced): %v", err)
 	}
-	if len(vs) != 1 || vs[0].Summary != "s" || vs[0].Findings[0].Text != "t" {
-		t.Fatalf("fenced parse wrong: %+v", vs)
+	if fh.Issue != "i" || fh.Why != "" || fh.Fix != "f" {
+		t.Fatalf("fenced parse wrong: %+v", fh)
 	}
 }
 
-func TestParseVariantsGarbage(t *testing.T) {
-	if _, err := ParseVariants("not json at all"); err == nil {
+func TestParseFindingHumanizedGarbage(t *testing.T) {
+	if _, err := ParseFindingHumanized("not json at all"); err == nil {
 		t.Fatal("expected an error on garbage input")
 	}
-	if _, err := ParseVariants(`{"variants":[]}`); err == nil {
-		t.Fatal("expected an error when no variants are present")
+}
+
+func TestParseSummaryHumanizedPlain(t *testing.T) {
+	const content = `{"summary":"che, en gral quedó lindo"}`
+
+	sh, err := ParseSummaryHumanized(content)
+	if err != nil {
+		t.Fatalf("ParseSummaryHumanized: %v", err)
+	}
+	if sh.Summary != "che, en gral quedó lindo" {
+		t.Fatalf("summary = %q", sh.Summary)
+	}
+}
+
+func TestParseSummaryHumanizedFenced(t *testing.T) {
+	content := "```json\n" + `{"summary":"buen laburo"}` + "\n```"
+
+	sh, err := ParseSummaryHumanized(content)
+	if err != nil {
+		t.Fatalf("ParseSummaryHumanized (fenced): %v", err)
+	}
+	if sh.Summary != "buen laburo" {
+		t.Fatalf("fenced parse wrong: %+v", sh)
+	}
+}
+
+func TestParseSummaryHumanizedGarbage(t *testing.T) {
+	if _, err := ParseSummaryHumanized("not json at all"); err == nil {
+		t.Fatal("expected an error on garbage input")
+	}
+	if _, err := ParseSummaryHumanized(`{"summary":""}`); err == nil {
+		t.Fatal("expected an error on empty summary")
 	}
 }
