@@ -278,38 +278,48 @@ not exist.
 ```
 
 ### `POST /reviews/{id}/humanize` → `200`
-Rewrites a finished review's summary and every finding in a humanization
-profile's author voice, returning `count` complete variants. This is **ephemeral**:
-nothing is persisted — the variants are computed on demand and returned inline.
-It uses the **default provider** (like style-guide distillation), not the repo's
-provider.
+Rewrites **one target** of a finished review — a single finding, or the summary —
+in a humanization profile's author voice, returning the rewrite as structured
+JSON. This is **ephemeral**: nothing is persisted; the rewrite is computed on
+demand and returned inline. It uses the **default provider** (like style-guide
+distillation), not the repo's provider.
+
+Callers rewrite one target per request, so a finding card and the summary are
+humanized by independent, concurrent calls. The `target` field selects what to
+rewrite:
+
+Rewrite a single finding by its zero-based `index`:
 ```json
-{ "profileId": "…", "count": 3 }
+{ "profileId": "…", "target": "finding", "index": 0 }
 ```
-`count` defaults to `3` and is clamped to `[1, 5]`. Each variant rewrites only the
-VOICE/phrasing; the technical substance (issue, why, fix) is preserved and every
-finding is referenced back by its zero-based `index`:
+Response — each part of the finding is rewritten separately so nothing is lost
+when the caller reassembles the comment body. Only the VOICE/phrasing changes;
+the technical substance is preserved. A part that is empty in the original stays
+empty (it is never fabricated):
 ```json
 {
-  "variants": [
-    {
-      "summary": "…rephrased summary…",
-      "findings": [
-        { "index": 0, "text": "…finding 0 in the author's voice…" },
-        { "index": 1, "text": "…finding 1 in the author's voice…" }
-      ]
-    }
-  ]
+  "issue": "…issue in the author's voice…",
+  "why": "…why it matters, in the author's voice…",
+  "fix": "…fix in the author's voice…"
 }
 ```
+
+Rewrite the review summary:
+```json
+{ "profileId": "…", "target": "summary" }
+```
+Response:
+```json
+{ "summary": "…rephrased summary…" }
+```
+
 Guards and error codes:
+- `400` — `target` is missing or not `finding`/`summary`, or the finding `index`
+  is outside the review's finding range.
 - `404` — the review or the profile does not exist.
 - `409` — the review is not `done`, or the profile's style guide is not `ready`
   (the message includes the actual status, e.g. `style guide not ready (pending)`).
 - `502` — the upstream LLM call failed or its output could not be parsed.
-
-Finding entries whose `index` falls outside the review's finding range (a model
-hallucination) are silently dropped from the response.
 
 ### `POST /reviews/{id}/publish` → `200`
 Publishes selected findings to the merge request as inline discussions (or a
