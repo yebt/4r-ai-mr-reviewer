@@ -255,6 +255,12 @@ export const useReviewsStore = defineStore('reviews', () => {
   // server is the source of truth. Selection stays defaulted to Original — we do
   // not auto-select a rehydrated tab.
   async function hydrateHumanized(reviewId: string) {
+    // A humanize call in flight owns the in-session tabs — its result is not
+    // persisted yet, so overwriting from the server here would drop it and let
+    // the pending push land on a stale array. Skip until it settles.
+    const busy = humanizing.value[reviewId]
+    if (busy && (busy.summary || Object.values(busy.findings).some(Boolean))) return
+
     const data = await api.getHumanizations(reviewId)
     humanized.value[reviewId] = {
       summary: data.summary ?? [],
