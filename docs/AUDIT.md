@@ -76,7 +76,7 @@ Severity legend: 🔴 P0 (user-facing bug / outage / security) · 🟠 P1 (corre
 
 ## 🟡 P2 — Robustness / quality
 
-- [ ] **10. Internal error details returned verbatim to the client.** `writeErr`
+- [x] **10. Internal error details returned verbatim to the client.** `writeErr`
   (`internal/http/handlers.go:99-106`) leaks DB op names, upstream GitLab/LLM bodies, filesystem
   paths. **Fix:** map to a generic client message; log the full wrapped error server-side.
 
