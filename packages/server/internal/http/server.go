@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 
 	"github.com/webcloster-dev/ai-reviewer/internal/app/accounts"
@@ -97,12 +98,23 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 
 // writeErr maps not-found sentinels to 404 and everything else to fallback.
+//
+// Client-error statuses (4xx) return the error message, which for this codebase
+// is app-authored validation text safe to show. Server errors (5xx) wrap internal
+// or upstream detail — DB operation names, provider/GitLab response bodies,
+// filesystem paths — so those are logged server-side and the client gets only a
+// generic status message.
 func writeErr(w http.ResponseWriter, err error, fallback int) {
 	status := fallback
 	if isNotFound(err) {
 		status = http.StatusNotFound
 	}
-	writeJSON(w, status, map[string]string{"error": err.Error()})
+	msg := err.Error()
+	if status >= 500 {
+		log.Printf("http %d: %v", status, err)
+		msg = http.StatusText(status)
+	}
+	writeJSON(w, status, map[string]string{"error": msg})
 }
 
 func isNotFound(err error) bool {
