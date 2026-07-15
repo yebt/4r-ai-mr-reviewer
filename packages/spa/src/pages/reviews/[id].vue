@@ -13,6 +13,7 @@ import { useReviewsStore } from '@modules/reviews/store'
 import { useReposStore } from '@modules/repos/store'
 import { useProfilesStore } from '@modules/profiles/store'
 import { isTerminal } from '@modules/reviews/format'
+import { useReviewNotification } from '@modules/reviews/useReviewNotification'
 import { ORIGINAL, buildFindingBody } from '@modules/reviews/humanize-overrides'
 import type { HumanizeFindingText } from '@shared/api/types'
 import ReviewStatusChip from '@modules/reviews/components/ReviewStatusChip.vue'
@@ -142,6 +143,46 @@ const phaseMap: Record<string, { label: string; step: number }> = {
 }
 const phase = computed(() => (review.value?.phase ? (phaseMap[review.value.phase] ?? null) : null))
 
+// Notify when a review the user is watching finishes. sawInProgress guards
+// against notifying for a review that was already terminal when opened; it is
+// reset when navigating to another review (see the reviewId watch below).
+const {
+  supported: notifSupported,
+  permission: notifPermission,
+  enabled: notifEnabled,
+  enable: enableNotifications,
+  notify: notifyDone,
+} = useReviewNotification()
+let sawInProgress = false
+
+function notificationBody(status: string): string {
+  if (status === 'done') {
+    const n = review.value?.findings.length ?? 0
+    return `Review finished — ${n} finding${n === 1 ? '' : 's'}.`
+  }
+  return status === 'error' ? 'Review failed.' : 'Review cancelled.'
+}
+
+watch(
+  () => review.value?.status,
+  (status) => {
+    if (!status) return
+    if (status === 'pending' || status === 'running') {
+      sawInProgress = true
+      return
+    }
+    if (!sawInProgress || !isTerminal(status)) return
+    sawInProgress = false
+    const title = `Review !${review.value?.mrIid ?? ''} ${status}`
+    const body = notificationBody(status)
+    // Desktop notification when the tab is hidden; a toast when it is focused.
+    if (!notifyDone(title, body)) {
+      if (status === 'error') toast.error(body)
+      else toast.success(body)
+    }
+  },
+)
+
 const { pause, resume } = useIntervalFn(
   async () => {
     await store.refresh(reviewId.value)
@@ -155,6 +196,7 @@ watch(
   reviewId,
   async (id) => {
     pause()
+    sawInProgress = false
     selected.value = []
     if (repos.items.length === 0) repos.fetchAll()
     if (profiles.items.length === 0) profiles.fetchAll()
@@ -386,15 +428,36 @@ async function remove() {
             :style="{ width: `${(phase.step / 4) * 100}%` }"
           />
         </div>
-        <button class="btn-line mt-4 text-xs" :disabled="cancelling" @click="cancel">
+        <div class="mt-4 flex flex-wrap items-center gap-2">
+          <button class="btn-line text-xs" :disabled="cancelling" @click="cancel">
+            <span
+              v-if="cancelling"
+              class="i-lucide-loader-circle animate-spin text-sm"
+              aria-hidden="true"
+            />
+            <span v-else class="i-lucide-ban text-sm" aria-hidden="true" />
+            Cancel review
+          </button>
+          <button
+            v-if="notifSupported && !(notifEnabled && notifPermission === 'granted')"
+            class="btn-ghost text-xs"
+            :disabled="notifPermission === 'denied'"
+            :title="
+              notifPermission === 'denied' ? 'Notifications are blocked in your browser' : undefined
+            "
+            @click="enableNotifications"
+          >
+            <span class="i-lucide-bell text-sm" aria-hidden="true" />
+            Notify me when done
+          </button>
           <span
-            v-if="cancelling"
-            class="i-lucide-loader-circle animate-spin text-sm"
-            aria-hidden="true"
-          />
-          <span v-else class="i-lucide-ban text-sm" aria-hidden="true" />
-          Cancel review
-        </button>
+            v-else-if="notifSupported"
+            class="text-muted inline-flex items-center gap-1 text-xs"
+          >
+            <span class="i-lucide-bell-ring text-ok text-sm" aria-hidden="true" />
+            Will notify when done
+          </span>
+        </div>
       </div>
 
       <div v-else-if="review.status === 'cancelled'" class="flex flex-col items-start gap-3">
