@@ -14,6 +14,7 @@ import { isTerminal } from '@modules/reviews/format'
 import ReviewStatusChip from '@modules/reviews/components/ReviewStatusChip.vue'
 import SummaryCard from '@modules/reviews/components/SummaryCard.vue'
 import FindingCard from '@modules/reviews/components/FindingCard.vue'
+import FindingCardTriage from '@modules/reviews/components/FindingCardTriage.vue'
 import FindingsToolbar from '@modules/reviews/components/FindingsToolbar.vue'
 import { useFindingFilters } from '@modules/reviews/useFindingFilters'
 
@@ -463,8 +464,8 @@ async function remove() {
             <p v-if="triage.visible.value.length === 0" class="text-muted text-sm">
               No findings match the active filters.
             </p>
-            <div v-else class="border-line/50 border-t">
-              <FindingCard
+            <div v-else class="flex flex-col gap-3">
+              <FindingCardTriage
                 v-for="f in triage.visible.value"
                 :key="f.index"
                 :finding="f"
