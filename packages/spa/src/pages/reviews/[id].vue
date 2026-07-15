@@ -13,6 +13,7 @@ import { useReviewsStore } from '@modules/reviews/store'
 import { useReposStore } from '@modules/repos/store'
 import { useProfilesStore } from '@modules/profiles/store'
 import { isTerminal } from '@modules/reviews/format'
+import { ORIGINAL } from '@modules/reviews/humanize-overrides'
 import ReviewStatusChip from '@modules/reviews/components/ReviewStatusChip.vue'
 import SummaryCard from '@modules/reviews/components/SummaryCard.vue'
 import FindingCard from '@modules/reviews/components/FindingCard.vue'
@@ -169,11 +170,31 @@ function toggle(index: number) {
   else selected.value.push(index)
 }
 
-async function publish(payload: { all?: boolean; indices?: number[]; includeSummary?: boolean }) {
+type PublishPayload = {
+  all?: boolean
+  indices?: number[]
+  includeSummary?: boolean
+  summaryOverride?: string
+}
+
+// When a bulk publish includes the summary note, honor the summary version the
+// user picked in SummaryCard (Original vs a humanized tab). Bulk publish only
+// carried includeSummary, so it always posted the generated summary; this
+// forwards the selected humanized tab's text as summaryOverride — matching
+// SummaryCard's own per-card publish.
+function withSummaryOverride(payload: PublishPayload): PublishPayload {
+  if (!payload.includeSummary) return payload
+  const tab = store.selectedSummaryTab(reviewId.value)
+  if (tab === ORIGINAL) return payload
+  const text = store.summaryTabs(reviewId.value)[tab]?.summary
+  return text ? { ...payload, summaryOverride: text } : payload
+}
+
+async function publish(payload: PublishPayload) {
   publishing.value = true
   publishError.value = null
   try {
-    await store.publish(reviewId.value, payload)
+    await store.publish(reviewId.value, withSummaryOverride(payload))
     selected.value = []
     toast.success('Findings published')
   } catch (e) {
