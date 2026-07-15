@@ -3,6 +3,7 @@
 import type {
   Account,
   FindingHumanized,
+  HumanizationsResponse,
   HumanizeFindingText,
   MergeRequest,
   Profile,
@@ -144,7 +145,8 @@ export const api = {
     },
   ) => request<{ status: string }>('POST', `/reviews/${id}/publish`, input),
   // Humanize rewrites a single finding's issue/why/fix in the profile's voice.
-  // Ephemeral: nothing is persisted; runs a synchronous LLM completion so it may
+  // The run is persisted server-side (see getHumanizations) and also returned so
+  // the UI can append it immediately. Runs a synchronous LLM completion so it may
   // be slow. A part comes back empty when the original finding left it empty.
   humanizeFinding: (id: string, profileId: string, index: number) =>
     request<FindingHumanized>('POST', `/reviews/${id}/humanize`, {
@@ -152,9 +154,13 @@ export const api = {
       target: 'finding',
       index,
     }),
-  // Humanize rewrites the review summary in the profile's voice. Ephemeral.
+  // Humanize rewrites the review summary in the profile's voice. Persisted too.
   humanizeSummary: (id: string, profileId: string) =>
     request<SummaryHumanized>('POST', `/reviews/${id}/humanize`, { profileId, target: 'summary' }),
+  // getHumanizations returns every persisted humanize run of a review, grouped so
+  // the store can rehydrate its tabs after a page reload.
+  getHumanizations: (id: string) =>
+    request<HumanizationsResponse>('GET', `/reviews/${id}/humanizations`),
 
   // skills
   getSkills: () =>

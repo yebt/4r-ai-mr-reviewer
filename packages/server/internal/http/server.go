@@ -83,6 +83,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /reviews/{id}/archive", s.archiveReview)
 	mux.HandleFunc("POST /reviews/{id}/unarchive", s.unarchiveReview)
 	mux.HandleFunc("POST /reviews/{id}/humanize", s.humanizeReview)
+	mux.HandleFunc("GET /reviews/{id}/humanizations", s.getHumanizations)
 
 	return mux
 }

@@ -11,9 +11,9 @@ import type {
 import { ORIGINAL } from '@modules/reviews/humanize-overrides'
 
 // Per-review humanize state. Accumulating tabs of structured humanized output
-// plus the selected tab per card, kept in the store (keyed by reviewId) so it
-// survives in-session navigation away and back. Full page-reload persistence is
-// out of scope.
+// plus the selected tab per card, kept in the store (keyed by reviewId). Every
+// run is also persisted server-side, so `load` rehydrates these tabs from the
+// server (the source of truth) and they survive a full page reload.
 interface HumanizedState {
   summary: SummaryHumanized[] // tabs 0..n; Original is implicit (ORIGINAL)
   findings: Record<number, FindingHumanized[]> // per finding index → tabs
@@ -250,6 +250,18 @@ export const useReviewsStore = defineStore('reviews', () => {
     return created
   }
 
+  // hydrateHumanized overwrites the in-session humanize cache for a review with
+  // the server's persisted tabs, so a full page reload rehydrates every tab. The
+  // server is the source of truth. Selection stays defaulted to Original — we do
+  // not auto-select a rehydrated tab.
+  async function hydrateHumanized(reviewId: string) {
+    const data = await api.getHumanizations(reviewId)
+    humanized.value[reviewId] = {
+      summary: data.summary ?? [],
+      findings: data.findings ?? {},
+    }
+  }
+
   async function load(id: string) {
     const cached = reviewsById.value[id]
     if (cached) current.value = cached
@@ -264,6 +276,13 @@ export const useReviewsStore = defineStore('reviews', () => {
       currentError.value = errorMessage(e)
     } finally {
       currentLoading.value = false
+    }
+    // Rehydrate persisted humanize tabs from the server. Best-effort: a failure
+    // here must not blank the review that already loaded above.
+    try {
+      await hydrateHumanized(id)
+    } catch {
+      // Keep whatever in-session tabs we already have.
     }
   }
 

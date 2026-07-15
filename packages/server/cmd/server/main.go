@@ -58,6 +58,7 @@ func run() error {
 	profileStore := sqlite.NewProfileStore(db)
 	repoStore := sqlite.NewRepoStore(db)
 	reviewStore := sqlite.NewReviewStore(db)
+	humanizationStore := sqlite.NewHumanizationStore(db)
 	jobStore := sqlite.NewJobStore(db)
 
 	// Services.
@@ -71,7 +72,7 @@ func run() error {
 		return err
 	}
 	reviewSvc := reviews.NewService(reviewStore, repoStore, accountSvc, providerSvc, engine.NewMultiPass(ruleSet))
-	humanizeSvc := apphumanize.NewService(reviewStore, profileStore, providerSvc, nil)
+	humanizeSvc := apphumanize.NewService(reviewStore, profileStore, humanizationStore, providerSvc, nil)
 
 	runner := jobs.NewRunner(jobStore, reviewSvc.Handle)
 	reviewSvc.AttachRunner(runner)

@@ -95,6 +95,14 @@ export interface SummaryHumanized {
   summary: string
 }
 
+// Every persisted humanize run for a review, grouped for tab rehydration on
+// load. `summary` holds the summary rewrite tabs in order; `findings` maps a
+// finding index to its ordered rewrite tabs. The server is the source of truth.
+export interface HumanizationsResponse {
+  summary: SummaryHumanized[]
+  findings: Record<number, FindingHumanized[]>
+}
+
 export type ReviewStatus = 'pending' | 'running' | 'done' | 'error' | 'cancelled'
 export type ContextMode = 'fast' | 'deep'
 export type Recommendation = 'approve' | 'request_changes' | 'comment'

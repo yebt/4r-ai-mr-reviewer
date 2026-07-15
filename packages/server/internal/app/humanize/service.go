@@ -33,25 +33,27 @@ var ErrFindingIndexOutOfRange = errors.New("humanize: finding index out of range
 
 // Service rewrites finished reviews in an author's voice.
 type Service struct {
-	reviews   review.Repository
-	profiles  profile.Repository
-	providers *providers.Service
-	logger    *log.Logger
+	reviews       review.Repository
+	profiles      profile.Repository
+	humanizations review.HumanizationRepository
+	providers     *providers.Service
+	logger        *log.Logger
 }
 
 // NewService wires the humanize service. providers resolves the default LLM used
-// for rewriting; logger defaults to log.Default() when nil.
-func NewService(reviews review.Repository, profiles profile.Repository, providers *providers.Service, logger *log.Logger) *Service {
+// for rewriting; humanizations persists each successful rewrite so it survives a
+// page reload; logger defaults to log.Default() when nil.
+func NewService(reviews review.Repository, profiles profile.Repository, humanizations review.HumanizationRepository, providers *providers.Service, logger *log.Logger) *Service {
 	if logger == nil {
 		logger = log.Default()
 	}
-	return &Service{reviews: reviews, profiles: profiles, providers: providers, logger: logger}
+	return &Service{reviews: reviews, profiles: profiles, humanizations: humanizations, providers: providers, logger: logger}
 }
 
 // HumanizeFinding rewrites a single finding's issue/why/fix parts in the
 // profile's author voice. The review must be done, the profile's style guide
 // must be ready, and index must be within the review's findings. The rewritten
-// parts are returned, not persisted.
+// parts are returned and persisted as a new tab so they survive a page reload.
 func (s *Service) HumanizeFinding(ctx context.Context, reviewID, profileID string, index int) (humanize.FindingHumanized, error) {
 	rv, p, err := s.resolve(ctx, reviewID, profileID)
 	if err != nil {
@@ -65,12 +67,24 @@ func (s *Service) HumanizeFinding(ctx context.Context, reviewID, profileID strin
 	if err != nil {
 		return humanize.FindingHumanized{}, err
 	}
-	return humanize.ParseFindingHumanized(content)
+	fh, err := humanize.ParseFindingHumanized(content)
+	if err != nil {
+		return humanize.FindingHumanized{}, err
+	}
+	// Persist the run so a reload rehydrates it. Durability is the point of this
+	// path, so a persistence failure is surfaced rather than dropped.
+	if _, err := s.humanizations.Add(ctx, review.Humanization{
+		ReviewID: reviewID, ProfileID: profileID, Target: review.HumanizationFinding,
+		FindingIndex: index, Issue: fh.Issue, Why: fh.Why, Fix: fh.Fix,
+	}); err != nil {
+		return humanize.FindingHumanized{}, fmt.Errorf("humanize: persist finding: %w", err)
+	}
+	return fh, nil
 }
 
 // HumanizeSummary rewrites the review summary in the profile's author voice. The
 // review must be done and the profile's style guide must be ready. The rewritten
-// summary is returned, not persisted.
+// summary is returned and persisted as a new tab so it survives a page reload.
 func (s *Service) HumanizeSummary(ctx context.Context, reviewID, profileID string) (humanize.SummaryHumanized, error) {
 	rv, p, err := s.resolve(ctx, reviewID, profileID)
 	if err != nil {
@@ -81,7 +95,25 @@ func (s *Service) HumanizeSummary(ctx context.Context, reviewID, profileID strin
 	if err != nil {
 		return humanize.SummaryHumanized{}, err
 	}
-	return humanize.ParseSummaryHumanized(content)
+	sh, err := humanize.ParseSummaryHumanized(content)
+	if err != nil {
+		return humanize.SummaryHumanized{}, err
+	}
+	// Persist the run so a reload rehydrates it. Durability is the point of this
+	// path, so a persistence failure is surfaced rather than dropped.
+	if _, err := s.humanizations.Add(ctx, review.Humanization{
+		ReviewID: reviewID, ProfileID: profileID, Target: review.HumanizationSummary,
+		FindingIndex: review.SummaryFindingIndex, Summary: sh.Summary,
+	}); err != nil {
+		return humanize.SummaryHumanized{}, fmt.Errorf("humanize: persist summary: %w", err)
+	}
+	return sh, nil
+}
+
+// List returns every persisted humanization for a review so the HTTP layer can
+// group them for the SPA to rehydrate its tabs.
+func (s *Service) List(ctx context.Context, reviewID string) ([]review.Humanization, error) {
+	return s.humanizations.ListByReview(ctx, reviewID)
 }
 
 // resolve loads and guards the review and profile shared by both humanize paths:

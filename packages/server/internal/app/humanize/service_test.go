@@ -41,10 +41,11 @@ func aiStub(t *testing.T, content string) *httptest.Server {
 }
 
 type fixture struct {
-	svc      *Service
-	reviews  review.Repository
-	profiles profile.Repository
-	repoID   string
+	svc           *Service
+	reviews       review.Repository
+	profiles      profile.Repository
+	humanizations review.HumanizationRepository
+	repoID        string
 }
 
 // newFixture wires a humanize.Service over real sqlite stores and a real
@@ -86,8 +87,9 @@ func newFixture(t *testing.T, aiURL string) fixture {
 
 	reviewStore := sqlite.NewReviewStore(db)
 	profileStore := sqlite.NewProfileStore(db)
-	svc := NewService(reviewStore, profileStore, providerSvc, log.New(io.Discard, "", 0))
-	return fixture{svc: svc, reviews: reviewStore, profiles: profileStore, repoID: rp.ID}
+	humanizationStore := sqlite.NewHumanizationStore(db)
+	svc := NewService(reviewStore, profileStore, humanizationStore, providerSvc, log.New(io.Discard, "", 0))
+	return fixture{svc: svc, reviews: reviewStore, profiles: profileStore, humanizations: humanizationStore, repoID: rp.ID}
 }
 
 // seedReview inserts a review with the given status and two findings.
@@ -162,6 +164,71 @@ func TestHumanizeSummaryReturnsStructured(t *testing.T) {
 	}
 	if sh.Summary != "che, en gral quedó lindo" {
 		t.Fatalf("summary = %q", sh.Summary)
+	}
+}
+
+func TestHumanizePersistsRuns(t *testing.T) {
+	srv := aiStub(t, findingJSON)
+	defer srv.Close()
+	f := newFixture(t, srv.URL)
+
+	reviewID := seedReview(t, f.reviews, f.repoID, review.StatusDone)
+	profileID := seedProfile(t, f.profiles, profile.StyleStatusReady)
+	ctx := context.Background()
+
+	// Two finding runs on index 0 must accumulate as tabs 0 and 1.
+	if _, err := f.svc.HumanizeFinding(ctx, reviewID, profileID, 0); err != nil {
+		t.Fatalf("HumanizeFinding #1: %v", err)
+	}
+	if _, err := f.svc.HumanizeFinding(ctx, reviewID, profileID, 0); err != nil {
+		t.Fatalf("HumanizeFinding #2: %v", err)
+	}
+
+	hs, err := f.humanizations.ListByReview(ctx, reviewID)
+	if err != nil {
+		t.Fatalf("ListByReview: %v", err)
+	}
+	if len(hs) != 2 {
+		t.Fatalf("persisted runs = %d, want 2", len(hs))
+	}
+	for i, h := range hs {
+		if h.Target != review.HumanizationFinding || h.FindingIndex != 0 {
+			t.Fatalf("run %d: target=%q findingIndex=%d", i, h.Target, h.FindingIndex)
+		}
+		if h.TabIndex != i {
+			t.Fatalf("run %d: tabIndex = %d, want %d", i, h.TabIndex, i)
+		}
+		if h.Issue != "che, acá el token está hardcodeado" {
+			t.Fatalf("run %d: issue = %q", i, h.Issue)
+		}
+	}
+}
+
+func TestHumanizeSummaryPersistsRun(t *testing.T) {
+	srv := aiStub(t, summaryJSON)
+	defer srv.Close()
+	f := newFixture(t, srv.URL)
+
+	reviewID := seedReview(t, f.reviews, f.repoID, review.StatusDone)
+	profileID := seedProfile(t, f.profiles, profile.StyleStatusReady)
+	ctx := context.Background()
+
+	if _, err := f.svc.HumanizeSummary(ctx, reviewID, profileID); err != nil {
+		t.Fatalf("HumanizeSummary: %v", err)
+	}
+
+	hs, err := f.humanizations.ListByReview(ctx, reviewID)
+	if err != nil {
+		t.Fatalf("ListByReview: %v", err)
+	}
+	if len(hs) != 1 {
+		t.Fatalf("persisted runs = %d, want 1", len(hs))
+	}
+	if hs[0].Target != review.HumanizationSummary || hs[0].FindingIndex != review.SummaryFindingIndex {
+		t.Fatalf("target=%q findingIndex=%d", hs[0].Target, hs[0].FindingIndex)
+	}
+	if hs[0].Summary != "che, en gral quedó lindo" {
+		t.Fatalf("summary = %q", hs[0].Summary)
 	}
 }
 

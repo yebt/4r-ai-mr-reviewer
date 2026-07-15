@@ -229,6 +229,9 @@ func (r *ReviewStore) Delete(ctx context.Context, id string) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM review_findings WHERE review_id = ?`, id); err != nil {
 		return fmt.Errorf("review store: delete: clear findings: %w", err)
 	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM review_humanizations WHERE review_id = ?`, id); err != nil {
+		return fmt.Errorf("review store: delete: clear humanizations: %w", err)
+	}
 	res, err := tx.ExecContext(ctx, `DELETE FROM reviews WHERE id = ?`, id)
 	if err != nil {
 		return fmt.Errorf("review store: delete: %w", err)

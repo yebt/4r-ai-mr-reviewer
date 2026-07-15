@@ -280,9 +280,10 @@ not exist.
 ### `POST /reviews/{id}/humanize` → `200`
 Rewrites **one target** of a finished review — a single finding, or the summary —
 in a humanization profile's author voice, returning the rewrite as structured
-JSON. This is **ephemeral**: nothing is persisted; the rewrite is computed on
-demand and returned inline. It uses the **default provider** (like style-guide
-distillation), not the repo's provider.
+JSON. Each successful rewrite is **persisted** as a new tab (see
+`GET /reviews/{id}/humanizations`) so it survives a page reload; the rewrite is
+still returned inline so the caller can show it immediately. It uses the
+**default provider** (like style-guide distillation), not the repo's provider.
 
 Callers rewrite one target per request, so a finding card and the summary are
 humanized by independent, concurrent calls. The `target` field selects what to
@@ -320,6 +321,26 @@ Guards and error codes:
 - `409` — the review is not `done`, or the profile's style guide is not `ready`
   (the message includes the actual status, e.g. `style guide not ready (pending)`).
 - `502` — the upstream LLM call failed or its output could not be parsed.
+
+### `GET /reviews/{id}/humanizations` → `200`
+Returns every **persisted** humanize run of a review, grouped so a client can
+rehydrate its humanize tabs after a page reload. `summary` is the ordered list of
+summary rewrites; `findings` maps a finding's zero-based index (as a string key,
+since JSON object keys are strings) to its ordered list of rewrites. Within each
+group the tabs preserve the order in which they were produced. Empty groups are
+omitted from `findings`; `summary` is `[]` when the summary was never humanized.
+```json
+{
+  "summary": [{ "summary": "…rephrased summary…" }],
+  "findings": {
+    "0": [{ "issue": "…", "why": "…", "fix": "…" }],
+    "3": [{ "issue": "…", "why": "…", "fix": "…" }]
+  }
+}
+```
+Known limitation: a finding rewrite is keyed by the finding's index at rewrite
+time. Retrying a review regenerates its findings, so rewrites produced before a
+retry may point at a now-stale index; they are returned as-is and not reconciled.
 
 ### `POST /reviews/{id}/publish` → `200`
 Publishes selected findings to the merge request as inline discussions (or a

@@ -3,6 +3,7 @@ package httpapi
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/webcloster-dev/ai-reviewer/internal/adapters/gitlab"
@@ -489,6 +490,19 @@ func (s *Server) humanizeReview(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// getHumanizations returns every persisted humanize run of a review, grouped for
+// the SPA to rehydrate its tabs: the summary rewrites as an ordered list, and the
+// finding rewrites keyed by finding index (as a string, since JSON object keys
+// are strings). Within each group the tabs preserve their run order.
+func (s *Server) getHumanizations(w http.ResponseWriter, r *http.Request) {
+	hs, err := s.humanize.List(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeErr(w, err, http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, toHumanizations(hs))
+}
+
 // writeHumanizeErr maps humanize service errors to HTTP status codes: unknown
 // review/profile → 404 (via writeErr); review not done / style guide not ready →
 // 409; out-of-range finding index → 400; any other failure (LLM/parse) → 502.
@@ -651,4 +665,41 @@ func toReview(rv review.Review) reviewResp {
 		Score: rv.Score, Error: rv.Error, InputTokens: rv.InputTokens, OutputTokens: rv.OutputTokens,
 		Findings: findings, CreatedAt: rv.CreatedAt, UpdatedAt: rv.UpdatedAt,
 	}
+}
+
+// summaryHumanizedResp is one persisted summary rewrite tab.
+type summaryHumanizedResp struct {
+	Summary string `json:"summary"`
+}
+
+// findingHumanizedResp is one persisted finding rewrite tab.
+type findingHumanizedResp struct {
+	Issue string `json:"issue"`
+	Why   string `json:"why"`
+	Fix   string `json:"fix"`
+}
+
+// humanizationsResp is the grouped, rehydration-ready view of a review's
+// persisted humanizations. Findings are keyed by finding index (stringified for
+// JSON object keys); tabs within each group preserve their run order.
+type humanizationsResp struct {
+	Summary  []summaryHumanizedResp            `json:"summary"`
+	Findings map[string][]findingHumanizedResp `json:"findings"`
+}
+
+func toHumanizations(hs []review.Humanization) humanizationsResp {
+	out := humanizationsResp{
+		Summary:  []summaryHumanizedResp{},
+		Findings: map[string][]findingHumanizedResp{},
+	}
+	for _, h := range hs {
+		switch h.Target {
+		case review.HumanizationSummary:
+			out.Summary = append(out.Summary, summaryHumanizedResp{Summary: h.Summary})
+		case review.HumanizationFinding:
+			key := strconv.Itoa(h.FindingIndex)
+			out.Findings[key] = append(out.Findings[key], findingHumanizedResp{Issue: h.Issue, Why: h.Why, Fix: h.Fix})
+		}
+	}
+	return out
 }

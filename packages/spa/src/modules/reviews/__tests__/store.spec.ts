@@ -16,6 +16,7 @@ vi.mock('@shared/api/client', () => ({
     publishReview: vi.fn(),
     humanizeFinding: vi.fn(),
     humanizeSummary: vi.fn(),
+    getHumanizations: vi.fn(),
   },
 }))
 
@@ -36,6 +37,7 @@ const mocked = api as unknown as {
   publishReview: ReturnType<typeof vi.fn>
   humanizeFinding: ReturnType<typeof vi.fn>
   humanizeSummary: ReturnType<typeof vi.fn>
+  getHumanizations: ReturnType<typeof vi.fn>
 }
 
 const review = (id: string, status: ReviewStatus = 'pending'): Review => ({
@@ -61,6 +63,9 @@ describe('reviews store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
+    // load() always rehydrates humanize tabs; default to an empty server payload
+    // so tests that do not care about it are unaffected.
+    mocked.getHumanizations.mockResolvedValue({ summary: [], findings: {} })
   })
 
   it('caches merge requests per repo', async () => {
@@ -94,6 +99,36 @@ describe('reviews store', () => {
     await store.load('1')
     expect(store.currentLoading).toBe(false)
     expect(store.current?.status).toBe('done')
+  })
+
+  it('load rehydrates humanized tabs from the server', async () => {
+    mocked.getReview.mockResolvedValue(review('1', 'done'))
+    mocked.getHumanizations.mockResolvedValue({
+      summary: [{ summary: 'nicer' }],
+      findings: { 0: [{ issue: 'kind', why: 'w', fix: 'f' }] },
+    })
+    const store = useReviewsStore()
+
+    await store.load('1')
+
+    expect(mocked.getHumanizations).toHaveBeenCalledWith('1')
+    expect(store.summaryTabs('1')).toEqual([{ summary: 'nicer' }])
+    expect(store.findingTabs('1', 0)).toEqual([{ issue: 'kind', why: 'w', fix: 'f' }])
+    // Selection stays on Original after rehydration.
+    expect(store.selectedSummaryTab('1')).toBe(-1)
+    expect(store.selectedFindingTab('1', 0)).toBe(-1)
+  })
+
+  it('load keeps the loaded review even if humanization rehydration fails', async () => {
+    mocked.getReview.mockResolvedValue(review('1', 'done'))
+    mocked.getHumanizations.mockRejectedValue(new Error('humanizations down'))
+    const store = useReviewsStore()
+
+    await store.load('1')
+
+    expect(store.current?.status).toBe('done')
+    expect(store.currentError).toBeNull()
+    expect(store.summaryTabs('1')).toEqual([])
   })
 
   it('remove purges the review from every cache', async () => {
