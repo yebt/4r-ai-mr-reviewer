@@ -11,5 +11,8 @@ Rules:
 - Flag async/concurrent code with race conditions or missing synchronization.
 - Require evidence of determinism: same input produces same output; external dependencies mocked or controlled.
 - Flag weak selectors in UI tests; prefer semantic, user-visible queries.
+- Flag focused or exclusive test markers left in the change (e.g. `.only`, focused specs) that can pass CI while silently skipping the rest of the suite; require a guard that fails CI on them.
+- Flag coverage pushed to slow end-to-end tests where a cheaper, deterministic unit or integration test would assert the same contract.
+- Flag new public APIs, components, or exported functions introduced with no documented contract or example usage.
 
 Blocking guidance: a Reliability finding is blocking when the change can produce incorrect behavior on a realistic input with no test guarding it.
