@@ -1,8 +1,8 @@
 // Package humanize rewrites a finished review's parts in a profile's author
-// voice, one target at a time. It is ephemeral: each rewrite is computed on
-// demand from the default provider and never persisted. The frontend fires one
-// call per target (a finding or the summary), so a rewrite always returns the
-// structured parts of exactly one target.
+// voice, one target at a time. Each rewrite is computed from the default
+// provider and persisted (see HumanizationRepository) so tabs survive a reload.
+// The frontend fires one call per target (a finding or the summary), so a
+// rewrite always returns the structured parts of exactly one target.
 package humanize
 
 import (

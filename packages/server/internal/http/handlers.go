@@ -452,8 +452,8 @@ func (s *Server) publishReview(w http.ResponseWriter, r *http.Request) {
 
 // humanizeReview rewrites ONE target of a finished review — a single finding's
 // issue/why/fix parts, or the summary — in a profile's author voice, returning
-// the structured parts. It is ephemeral: nothing is persisted. The frontend
-// fires one call per target so each rewrite is independent.
+// the structured parts. Each rewrite is persisted (GET /reviews/{id}/humanizations
+// serves them back). The frontend fires one call per target so each is independent.
 //
 // Request: {profileId, target:"finding", index} or {profileId, target:"summary"}.
 // Error mapping: unknown review/profile → 404; review not done or style guide not
