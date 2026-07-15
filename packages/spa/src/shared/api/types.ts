@@ -100,7 +100,8 @@ export interface SummaryHumanized {
 // finding index to its ordered rewrite tabs. The server is the source of truth.
 export interface HumanizationsResponse {
   summary: SummaryHumanized[]
-  findings: Record<number, FindingHumanized[]>
+  // Object keys are stringified finding indices (JSON object keys are strings).
+  findings: Record<string, FindingHumanized[]>
 }
 
 export type ReviewStatus = 'pending' | 'running' | 'done' | 'error' | 'cancelled'
