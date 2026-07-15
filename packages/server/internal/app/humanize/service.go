@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/webcloster-dev/ai-reviewer/internal/adapters/ai"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/providers"
@@ -71,14 +72,13 @@ func (s *Service) HumanizeFinding(ctx context.Context, reviewID, profileID strin
 	if err != nil {
 		return humanize.FindingHumanized{}, err
 	}
-	// Persist the run so a reload rehydrates it. Durability is the point of this
-	// path, so a persistence failure is surfaced rather than dropped.
-	if _, err := s.humanizations.Add(ctx, review.Humanization{
+	// Persist the run so a reload rehydrates it. The rewrite is already computed
+	// and paid for, so a persistence failure must not discard it: persist retries,
+	// then degrades to returning the unsaved text.
+	s.persist(ctx, review.Humanization{
 		ReviewID: reviewID, ProfileID: profileID, Target: review.HumanizationFinding,
 		FindingIndex: index, Issue: fh.Issue, Why: fh.Why, Fix: fh.Fix,
-	}); err != nil {
-		return humanize.FindingHumanized{}, fmt.Errorf("humanize: persist finding: %w", err)
-	}
+	})
 	return fh, nil
 }
 
@@ -99,15 +99,38 @@ func (s *Service) HumanizeSummary(ctx context.Context, reviewID, profileID strin
 	if err != nil {
 		return humanize.SummaryHumanized{}, err
 	}
-	// Persist the run so a reload rehydrates it. Durability is the point of this
-	// path, so a persistence failure is surfaced rather than dropped.
-	if _, err := s.humanizations.Add(ctx, review.Humanization{
+	// Persist the run so a reload rehydrates it. The rewrite is already computed
+	// and paid for, so a persistence failure must not discard it: persist retries,
+	// then degrades to returning the unsaved text.
+	s.persist(ctx, review.Humanization{
 		ReviewID: reviewID, ProfileID: profileID, Target: review.HumanizationSummary,
 		FindingIndex: review.SummaryFindingIndex, Summary: sh.Summary,
-	}); err != nil {
-		return humanize.SummaryHumanized{}, fmt.Errorf("humanize: persist summary: %w", err)
-	}
+	})
 	return sh, nil
+}
+
+// persist records a humanize run, retrying briefly to ride out a transient DB
+// failure. The run is already computed and paid for, so on a persistent failure
+// it logs and returns without error: the caller still gets the text this session,
+// it just won't survive a reload. Losing durability beats losing the paid output.
+func (s *Service) persist(ctx context.Context, h review.Humanization) {
+	const attempts = 3
+	var err error
+	for i := 0; i < attempts; i++ {
+		if _, err = s.humanizations.Add(ctx, h); err == nil {
+			return
+		}
+		if i == attempts-1 {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			s.logger.Printf("humanize: persist %s for review %s: %v", h.Target, h.ReviewID, ctx.Err())
+			return
+		case <-time.After(time.Duration(i+1) * 50 * time.Millisecond):
+		}
+	}
+	s.logger.Printf("humanize: persist %s for review %s failed, returning unsaved text: %v", h.Target, h.ReviewID, err)
 }
 
 // List returns every persisted humanization for a review so the HTTP layer can
