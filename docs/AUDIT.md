@@ -69,7 +69,7 @@ Severity legend: 🔴 P0 (user-facing bug / outage / security) · 🟠 P1 (corre
   (`internal/app/reviews/publish.go:61-72`). The findings loop below it already guards this.
   **Fix:** apply the same "persist what posted, even on error" pattern to the summary branch.
 
-- [ ] **9. Humanize persistence failure discards the already-generated (paid) text.** On `Add`
+- [x] **9. Humanize persistence failure discards the already-generated (paid) text.** On `Add`
   failure, `HumanizeFinding`/`HumanizeSummary` return an empty struct + error instead of the computed
   text (`internal/app/humanize/service.go:57-83,88-111`). **Fix:** return the computed text alongside
   a persistence-failed flag, or retry `Add` a bounded number of times.
@@ -115,7 +115,7 @@ Severity legend: 🔴 P0 (user-facing bug / outage / security) · 🟠 P1 (corre
 - [x] **18. Type/wire mismatch.** `HumanizationsResponse.findings` typed `Record<number, ...>` but
   the server emits string object keys (`packages/spa/src/shared/api/types.ts:101-104`,
   `handlers.go:687`). **Fix:** type it `Record<string, FindingHumanized[]>`.
-- [ ] **19. `hydrateHumanized` can clobber an in-flight humanize.** Navigating away/back while a
+- [x] **19. `hydrateHumanized` can clobber an in-flight humanize.** Navigating away/back while a
   humanize call is pending overwrites from the server (which lacks the not-yet-persisted run)
   (`store.ts:257-263`). **Fix:** skip/merge hydrate when `humanizing` is active.
 - [ ] **20. Duplicated finding-card script (~50 lines).** `FindingCard.vue` and
