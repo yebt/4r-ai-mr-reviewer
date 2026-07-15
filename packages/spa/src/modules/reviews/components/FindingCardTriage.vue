@@ -100,12 +100,10 @@ const { store, tabs, selectedTab, humanizing, publishedTabIdx, shown, publishing
     </div>
 
     <!-- 2. File badge on its own line — the location stands out as a mono pill.
-         Only shown for the Original tab (humanize rewrites prose, not location).
-         Renders even without a line; the line is a separate accent pill. -->
-    <div
-      v-if="finding.file && selectedTab === ORIGINAL"
-      class="flex min-w-0 flex-wrap items-center gap-2"
-    >
+         Shown on every tab: the file/line is the finding's location and does not
+         change when humanized. Renders even without a line; the line is a
+         separate accent pill. -->
+    <div v-if="finding.file" class="flex min-w-0 flex-wrap items-center gap-2">
       <span
         class="border-line bg-surface text-muted inline-flex min-w-0 items-center gap-1.5 border px-2 py-1 font-mono text-xs"
       >

@@ -105,10 +105,7 @@ const { store, tabs, selectedTab, humanizing, publishedTabIdx, shown, publishing
 
       <p class="text-ink mt-2 text-sm whitespace-pre-wrap">{{ shown.issue }}</p>
 
-      <div
-        v-if="finding.file && selectedTab === ORIGINAL"
-        class="text-muted mt-1 font-mono text-xs"
-      >
+      <div v-if="finding.file" class="text-muted mt-1 font-mono text-xs">
         {{ finding.file }}<template v-if="finding.line">:{{ finding.line }}</template>
       </div>
 
