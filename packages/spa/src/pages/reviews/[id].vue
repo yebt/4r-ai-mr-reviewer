@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useIntervalFn } from '@vueuse/core'
+import { useIntervalFn, useLocalStorage } from '@vueuse/core'
 import { errorMessage } from '@shared/api/client'
 import { confirm } from '@shared/composables/useConfirm'
 import { setBreadcrumbs } from '@shared/composables/useBreadcrumbs'
@@ -14,6 +14,8 @@ import { isTerminal } from '@modules/reviews/format'
 import ReviewStatusChip from '@modules/reviews/components/ReviewStatusChip.vue'
 import SummaryCard from '@modules/reviews/components/SummaryCard.vue'
 import FindingCard from '@modules/reviews/components/FindingCard.vue'
+import FindingsToolbar from '@modules/reviews/components/FindingsToolbar.vue'
+import { useFindingFilters } from '@modules/reviews/useFindingFilters'
 
 const route = useRoute()
 const router = useRouter()
@@ -84,6 +86,28 @@ watch(
 )
 
 const unpublished = computed(() => review.value?.findings.filter((f) => !f.published) ?? [])
+
+// Findings view mode, persisted so the choice survives navigation/reload. The
+// triage view is the default; "classic" keeps the original flat list intact.
+const findingsView = useLocalStorage<'classic' | 'triage'>('reviews:findingsView', 'triage')
+
+// Triage state (filters/sort/counts/visible) over the review's findings.
+const triage = useFindingFilters(() => review.value?.findings ?? [])
+
+// Visible findings that can still be published (used by "Select all visible").
+const selectableVisible = computed(() => triage.visible.value.filter((f) => !f.published))
+
+// Add every currently-visible unpublished finding to the selection (union, so a
+// prior selection outside the current filter is preserved).
+function selectAllVisible() {
+  for (const f of selectableVisible.value) {
+    if (!selected.value.includes(f.index)) selected.value.push(f.index)
+  }
+}
+
+function clearSelection() {
+  selected.value = []
+}
 
 // Multi-pass progress: maps the backend phase to a labelled step (of 4).
 const phaseMap: Record<string, { label: string; step: number }> = {
@@ -329,6 +353,23 @@ async function remove() {
               Findings
             </h2>
             <div v-if="review.findings.length" class="flex flex-wrap items-center gap-3">
+              <div class="flex items-center gap-1" role="group" aria-label="Findings view">
+                <button
+                  v-for="v in (['triage', 'classic'] as const)"
+                  :key="v"
+                  type="button"
+                  class="border px-2 py-0.5 text-xs capitalize transition-colors"
+                  :class="
+                    findingsView === v
+                      ? 'border-accent text-ink bg-accent/10'
+                      : 'border-line text-muted hover:text-ink'
+                  "
+                  :aria-pressed="findingsView === v"
+                  @click="findingsView = v"
+                >
+                  {{ v }}
+                </button>
+              </div>
               <label class="text-muted flex cursor-pointer items-center gap-1.5 text-xs">
                 <input v-model="includeSummary" type="checkbox" class="accent-accent" />
                 Include summary note
@@ -365,7 +406,9 @@ async function remove() {
           <p v-if="review.findings.length === 0" class="text-muted text-sm">
             No findings — clean review.
           </p>
-          <div v-else class="border-line/50 border-t">
+
+          <!-- Classic: the original flat list, unchanged. -->
+          <div v-else-if="findingsView === 'classic'" class="border-line/50 border-t">
             <FindingCard
               v-for="f in review.findings"
               :key="f.index"
@@ -376,6 +419,62 @@ async function remove() {
               :selected="selected.includes(f.index)"
               @toggle="toggle"
             />
+          </div>
+
+          <!-- Triage: filter/sort toolbar + the visible slice of the same cards. -->
+          <div v-else>
+            <FindingsToolbar
+              :counts="triage.counts.value"
+              :filters="triage.filters"
+              :sort="triage.sort.value"
+              :dimensions="triage.dimensions"
+              :severities="triage.severities"
+              :active="triage.active.value"
+              @toggle-dimension="triage.toggleDimension"
+              @toggle-severity="triage.toggleSeverity"
+              @toggle-blocking-only="triage.toggleBlockingOnly"
+              @set-status="triage.setStatus"
+              @set-sort="triage.setSort"
+              @reset="triage.reset"
+            />
+
+            <div class="text-muted mb-3 flex flex-wrap items-center gap-3 text-xs">
+              <span>
+                Showing {{ triage.visible.value.length }} of {{ review.findings.length }}
+              </span>
+              <button
+                type="button"
+                class="btn-ghost text-xs"
+                :disabled="selectableVisible.length === 0"
+                @click="selectAllVisible"
+              >
+                Select all visible ({{ selectableVisible.length }})
+              </button>
+              <button
+                v-if="selected.length"
+                type="button"
+                class="btn-ghost text-xs"
+                @click="clearSelection"
+              >
+                Clear selection
+              </button>
+            </div>
+
+            <p v-if="triage.visible.value.length === 0" class="text-muted text-sm">
+              No findings match the active filters.
+            </p>
+            <div v-else class="border-line/50 border-t">
+              <FindingCard
+                v-for="f in triage.visible.value"
+                :key="f.index"
+                :finding="f"
+                :review-id="review.id"
+                :profile-id="profileId"
+                :selectable="!f.published"
+                :selected="selected.includes(f.index)"
+                @toggle="toggle"
+              />
+            </div>
           </div>
         </section>
       </template>

@@ -7,6 +7,22 @@ import { useReviewsStore } from '@modules/reviews/store'
 import { ORIGINAL, buildFindingBody } from '@modules/reviews/humanize-overrides'
 import { dimensionLabel, severityClass } from '@modules/reviews/format'
 
+// Left border encodes severity as visual weight and is ALWAYS present. Blocking
+// overrides the color (flame) since it is the most urgent triage signal; then
+// high/medium/low map to danger/warn/muted. Published state uses a separate
+// channel (chip, tab check, body de-emphasis) so one axis = one visual signal.
+const borderClass = computed<string>(() => {
+  if (props.finding.blocking) return 'border-l-flame'
+  switch (props.finding.severity) {
+    case 'high':
+      return 'border-l-danger'
+    case 'medium':
+      return 'border-l-warn'
+    default:
+      return 'border-l-muted'
+  }
+})
+
 // profileId is the globally selected profile ([id].vue); empty disables Humanize.
 // selectable/selected/toggle drive the existing bulk "Publish selected" flow.
 const props = defineProps<{
@@ -80,8 +96,8 @@ async function publish() {
 
 <template>
   <div
-    class="border-line/50 flex gap-3 border-b py-4"
-    :class="finding.published ? 'border-l-2 border-l-ok bg-ok/5 pl-3' : ''"
+    class="border-line/50 flex gap-3 border-b border-l-2 py-4 pl-3"
+    :class="[borderClass, finding.published ? 'bg-ok/5 opacity-60' : '']"
   >
     <input
       v-if="selectable"

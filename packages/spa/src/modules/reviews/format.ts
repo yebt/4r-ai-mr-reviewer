@@ -14,6 +14,14 @@ export const severityClass: Record<Severity, string> = {
   low: 'text-muted',
 }
 
+// Sort/triage weight for a severity — higher is more severe. Used to order the
+// triage list (most severe first) and to pick each finding's left-border color.
+export const severityRank: Record<Severity, number> = {
+  high: 3,
+  medium: 2,
+  low: 1,
+}
+
 export const dimensionLabel: Record<Dimension, string> = {
   risk: 'R1 Risk',
   readability: 'R2 Readability',
