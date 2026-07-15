@@ -53,6 +53,10 @@ func (s *Service) Publish(ctx context.Context, reviewID string, sel Selection) e
 		return err
 	}
 	refs := ch.DiffRefs
+	// Added lines per file: only these are safe to anchor an inline discussion
+	// to with just position[new_line]. A finding on a context/deleted line falls
+	// back to a general note (avoids GitLab's "line_code can't be blank" 400).
+	added := addedLines(ch)
 
 	postSummary := !rv.SummaryPublished // default: only if not already posted
 	if sel.IncludeSummary != nil {
@@ -81,7 +85,7 @@ func (s *Service) Publish(ctx context.Context, reviewID string, sel Selection) e
 		}
 
 		var perr error
-		if f.File != "" && f.Line > 0 {
+		if f.File != "" && f.Line > 0 && added[f.File][f.Line] {
 			perr = gl.CreateInlineDiscussion(ctx, projectID, rv.MRIID, body, gitlab.Position{
 				BaseSHA:  refs.BaseSHA,
 				StartSHA: refs.StartSHA,
@@ -90,6 +94,11 @@ func (s *Service) Publish(ctx context.Context, reviewID string, sel Selection) e
 				NewLine:  f.Line,
 			})
 		} else {
+			// General note: the finding isn't anchored to a diff line, so prepend
+			// the location header to keep the file/line from being lost.
+			if loc := findingLocation(f); loc != "" {
+				body = "**File:** " + loc + "\n\n" + body
+			}
 			perr = gl.CreateNote(ctx, projectID, rv.MRIID, body)
 		}
 		if perr != nil {
@@ -150,6 +159,19 @@ var dimensionLabel = map[review.Dimension]string{
 	review.Readability: "R2 Readability",
 	review.Reliability: "R3 Reliability",
 	review.Resilience:  "R4 Resilience",
+}
+
+// findingLocation renders a finding's file location for a general note, e.g.
+// "path/to/file.go:42" (or just the path when Line == 0). It returns "" when the
+// finding has no file, so the caller can skip the location header entirely.
+func findingLocation(f review.Finding) string {
+	if f.File == "" {
+		return ""
+	}
+	if f.Line > 0 {
+		return fmt.Sprintf("%s:%d", f.File, f.Line)
+	}
+	return f.File
 }
 
 func formatFinding(f review.Finding) string {

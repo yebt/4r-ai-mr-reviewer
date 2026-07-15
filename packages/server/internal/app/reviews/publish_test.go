@@ -24,6 +24,23 @@ import (
 	"github.com/webcloster-dev/ai-reviewer/internal/review/skills"
 )
 
+// aGoDiff makes new-side lines 1..5 of a.go all ADDED lines, so fixtures that
+// point a finding at a.go:3 anchor an inline discussion.
+const aGoDiff = "@@ -0,0 +1,5 @@\n" +
+	"+line one\n" +
+	"+line two\n" +
+	"+line three\n" +
+	"+line four\n" +
+	"+line five\n"
+
+// bGoDiff makes new-side line 2 of b.go an ADDED line while lines 1, 3 and 4 are
+// CONTEXT lines. A finding on b.go:3 must fall back to a general note.
+const bGoDiff = "@@ -1,3 +1,4 @@\n" +
+	" context one\n" +
+	"+added two\n" +
+	" context three\n" +
+	" context four\n"
+
 // recordingGitLab serves /changes (with diff_refs), counts posted notes and
 // inline discussions, and captures their "body" form values so tests can assert
 // the exact text posted.
@@ -47,7 +64,14 @@ func newRecordingGitLab(t *testing.T) *recordingGitLab {
 				"title":         "Add login",
 				"source_branch": "feat",
 				"diff_refs":     map[string]any{"base_sha": "b", "start_sha": "s", "head_sha": "h"},
-				"changes":       []map[string]any{{"old_path": "a.go", "new_path": "a.go", "diff": "@@ @@"}},
+				"changes": []map[string]any{
+					// a.go: lines 1..5 are all ADDED, so a finding on a.go:3
+					// (used by the fixtures) anchors as an inline discussion.
+					{"old_path": "a.go", "new_path": "a.go", "diff": aGoDiff},
+					// b.go: line 2 is ADDED; lines 1/3/4 are CONTEXT lines. Lets a
+					// test target a context line and assert the general-note fallback.
+					{"old_path": "b.go", "new_path": "b.go", "diff": bGoDiff},
+				},
 			})
 		case strings.HasSuffix(r.URL.Path, "/discussions"):
 			body := r.FormValue("body")
@@ -137,14 +161,22 @@ func ptr[T any](v T) *T { return &v }
 // the recording GitLab stub, and the review id.
 func setupPublishTest(t *testing.T) (context.Context, *Service, *recordingGitLab, string) {
 	t.Helper()
-	ctx := context.Background()
-
-	gl := newRecordingGitLab(t)
 	// One inline finding (file+line) and one general finding (no line).
 	reviewJSON := `{"summary":"issues","findings":[
 		{"dimension":"risk","severity":"high","file":"a.go","line":3,"issue":"secret","blocking":true},
 		{"dimension":"readability","severity":"low","file":"","line":0,"issue":"vague description"}
 	]}`
+	return setupPublishTestJSON(t, reviewJSON)
+}
+
+// setupPublishTestJSON is setupPublishTest with a caller-supplied review payload,
+// so tests can drive specific finding file/line combinations against the shared
+// stub diff (a.go lines 1..5 added, b.go line 2 added / 3 context).
+func setupPublishTestJSON(t *testing.T, reviewJSON string) (context.Context, *Service, *recordingGitLab, string) {
+	t.Helper()
+	ctx := context.Background()
+
+	gl := newRecordingGitLab(t)
 	aiSrv := aiStub(t, reviewJSON)
 	defer aiSrv.Close()
 
@@ -334,6 +366,101 @@ func TestPublishUsesSummaryOverride(t *testing.T) {
 	}
 	if noteBodies[0] != "humanized summary" {
 		t.Fatalf("summary body = %q, want %q", noteBodies[0], "humanized summary")
+	}
+}
+
+// TestPublishContextLineFallsBackToNote verifies that a finding whose line is a
+// CONTEXT line (present in the diff but not a '+' line) is posted as a general
+// note — never an inline discussion, which would 400 — and that the note body
+// carries the "**File:** <file>:<line>" location so context isn't lost.
+func TestPublishContextLineFallsBackToNote(t *testing.T) {
+	// b.go:3 is a context line in the stub diff (only b.go:2 is added).
+	reviewJSON := `{"summary":"issues","findings":[
+		{"dimension":"risk","severity":"high","file":"b.go","line":3,"issue":"context finding"}
+	]}`
+	ctx, svc, gl, rvID := setupPublishTestJSON(t, reviewJSON)
+
+	if err := svc.Publish(ctx, rvID, Selection{All: true}); err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+
+	gl.mu.Lock()
+	discussions := gl.discussions
+	noteBodies := append([]string(nil), gl.noteBodies...)
+	gl.mu.Unlock()
+
+	if discussions != 0 {
+		t.Fatalf("discussions = %d, want 0 (context line must not post inline)", discussions)
+	}
+	found := false
+	for _, b := range noteBodies {
+		if strings.Contains(b, "**File:** b.go:3") && strings.Contains(b, "context finding") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("no note with location header for b.go:3 in %q", noteBodies)
+	}
+}
+
+// TestPublishLinelessFindingCarriesFile verifies that a finding with Line == 0
+// but a non-empty File posts a general note whose body carries "**File:** <file>"
+// (no ":line" suffix).
+func TestPublishLinelessFindingCarriesFile(t *testing.T) {
+	reviewJSON := `{"summary":"issues","findings":[
+		{"dimension":"readability","severity":"low","file":"pkg/util.go","line":0,"issue":"whole-file note"}
+	]}`
+	ctx, svc, gl, rvID := setupPublishTestJSON(t, reviewJSON)
+
+	if err := svc.Publish(ctx, rvID, Selection{All: true}); err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+
+	gl.mu.Lock()
+	discussions := gl.discussions
+	noteBodies := append([]string(nil), gl.noteBodies...)
+	gl.mu.Unlock()
+
+	if discussions != 0 {
+		t.Fatalf("discussions = %d, want 0", discussions)
+	}
+	found := false
+	for _, b := range noteBodies {
+		if strings.Contains(b, "**File:** pkg/util.go") && !strings.Contains(b, "pkg/util.go:") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("no note with bare file header for pkg/util.go in %q", noteBodies)
+	}
+}
+
+// TestPublishAddedLinePostsInline verifies that a finding on a genuine ADDED line
+// still posts as an inline discussion.
+func TestPublishAddedLinePostsInline(t *testing.T) {
+	// b.go:2 is the single added line in the stub diff.
+	reviewJSON := `{"summary":"issues","findings":[
+		{"dimension":"risk","severity":"high","file":"b.go","line":2,"issue":"added-line finding"}
+	]}`
+	ctx, svc, gl, rvID := setupPublishTestJSON(t, reviewJSON)
+
+	if err := svc.Publish(ctx, rvID, Selection{All: true}); err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+
+	gl.mu.Lock()
+	discussions := gl.discussions
+	discussionBodies := append([]string(nil), gl.discussionBodies...)
+	gl.mu.Unlock()
+
+	if discussions != 1 {
+		t.Fatalf("discussions = %d, want 1 (added line must post inline)", discussions)
+	}
+	if !strings.Contains(discussionBodies[0], "added-line finding") {
+		t.Fatalf("inline body = %q, want to contain %q", discussionBodies[0], "added-line finding")
+	}
+	if strings.Contains(discussionBodies[0], "**File:**") {
+		t.Fatalf("inline discussion must not carry a location header, got %q", discussionBodies[0])
 	}
 }
 
