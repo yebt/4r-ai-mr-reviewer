@@ -10,6 +10,7 @@ import (
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/provider"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/secret"
 	"github.com/webcloster-dev/ai-reviewer/internal/id"
+	"github.com/webcloster-dev/ai-reviewer/internal/netutil"
 )
 
 // Service manages providers and their API keys together.
@@ -43,6 +44,9 @@ func (s *Service) Add(ctx context.Context, in AddInput) (provider.Provider, erro
 	}
 	if !in.Kind.Valid() {
 		return provider.Provider{}, fmt.Errorf("providers: invalid kind %q", in.Kind)
+	}
+	if err := netutil.RequireSecureBaseURL(in.BaseURL); err != nil {
+		return provider.Provider{}, fmt.Errorf("providers: %w", err)
 	}
 
 	existing, err := s.repo.List(ctx)
@@ -108,6 +112,9 @@ func (s *Service) Update(ctx context.Context, id string, in UpdateInput) (provid
 	}
 	if !in.Kind.Valid() {
 		return provider.Provider{}, fmt.Errorf("providers: invalid kind %q", in.Kind)
+	}
+	if err := netutil.RequireSecureBaseURL(in.BaseURL); err != nil {
+		return provider.Provider{}, fmt.Errorf("providers: %w", err)
 	}
 
 	p, err := s.repo.Get(ctx, id)

@@ -110,6 +110,17 @@ func TestAddInvalidKind(t *testing.T) {
 	}
 }
 
+func TestAddRejectsPublicHTTPBaseURL(t *testing.T) {
+	s := newService(t)
+	_, err := s.Add(context.Background(), AddInput{
+		Name: "groq", Kind: provider.KindOpenAICompat, APIKey: "k",
+		BaseURL: "http://api.groq.com/openai/v1",
+	})
+	if err == nil {
+		t.Fatal("expected rejection of cleartext http base URL to a public host")
+	}
+}
+
 func TestDefaultWhenNoneSet(t *testing.T) {
 	s := newService(t)
 	if _, err := s.Default(context.Background()); !errors.Is(err, provider.ErrNotFound) {

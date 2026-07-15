@@ -10,6 +10,7 @@ import (
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/account"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/secret"
 	"github.com/webcloster-dev/ai-reviewer/internal/id"
+	"github.com/webcloster-dev/ai-reviewer/internal/netutil"
 )
 
 // Service manages accounts and their tokens together.
@@ -27,6 +28,9 @@ func NewService(repo account.Repository, secrets secret.Store) *Service {
 func (s *Service) Add(ctx context.Context, name, baseURL, token string) (account.Account, error) {
 	if name == "" || baseURL == "" || token == "" {
 		return account.Account{}, fmt.Errorf("accounts: name, baseURL and token are required")
+	}
+	if err := netutil.RequireSecureBaseURL(baseURL); err != nil {
+		return account.Account{}, fmt.Errorf("accounts: %w", err)
 	}
 	a := account.Account{
 		ID:        id.New(),

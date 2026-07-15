@@ -55,6 +55,13 @@ func TestAddValidation(t *testing.T) {
 	}
 }
 
+func TestAddRejectsPublicHTTPBaseURL(t *testing.T) {
+	s := newService(t)
+	if _, err := s.Add(context.Background(), "work", "http://gitlab.com", "glpat-xyz"); err == nil {
+		t.Fatal("expected rejection of cleartext http base URL to a public host")
+	}
+}
+
 func TestRemoveDeletesToken(t *testing.T) {
 	ctx := context.Background()
 	s := newService(t)

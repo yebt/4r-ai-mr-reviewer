@@ -86,7 +86,7 @@ Severity legend: 🔴 P0 (user-facing bug / outage / security) · 🟠 P1 (corre
   `db.go:20-38`). Double-click Humanize → two rows with `tab_index=0`. **Fix:** add
   `UNIQUE(review_id, target, finding_index, tab_index)` or compute `MAX(tab_index)+1` atomically.
 
-- [ ] **12. No `https://` scheme enforcement on provider/account `BaseURL`.** A `http://` URL sends
+- [x] **12. No `https://` scheme enforcement on provider/account `BaseURL`.** A `http://` URL sends
   the API key / GitLab PAT in cleartext (`internal/adapters/ai/openai.go`, `anthropic.go`,
   `gitlab/client.go`). **Fix:** require `https://` on persist (allow-list `http://localhost` for local).
 
