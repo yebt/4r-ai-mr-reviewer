@@ -42,7 +42,7 @@ Severity legend: 🔴 P0 (user-facing bug / outage / security) · 🟠 P1 (corre
 
 ## 🟠 P1 — Correctness / cost & data loss
 
-- [ ] **5. Review state-machine recovery gaps** (two related holes):
+- [x] **5. Review state-machine recovery gaps** (two related holes):
   - `Save` failure after a successful review leaves the review `running` forever; the job is already
     `error`, so `RequeueRunning` never re-runs it (`internal/app/reviews/service.go:229-246`,
     `internal/jobs/runner.go:106-117,68`). Paid LLM output lost, no self-heal.
@@ -52,7 +52,7 @@ Severity legend: 🔴 P0 (user-facing bug / outage / security) · 🟠 P1 (corre
   **Fix:** early-return in `Handle` if `rv.Status.Terminal()`; on `Save` failure fall back to
   `SetStatus(..., StatusError, ...)`; consider a startup sweep for stuck `running` reviews.
 
-- [ ] **6. LLM calls have no retry/back-off.** A single 429/5xx on pass 3/4 discards all prior paid,
+- [x] **6. LLM calls have no retry/back-off.** A single 429/5xx on pass 3/4 discards all prior paid,
   successful passes (`internal/adapters/ai/http.go:33-65`, `internal/review/engine/multipass.go:51-79`).
   **Fix:** bounded exponential back-off on 429/5xx (respect `Retry-After`), and/or persist per-pass
   results incrementally.
