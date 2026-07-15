@@ -64,7 +64,7 @@ Severity legend: 🔴 P0 (user-facing bug / outage / security) · 🟠 P1 (corre
   override bug. **Fix:** build `findingOverrides` from each selected finding's `selectedFindingTab`,
   mirroring `withSummaryOverride`.
 
-- [ ] **8. Summary can double-post on retry after a partial write failure.** If `CreateNote`
+- [x] **8. Summary can double-post on retry after a partial write failure.** If `CreateNote`
   succeeds but `MarkSummaryPublished` then fails, `SummaryPublished` stays false → a retry re-posts
   (`internal/app/reviews/publish.go:61-72`). The findings loop below it already guards this.
   **Fix:** apply the same "persist what posted, even on error" pattern to the summary branch.
@@ -94,7 +94,7 @@ Severity legend: 🔴 P0 (user-facing bug / outage / security) · 🟠 P1 (corre
   page; the title `<h2>` has no `id` linked to the dialog. Used by phone Filters and publish-confirm.
   **Fix:** trap Tab within the panel, mark background inert while open, wire `aria-labelledby`.
 
-- [ ] **14. Classic card `opacity-60` dims still-active buttons.** Published classic cards fade the
+- [x] **14. Classic card `opacity-60` dims still-active buttons.** Published classic cards fade the
   live Humanize / "Publish again" buttons to look disabled — regression vs the triage card's
   documented decision (`packages/spa/src/modules/reviews/components/FindingCard.vue:100-101`).
   **Fix:** drop `opacity-60`, keep the `bg-ok/5` tint.
