@@ -285,6 +285,29 @@ describe('reviews store', () => {
     })
   })
 
+  it('markPublished records the published tab per card and reads it back', () => {
+    const store = useReviewsStore()
+
+    store.markPublished('1', 'summary', 2)
+    store.markPublished('1', 0, -1)
+    store.markPublished('1', 3, 1)
+
+    expect(store.publishedSummaryTab('1')).toBe(2)
+    expect(store.publishedFindingTab('1', 0)).toBe(-1)
+    expect(store.publishedFindingTab('1', 3)).toBe(1)
+  })
+
+  it('published-tab helpers return null when unset and lazy-init does not throw', () => {
+    const store = useReviewsStore()
+    expect(store.publishedSummaryTab('unknown')).toBeNull()
+    expect(store.publishedFindingTab('unknown', 9)).toBeNull()
+
+    // Marking one card must not fabricate entries for the others.
+    store.markPublished('1', 5, 0)
+    expect(store.publishedFindingTab('1', 6)).toBeNull()
+    expect(store.publishedSummaryTab('1')).toBeNull()
+  })
+
   it('publish forwards no overrides for an Original finding tab', async () => {
     mocked.publishReview.mockResolvedValue({ status: 'published' })
     mocked.getReview.mockResolvedValue(review('1', 'done'))

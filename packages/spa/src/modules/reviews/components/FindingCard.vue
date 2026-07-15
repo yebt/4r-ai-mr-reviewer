@@ -23,6 +23,10 @@ const store = useReviewsStore()
 const tabs = computed(() => store.findingTabs(props.reviewId, props.finding.index))
 const selectedTab = computed(() => store.selectedFindingTab(props.reviewId, props.finding.index))
 const humanizing = computed(() => store.findingHumanizing(props.reviewId, props.finding.index))
+// In-session marker: which tab was published for this finding (null = none).
+const publishedTabIdx = computed(() =>
+  store.publishedFindingTab(props.reviewId, props.finding.index),
+)
 
 // The finding parts shown for the active tab: Original is the generated finding;
 // a humanize tab is that run's rewritten issue/why/fix.
@@ -64,6 +68,7 @@ async function publish() {
           }
         : {}),
     })
+    store.markPublished(props.reviewId, props.finding.index, tab)
     toast.success('Finding published')
   } catch (e) {
     toast.error(errorMessage(e))
@@ -74,7 +79,10 @@ async function publish() {
 </script>
 
 <template>
-  <div class="border-line/50 flex gap-3 border-b py-4">
+  <div
+    class="border-line/50 flex gap-3 border-b py-4"
+    :class="finding.published ? 'border-l-2 border-l-ok bg-ok/5 pl-3' : ''"
+  >
     <input
       v-if="selectable"
       type="checkbox"
@@ -96,7 +104,7 @@ async function publish() {
       <!-- Tabs: Original + one per humanize run. -->
       <div v-if="tabs.length" class="mt-2 flex flex-wrap items-center gap-1">
         <button
-          class="border px-2 py-0.5 text-xs transition-colors"
+          class="inline-flex items-center gap-1 border px-2 py-0.5 text-xs transition-colors"
           :class="
             selectedTab === ORIGINAL
               ? 'border-accent text-ink bg-accent/10'
@@ -106,11 +114,18 @@ async function publish() {
           @click="store.selectFindingTab(reviewId, finding.index, ORIGINAL)"
         >
           Original
+          <span
+            v-if="publishedTabIdx === ORIGINAL"
+            class="i-lucide-check text-ok text-sm"
+            role="img"
+            aria-label="published"
+            title="published"
+          />
         </button>
         <button
           v-for="(_, i) in tabs"
           :key="i"
-          class="border px-2 py-0.5 text-xs transition-colors"
+          class="inline-flex items-center gap-1 border px-2 py-0.5 text-xs transition-colors"
           :class="
             selectedTab === i
               ? 'border-accent text-ink bg-accent/10'
@@ -120,6 +135,13 @@ async function publish() {
           @click="store.selectFindingTab(reviewId, finding.index, i)"
         >
           V{{ i + 1 }}
+          <span
+            v-if="publishedTabIdx === i"
+            class="i-lucide-check text-ok text-sm"
+            role="img"
+            aria-label="published"
+            title="published"
+          />
         </button>
       </div>
 

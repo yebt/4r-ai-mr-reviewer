@@ -26,6 +26,16 @@ interface HumanizingState {
   summary: boolean
   findings: Record<number, boolean>
 }
+// Which tab index was actually published, per card. This is an IN-SESSION marker
+// only (it does not survive a page reload) that complements the backend
+// `published`/`summaryPublished` flags: the flags drive the persistent "already
+// on the MR" card highlight, while this tells the user which specific version
+// (Original / V1 / V2…) they sent. `summary === null` and an absent findings key
+// both mean "nothing published yet this session".
+interface PublishedTabState {
+  summary: number | null // ORIGINAL (-1) or a tab index; null = not published
+  findings: Record<number, number> // per finding index → published tab index
+}
 
 export const useReviewsStore = defineStore('reviews', () => {
   // Caches keyed by repo id, so revisiting a repo shows its previous MRs/reviews
@@ -54,6 +64,8 @@ export const useReviewsStore = defineStore('reviews', () => {
   const humanized = ref<Record<string, HumanizedState>>({})
   const selected = ref<Record<string, SelectedState>>({})
   const humanizing = ref<Record<string, HumanizingState>>({})
+  // In-session marker of the published tab per card. See PublishedTabState.
+  const publishedTab = ref<Record<string, PublishedTabState>>({})
 
   // Lazy initializers — nested records are created on first touch so callers
   // never read undefined (noUncheckedIndexedAccess is on).
@@ -78,6 +90,13 @@ export const useReviewsStore = defineStore('reviews', () => {
     humanizing.value[reviewId] = created
     return created
   }
+  function ensurePublishedTab(reviewId: string): PublishedTabState {
+    const existing = publishedTab.value[reviewId]
+    if (existing) return existing
+    const created: PublishedTabState = { summary: null, findings: {} }
+    publishedTab.value[reviewId] = created
+    return created
+  }
 
   // Read-only helpers with safe defaults for templates.
   function summaryTabs(reviewId: string): SummaryHumanized[] {
@@ -97,6 +116,23 @@ export const useReviewsStore = defineStore('reviews', () => {
   }
   function findingHumanizing(reviewId: string, index: number): boolean {
     return humanizing.value[reviewId]?.findings[index] ?? false
+  }
+
+  // Read the in-session published-tab marker; null means nothing published yet.
+  function publishedSummaryTab(reviewId: string): number | null {
+    return publishedTab.value[reviewId]?.summary ?? null
+  }
+  function publishedFindingTab(reviewId: string, index: number): number | null {
+    return publishedTab.value[reviewId]?.findings[index] ?? null
+  }
+
+  // markPublished records which tab (Original = ORIGINAL, else a tab index) was
+  // just published for the summary (target 'summary') or a finding (target =
+  // finding index). Call only after a successful publish.
+  function markPublished(reviewId: string, target: 'summary' | number, tab: number) {
+    const entry = ensurePublishedTab(reviewId)
+    if (target === 'summary') entry.summary = tab
+    else entry.findings[target] = tab
   }
 
   function selectSummaryTab(reviewId: string, tab: number) {
@@ -339,6 +375,7 @@ export const useReviewsStore = defineStore('reviews', () => {
     humanized,
     selected,
     humanizing,
+    publishedTab,
     mergeRequestsFor,
     reviewsFor,
     archivedReviewsFor,
@@ -363,6 +400,9 @@ export const useReviewsStore = defineStore('reviews', () => {
     findingHumanizing,
     selectSummaryTab,
     selectFindingTab,
+    publishedSummaryTab,
+    publishedFindingTab,
+    markPublished,
     humanizeSummary,
     humanizeFinding,
   }

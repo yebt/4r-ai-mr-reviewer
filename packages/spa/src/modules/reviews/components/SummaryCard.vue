@@ -17,6 +17,8 @@ const reviewId = computed(() => props.review.id)
 const tabs = computed(() => store.summaryTabs(reviewId.value))
 const selectedTab = computed(() => store.selectedSummaryTab(reviewId.value))
 const humanizing = computed(() => store.summaryHumanizing(reviewId.value))
+// In-session marker: which tab was published for the summary (null = none).
+const publishedTabIdx = computed(() => store.publishedSummaryTab(reviewId.value))
 
 // Text shown for the active tab: Original is the generated summary; a humanize
 // tab is that run's rewritten summary.
@@ -49,6 +51,7 @@ async function publish() {
       includeSummary: true,
       ...(summary ? { summaryOverride: summary } : {}),
     })
+    store.markPublished(reviewId.value, 'summary', tab)
     toast.success('Summary published')
   } catch (e) {
     toast.error(errorMessage(e))
@@ -59,7 +62,10 @@ async function publish() {
 </script>
 
 <template>
-  <section class="border-line/50 border-b pb-6">
+  <section
+    class="border-line/50 border-b pb-6"
+    :class="review.summaryPublished ? 'border-l-2 border-l-ok bg-ok/5 pl-4' : ''"
+  >
     <div class="flex items-end justify-between gap-6">
       <div>
         <div class="label-mono">Recommendation</div>
@@ -81,7 +87,7 @@ async function publish() {
     <!-- Tabs: Original + one per humanize run. -->
     <div v-if="tabs.length" class="mt-4 flex flex-wrap items-center gap-1">
       <button
-        class="border px-2 py-1 text-xs transition-colors"
+        class="inline-flex items-center gap-1 border px-2 py-1 text-xs transition-colors"
         :class="
           selectedTab === ORIGINAL
             ? 'border-accent text-ink bg-accent/10'
@@ -91,11 +97,18 @@ async function publish() {
         @click="store.selectSummaryTab(reviewId, ORIGINAL)"
       >
         Original
+        <span
+          v-if="publishedTabIdx === ORIGINAL"
+          class="i-lucide-check text-ok text-sm"
+          role="img"
+          aria-label="published"
+          title="published"
+        />
       </button>
       <button
         v-for="(_, i) in tabs"
         :key="i"
-        class="border px-2 py-1 text-xs transition-colors"
+        class="inline-flex items-center gap-1 border px-2 py-1 text-xs transition-colors"
         :class="
           selectedTab === i
             ? 'border-accent text-ink bg-accent/10'
@@ -105,6 +118,13 @@ async function publish() {
         @click="store.selectSummaryTab(reviewId, i)"
       >
         V{{ i + 1 }}
+        <span
+          v-if="publishedTabIdx === i"
+          class="i-lucide-check text-ok text-sm"
+          role="img"
+          aria-label="published"
+          title="published"
+        />
       </button>
     </div>
 
