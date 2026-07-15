@@ -8,7 +8,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/llm"
 )
@@ -79,7 +81,11 @@ func TestOpenAINoChoicesIsError(t *testing.T) {
 }
 
 func TestOpenAIAPIError(t *testing.T) {
+	fastRetries(t)
+
+	var calls int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&calls, 1)
 		w.WriteHeader(http.StatusTooManyRequests)
 		fmt.Fprint(w, `rate limited`)
 	}))
@@ -91,4 +97,41 @@ func TestOpenAIAPIError(t *testing.T) {
 	if !errors.As(err, &apiErr) || apiErr.Status != http.StatusTooManyRequests {
 		t.Fatalf("expected APIError 429, got %v", err)
 	}
+	if got := atomic.LoadInt32(&calls); got != maxAttempts {
+		t.Fatalf("calls = %d, want %d (429 should be retried)", got, maxAttempts)
+	}
+}
+
+func TestOpenAIRetriesThenSucceeds(t *testing.T) {
+	fastRetries(t)
+
+	var calls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if atomic.AddInt32(&calls, 1) < maxAttempts {
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"choices":[{"message":{"content":"ok"}}]}`)
+	}))
+	defer srv.Close()
+
+	c := NewOpenAIClient(srv.URL, "k")
+	resp, err := c.Complete(context.Background(), llm.Request{Model: "m"})
+	if err != nil {
+		t.Fatalf("Complete after retries: %v", err)
+	}
+	if resp.Content != "ok" {
+		t.Fatalf("content = %q, want ok", resp.Content)
+	}
+	if got := atomic.LoadInt32(&calls); got != maxAttempts {
+		t.Fatalf("calls = %d, want %d", got, maxAttempts)
+	}
+}
+
+// fastRetries shrinks the backoff so retry tests run instantly, restoring it after.
+func fastRetries(t *testing.T) {
+	old := retryBaseDelay
+	retryBaseDelay = time.Millisecond
+	t.Cleanup(func() { retryBaseDelay = old })
 }
