@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useIntervalFn, useLocalStorage, useMediaQuery } from '@vueuse/core'
+import { useIntervalFn, useLocalStorage } from '@vueuse/core'
+import { useIsPhone } from '@shared/composables/useIsPhone'
 import { errorMessage } from '@shared/api/client'
 import { confirm } from '@shared/composables/useConfirm'
 import { setBreadcrumbs } from '@shared/composables/useBreadcrumbs'
@@ -106,7 +107,7 @@ const triage = useFindingFilters(() => review.value?.findings ?? [])
 
 // Phone-only progressive disclosure. On desktop (`!isPhone`) the humanize bar and
 // filter toolbar always render, so these refs only affect the < sm layout.
-const isPhone = useMediaQuery('(max-width: 639px)')
+const isPhone = useIsPhone()
 const humanizeOpen = ref(false)
 const filtersOpen = ref(false)
 

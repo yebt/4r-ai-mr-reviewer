@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { useMediaQuery } from '@vueuse/core'
+import { useIsPhone } from '@shared/composables/useIsPhone'
 import type { Finding } from '@shared/api/types'
 import { useFindingCard } from '@modules/reviews/useFindingCard'
 import { ORIGINAL } from '@modules/reviews/humanize-overrides'
@@ -40,7 +40,7 @@ const borderClass = computed<string>(() => {
 // Phone-only progressive disclosure: on phone a card shows only its header, file
 // badge and issue headline until expanded; on desktop (`!isPhone`) everything is
 // always rendered so the desktop layout is unchanged.
-const isPhone = useMediaQuery('(max-width: 639px)')
+const isPhone = useIsPhone()
 const expanded = ref(false)
 const showDeep = computed(() => expanded.value || !isPhone.value)
 
