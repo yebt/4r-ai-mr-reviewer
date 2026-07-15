@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"runtime/debug"
+	"sync"
 	"time"
 
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/job"
@@ -18,11 +19,12 @@ type Handler func(ctx context.Context, reviewID string) error
 
 // Runner drives the job queue.
 type Runner struct {
-	store   job.Store
-	handler Handler
-	poll    time.Duration
-	logger  *log.Logger
-	signal  chan struct{}
+	store       job.Store
+	handler     Handler
+	poll        time.Duration
+	logger      *log.Logger
+	signal      chan struct{}
+	concurrency int
 }
 
 // Option configures a Runner.
@@ -39,14 +41,26 @@ func WithLogger(l *log.Logger) Option {
 	return func(r *Runner) { r.logger = l }
 }
 
+// WithConcurrency sets how many jobs run at once. Values below 1 default to 1.
+// The atomic Claim hands each worker a distinct pending job.
+func WithConcurrency(n int) Option {
+	return func(r *Runner) {
+		if n < 1 {
+			n = 1
+		}
+		r.concurrency = n
+	}
+}
+
 // NewRunner builds a runner over a store and handler.
 func NewRunner(store job.Store, handler Handler, opts ...Option) *Runner {
 	r := &Runner{
-		store:   store,
-		handler: handler,
-		poll:    5 * time.Second,
-		logger:  log.Default(),
-		signal:  make(chan struct{}, 1),
+		store:       store,
+		handler:     handler,
+		poll:        5 * time.Second,
+		logger:      log.Default(),
+		signal:      make(chan struct{}, 1),
+		concurrency: 1,
 	}
 	for _, o := range opts {
 		o(r)
@@ -64,8 +78,9 @@ func (r *Runner) Enqueue(ctx context.Context, reviewID string) (job.Job, error) 
 	return j, nil
 }
 
-// Start recovers interrupted jobs and runs the drain loop until ctx is done.
-// It blocks; run it in its own goroutine.
+// Start recovers interrupted jobs and runs the worker pool until ctx is done.
+// It blocks; run it in its own goroutine. Concurrency workers claim and run jobs
+// in parallel; a bound of 1 preserves the original sequential behavior.
 func (r *Runner) Start(ctx context.Context) {
 	if n, err := r.store.RequeueRunning(ctx); err != nil {
 		r.logger.Printf("jobs: requeue running failed: %v", err)
@@ -73,16 +88,49 @@ func (r *Runner) Start(ctx context.Context) {
 		r.logger.Printf("jobs: requeued %d interrupted job(s)", n)
 	}
 
+	var wg sync.WaitGroup
+	for i := 0; i < r.concurrency; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			r.worker(ctx)
+		}()
+	}
+	wg.Wait()
+}
+
+// worker claims and runs one job at a time until ctx is done. Running several of
+// these gives parallelism: the atomic Claim hands each a distinct pending job,
+// and each worker wakes another after claiming so a burst of enqueues spreads
+// across the pool instead of one worker draining them serially.
+func (r *Runner) worker(ctx context.Context) {
 	ticker := time.NewTicker(r.poll)
 	defer ticker.Stop()
 	for {
-		r.Drain(ctx)
-		select {
-		case <-ctx.Done():
+		if ctx.Err() != nil {
 			return
-		case <-r.signal:
-		case <-ticker.C:
 		}
+		j, ok, err := r.store.Claim(ctx)
+		if err != nil {
+			r.logger.Printf("jobs: claim failed: %v", err)
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+			continue
+		}
+		if !ok {
+			select {
+			case <-ctx.Done():
+				return
+			case <-r.signal:
+			case <-ticker.C:
+			}
+			continue
+		}
+		r.wake() // more may be pending — let another idle worker grab one
+		r.run(ctx, j)
 	}
 }
 

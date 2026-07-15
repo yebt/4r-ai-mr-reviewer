@@ -74,7 +74,7 @@ func run() error {
 	reviewSvc := reviews.NewService(reviewStore, repoStore, accountSvc, providerSvc, engine.NewMultiPass(ruleSet))
 	humanizeSvc := apphumanize.NewService(reviewStore, profileStore, humanizationStore, providerSvc, nil)
 
-	runner := jobs.NewRunner(jobStore, reviewSvc.Handle)
+	runner := jobs.NewRunner(jobStore, reviewSvc.Handle, jobs.WithConcurrency(cfg.ReviewConcurrency))
 	reviewSvc.AttachRunner(runner)
 	go runner.Start(ctx)
 
