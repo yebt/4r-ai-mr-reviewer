@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/webcloster-dev/ai-reviewer/internal/adapters/gitlab"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/repo"
@@ -70,7 +71,10 @@ func (s *Service) Publish(ctx context.Context, reviewID string, sel Selection) e
 		if err := gl.CreateNote(ctx, projectID, rv.MRIID, body); err != nil {
 			return err
 		}
-		if err := s.reviews.MarkSummaryPublished(ctx, reviewID); err != nil {
+		// The note is on the MR now. Retry recording it a few times so a transient
+		// DB failure does not leave SummaryPublished false and re-post on the next
+		// publish (mirrors the findings loop persisting posted state before failing).
+		if err := s.markSummaryPublishedRetry(ctx, reviewID); err != nil {
 			return err
 		}
 	}
@@ -109,6 +113,29 @@ func (s *Service) Publish(ctx context.Context, reviewID string, sel Selection) e
 		published = append(published, i)
 	}
 	return s.reviews.MarkFindingsPublished(ctx, reviewID, published)
+}
+
+// markSummaryPublishedRetry records the posted summary, retrying a few times with
+// a short backoff. The summary note is already on the merge request by the time
+// this runs, so a transient failure to mark it must not silently allow a re-post
+// on a later publish. Returns the last error if every attempt fails.
+func (s *Service) markSummaryPublishedRetry(ctx context.Context, reviewID string) error {
+	const attempts = 3
+	var err error
+	for i := 0; i < attempts; i++ {
+		if err = s.reviews.MarkSummaryPublished(ctx, reviewID); err == nil {
+			return nil
+		}
+		if i == attempts-1 {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Duration(i+1) * 50 * time.Millisecond):
+		}
+	}
+	return err
 }
 
 // gitlabFor builds a GitLab client for a repo's account and returns the client,
