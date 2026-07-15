@@ -93,7 +93,7 @@ func (m *MultiPass) Run(ctx context.Context, client llm.Client, model string, te
 }
 
 func buildDimensionMessages(dim review.Dimension, skill string, in Input) []llm.Message {
-	system := strings.Join([]string{dimensionPreamble(dim), skill, dimensionContract}, "\n\n---\n\n")
+	system := strings.Join([]string{dimensionPreamble(dim), skill, precisionGate, dimensionContract}, "\n\n---\n\n")
 	return []llm.Message{
 		{Role: llm.RoleSystem, Content: system},
 		{Role: llm.RoleUser, Content: renderUserPrompt(in)},
