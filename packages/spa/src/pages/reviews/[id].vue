@@ -13,7 +13,8 @@ import { useReviewsStore } from '@modules/reviews/store'
 import { useReposStore } from '@modules/repos/store'
 import { useProfilesStore } from '@modules/profiles/store'
 import { isTerminal } from '@modules/reviews/format'
-import { ORIGINAL } from '@modules/reviews/humanize-overrides'
+import { ORIGINAL, buildFindingBody } from '@modules/reviews/humanize-overrides'
+import type { HumanizeFindingText } from '@shared/api/types'
 import ReviewStatusChip from '@modules/reviews/components/ReviewStatusChip.vue'
 import SummaryCard from '@modules/reviews/components/SummaryCard.vue'
 import FindingCard from '@modules/reviews/components/FindingCard.vue'
@@ -175,6 +176,7 @@ type PublishPayload = {
   indices?: number[]
   includeSummary?: boolean
   summaryOverride?: string
+  findingOverrides?: HumanizeFindingText[]
 }
 
 // When a bulk publish includes the summary note, honor the summary version the
@@ -190,11 +192,38 @@ function withSummaryOverride(payload: PublishPayload): PublishPayload {
   return text ? { ...payload, summaryOverride: text } : payload
 }
 
+// When a bulk publish targets findings, honor the humanized version the user
+// picked per card (Original vs a V1/V2 tab). Bulk publish carried only indices,
+// so selected findings posted the generated (robot) text; this forwards each
+// finding's selected humanized tab as a findingOverride — matching the per-card
+// Publish button. For an "all" publish the target set is the unpublished findings
+// (what the backend's resolveIndices posts).
+function withFindingOverrides(payload: PublishPayload): PublishPayload {
+  const rv = review.value
+  if (!rv) return payload
+  const targets = payload.all
+    ? rv.findings.filter((f) => !f.published).map((f) => f.index)
+    : (payload.indices ?? [])
+  if (targets.length === 0) return payload
+
+  const overrides: HumanizeFindingText[] = []
+  for (const index of targets) {
+    const tab = store.selectedFindingTab(rv.id, index)
+    if (tab === ORIGINAL) continue
+    const humanized = store.findingTabs(rv.id, index)[tab]
+    const finding = rv.findings.find((f) => f.index === index)
+    if (humanized && finding) {
+      overrides.push({ index, text: buildFindingBody(finding, humanized) })
+    }
+  }
+  return overrides.length ? { ...payload, findingOverrides: overrides } : payload
+}
+
 async function publish(payload: PublishPayload) {
   publishing.value = true
   publishError.value = null
   try {
-    await store.publish(reviewId.value, withSummaryOverride(payload))
+    await store.publish(reviewId.value, withFindingOverrides(withSummaryOverride(payload)))
     selected.value = []
     toast.success('Findings published')
   } catch (e) {
