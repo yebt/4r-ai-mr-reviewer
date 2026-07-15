@@ -3,9 +3,12 @@ import { computed, onMounted, ref, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { errorMessage } from '@shared/api/client'
 import { setBreadcrumbs } from '@shared/composables/useBreadcrumbs'
+import { confirm } from '@shared/composables/useConfirm'
+import { toast } from '@shared/composables/useToast'
 import PageHeader from '@shared/components/ui/PageHeader.vue'
 import { useReposStore } from '@modules/repos/store'
 import { useReviewsStore } from '@modules/reviews/store'
+import { isTerminal } from '@modules/reviews/format'
 import MergeRequestList from '@modules/reviews/components/MergeRequestList.vue'
 import ReviewList from '@modules/reviews/components/ReviewList.vue'
 
@@ -50,10 +53,25 @@ onMounted(async () => {
 })
 
 async function startReview(iid: number, mode: string) {
+  // If other reviews are already in progress, let the user choose to watch this
+  // one now (it runs in parallel, up to the server's bound) or queue it and keep
+  // working. Both paths create the review; the choice only decides navigation.
+  let watchNow = true
+  if (repoReviews.value.some((r) => !isTerminal(r.status))) {
+    watchNow = await confirm({
+      title: 'Reviews already running',
+      message:
+        'Other reviews are still running. Launch this one now and watch it (it runs in parallel), or queue it and keep working — it starts when a slot frees up.',
+      confirmText: 'Launch and watch',
+      cancelText: 'Queue and stay',
+    })
+  }
+
   creatingIid.value = iid
   try {
     const rv = await reviews.create(repoId, iid, mode)
-    router.push(`/reviews/${rv.id}`)
+    if (watchNow) router.push(`/reviews/${rv.id}`)
+    else toast.success('Review queued — it will run when a slot is free.')
   } catch (e) {
     reviews.mrsError = errorMessage(e)
   } finally {
