@@ -97,7 +97,7 @@ async function publish() {
 <template>
   <div
     class="border-line/50 flex gap-3 border-b border-l-2 py-4 pl-3"
-    :class="[borderClass, finding.published ? 'bg-ok/5 opacity-60' : '']"
+    :class="[borderClass, finding.published ? 'bg-ok/5' : '']"
   >
     <input
       v-if="selectable"
