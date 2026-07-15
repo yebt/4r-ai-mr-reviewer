@@ -61,3 +61,25 @@ func TestCloneEmptyURL(t *testing.T) {
 		t.Fatal("expected error for empty URL")
 	}
 }
+
+func TestValidateRef(t *testing.T) {
+	valid := []string{"main", "feature/login", "release-1.2.3", "v2", "a_b.c/d-e"}
+	for _, ref := range valid {
+		if err := validateRef(ref); err != nil {
+			t.Errorf("validateRef(%q) = %v, want nil", ref, err)
+		}
+	}
+	invalid := []string{"-foo", "--upload-pack=evil", "a b", "a;b", "a..b", "a$b", "a|b", "a\tb"}
+	for _, ref := range invalid {
+		if err := validateRef(ref); err == nil {
+			t.Errorf("validateRef(%q) = nil, want error", ref)
+		}
+	}
+}
+
+func TestCloneRejectsInjectingRef(t *testing.T) {
+	c := NewCloner("")
+	if _, err := c.Clone(context.Background(), "https://example.com/x.git", "--upload-pack=evil", t.TempDir()); err == nil {
+		t.Fatal("expected error for option-like ref")
+	}
+}

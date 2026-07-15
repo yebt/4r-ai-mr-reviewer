@@ -36,6 +36,9 @@ func (c *Cloner) Clone(ctx context.Context, repoURL, ref, workDir string) (strin
 
 	args := []string{"clone", "--depth", "1"}
 	if ref != "" {
+		if err := validateRef(ref); err != nil {
+			return "", err
+		}
 		args = append(args, "--branch", ref)
 	}
 
@@ -67,6 +70,25 @@ func (c *Cloner) Clone(ctx context.Context, repoURL, ref, workDir string) (strin
 		return "", fmt.Errorf("gitlab clone: %w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 	return dest, nil
+}
+
+// validateRef guards the ref passed to `git clone --branch`. It comes from the
+// merge request's source branch (influenceable by whoever opens the MR), so
+// reject anything that could be read as an option (leading '-') or that falls
+// outside a conservative git-ref charset, rather than relying on git/GitLab's own
+// ref-format enforcement.
+func validateRef(ref string) error {
+	if strings.HasPrefix(ref, "-") || strings.Contains(ref, "..") {
+		return fmt.Errorf("gitlab clone: invalid ref %q", ref)
+	}
+	for _, r := range ref {
+		ok := r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' ||
+			r == '.' || r == '_' || r == '/' || r == '-'
+		if !ok {
+			return fmt.Errorf("gitlab clone: invalid ref %q", ref)
+		}
+	}
+	return nil
 }
 
 // baseGitEnv returns the process environment with interactive prompts disabled,
