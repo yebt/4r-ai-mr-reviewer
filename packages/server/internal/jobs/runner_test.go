@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log"
+	"strings"
 	"sync"
 	"testing"
 
@@ -129,6 +130,22 @@ func TestDrainFailsJobOnHandlerError(t *testing.T) {
 	final, _ := store.Get(ctx, j.ID)
 	if final.Status != job.StatusError || final.LastError != "kaboom" {
 		t.Fatalf("job = %+v, want error/kaboom", final)
+	}
+}
+
+func TestDrainRecoversFromHandlerPanic(t *testing.T) {
+	ctx := context.Background()
+	store := &fakeStore{}
+	r := quietRunner(store, func(context.Context, string) error {
+		panic("boom")
+	})
+
+	j, _ := r.Enqueue(ctx, "review-1")
+	r.Drain(ctx) // must not crash the process
+
+	final, _ := store.Get(ctx, j.ID)
+	if final.Status != job.StatusError || !strings.Contains(final.LastError, "panic: boom") {
+		t.Fatalf("job = %+v, want error status with panic message", final)
 	}
 }
 

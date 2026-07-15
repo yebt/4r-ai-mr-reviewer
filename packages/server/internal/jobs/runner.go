@@ -5,7 +5,9 @@ package jobs
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"runtime/debug"
 	"time"
 
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/job"
@@ -104,7 +106,7 @@ func (r *Runner) Drain(ctx context.Context) {
 }
 
 func (r *Runner) run(ctx context.Context, j job.Job) {
-	if err := r.handler(ctx, j.ReviewID); err != nil {
+	if err := r.safeHandle(ctx, j.ReviewID); err != nil {
 		r.logger.Printf("jobs: review %s failed (attempt %d): %v", j.ReviewID, j.Attempts, err)
 		if ferr := r.store.Fail(ctx, j.ID, err.Error()); ferr != nil {
 			r.logger.Printf("jobs: marking job %s failed: %v", j.ID, ferr)
@@ -114,6 +116,18 @@ func (r *Runner) run(ctx context.Context, j job.Job) {
 	if err := r.store.Complete(ctx, j.ID); err != nil {
 		r.logger.Printf("jobs: marking job %s done: %v", j.ID, err)
 	}
+}
+
+// safeHandle invokes the handler, converting a panic into an error so a single
+// panicking review fails only its own job instead of crashing the whole process
+// (there is no external supervisor to restart it).
+func (r *Runner) safeHandle(ctx context.Context, reviewID string) (err error) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			err = fmt.Errorf("panic: %v\n%s", rec, debug.Stack())
+		}
+	}()
+	return r.handler(ctx, reviewID)
 }
 
 func (r *Runner) wake() {

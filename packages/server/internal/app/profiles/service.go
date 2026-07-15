@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -220,6 +221,15 @@ func (s *Service) distill(ctx context.Context, p profile.Profile) (string, error
 // error status is the durable record).
 func (s *Service) triggerDistill(profileID string) {
 	go func() {
+		// Recover so a panic in distillation fails just this profile instead of
+		// crashing the whole process; persist the error as the durable record.
+		defer func() {
+			if rec := recover(); rec != nil {
+				s.logger.Printf("profiles: distill %s panicked: %v\n%s", profileID, rec, debug.Stack())
+				_ = s.repo.SetStyleGuide(context.Background(), profileID,
+					"", profile.StyleStatusError, fmt.Sprintf("panic: %v", rec))
+			}
+		}()
 		ctx, cancel := context.WithTimeout(context.Background(), distillTimeout)
 		defer cancel()
 		if err := s.Distill(ctx, profileID); err != nil {
