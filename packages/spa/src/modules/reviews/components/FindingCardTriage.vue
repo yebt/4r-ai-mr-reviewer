@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useMediaQuery } from '@vueuse/core'
 import { errorMessage } from '@shared/api/client'
 import { toast } from '@shared/composables/useToast'
 import type { Finding, FindingHumanized } from '@shared/api/types'
@@ -7,19 +8,24 @@ import { useReviewsStore } from '@modules/reviews/store'
 import { ORIGINAL, buildFindingBody } from '@modules/reviews/humanize-overrides'
 import { dimensionLabel, severityClass } from '@modules/reviews/format'
 
-// Left border encodes severity as visual weight and is ALWAYS present. Blocking
-// overrides the color (flame) since it is the most urgent triage signal; then
-// high/medium/low map to danger/warn/muted. Published state uses a separate
-// channel (chip, tab check, faint tint) so one axis = one visual signal.
+// The severity accent border is ALWAYS present. Blocking overrides the color
+// (flame) since it is the most urgent triage signal; then high/medium/low map to
+// danger/warn/muted. Published state uses a separate channel (chip, tab check,
+// faint tint) so one axis = one visual signal.
+//
+// The accent edge moves to the TOP on phone and back to the LEFT on desktop. Both
+// edges are colored with literal classes so UnoCSS JIT emits them; the static
+// width classes on the card pick which edge is thick. On desktop the top color is
+// reset to `line` so the box keeps its hairline top border exactly as before.
 const borderClass = computed<string>(() => {
-  if (props.finding.blocking) return 'border-l-flame'
+  if (props.finding.blocking) return 'border-t-flame sm:border-t-line sm:border-l-flame'
   switch (props.finding.severity) {
     case 'high':
-      return 'border-l-danger'
+      return 'border-t-danger sm:border-t-line sm:border-l-danger'
     case 'medium':
-      return 'border-l-warn'
+      return 'border-t-warn sm:border-t-line sm:border-l-warn'
     default:
-      return 'border-l-muted'
+      return 'border-t-muted sm:border-t-line sm:border-l-muted'
   }
 })
 
@@ -35,6 +41,13 @@ const props = defineProps<{
 defineEmits<{ toggle: [index: number] }>()
 
 const store = useReviewsStore()
+
+// Phone-only progressive disclosure: on phone a card shows only its header, file
+// badge and issue headline until expanded; on desktop (`!isPhone`) everything is
+// always rendered so the desktop layout is unchanged.
+const isPhone = useMediaQuery('(max-width: 639px)')
+const expanded = ref(false)
+const showDeep = computed(() => expanded.value || !isPhone.value)
 
 const tabs = computed(() => store.findingTabs(props.reviewId, props.finding.index))
 const selectedTab = computed(() => store.selectedFindingTab(props.reviewId, props.finding.index))
@@ -100,7 +113,7 @@ async function publish() {
        the palette idioms (border-line + bg-surface). Published state uses a
        faint bg-ok/5 tint (never opacity) so the actions stay fully legible. -->
   <div
-    class="border-line flex flex-col gap-4 border border-l-2 p-4"
+    class="border-line flex flex-col gap-4 border border-t-2 p-4 sm:border-t sm:border-l-2"
     :class="[borderClass, finding.published ? 'bg-ok/5' : 'bg-surface']"
   >
     <!-- 1. Header: dimension/severity/blocking/published chips + selection box. -->
@@ -117,14 +130,31 @@ async function publish() {
           published
         </span>
       </div>
-      <input
-        v-if="selectable"
-        type="checkbox"
-        class="accent-accent mt-0.5 shrink-0"
-        :checked="selected"
-        :aria-label="`Select finding ${finding.index + 1}`"
-        @change="$emit('toggle', finding.index)"
-      />
+      <!-- Selection checkbox stays visible in the collapsed header; the chevron
+           (phone only) expands/collapses the deep content. -->
+      <div class="flex shrink-0 items-start gap-2">
+        <input
+          v-if="selectable"
+          type="checkbox"
+          class="accent-accent mt-0.5 shrink-0"
+          :checked="selected"
+          :aria-label="`Select finding ${finding.index + 1}`"
+          @change="$emit('toggle', finding.index)"
+        />
+        <button
+          type="button"
+          class="btn-ghost -mr-1 p-1 sm:hidden"
+          :aria-expanded="expanded"
+          :aria-label="expanded ? 'Collapse finding' : 'Expand finding'"
+          @click="expanded = !expanded"
+        >
+          <span
+            class="i-lucide-chevron-down text-base transition-transform"
+            :class="expanded ? 'rotate-180' : ''"
+            aria-hidden="true"
+          />
+        </button>
+      </div>
     </div>
 
     <!-- 2. File badge on its own line — the location stands out as a mono pill.
@@ -151,24 +181,35 @@ async function publish() {
     <!-- 3. Issue headline — larger/heavier than the body prose. -->
     <p class="text-ink text-base font-medium whitespace-pre-wrap">{{ shown.issue }}</p>
 
+    <!-- Phone-only collapsed hint: signals there is more to read below. -->
+    <button
+      v-if="isPhone && !expanded && (shown.why || shown.fix)"
+      type="button"
+      class="text-muted/70 hover:text-ink -mt-1 flex items-center gap-1 text-xs"
+      @click="expanded = true"
+    >
+      <span class="i-lucide-chevron-down text-sm" aria-hidden="true" />
+      Show details
+    </button>
+
     <!-- 4. Why — labelled block with a subtle left rule for separation. -->
-    <div v-if="shown.why" class="border-line/60 border-l pl-3">
+    <div v-if="showDeep && shown.why" class="border-line/60 border-l pl-3">
       <div class="label-mono mb-1">Why</div>
       <p class="text-muted text-sm whitespace-pre-wrap">{{ shown.why }}</p>
     </div>
 
     <!-- 5. Suggested fix — same labelled-block treatment. -->
-    <div v-if="shown.fix" class="border-line/60 border-l pl-3">
+    <div v-if="showDeep && shown.fix" class="border-line/60 border-l pl-3">
       <div class="label-mono mb-1">Suggested fix</div>
       <p class="text-muted text-sm whitespace-pre-wrap">{{ shown.fix }}</p>
     </div>
 
     <!-- Controls footer: tabs + actions, separated from content by a hairline. -->
-    <div class="border-line/50 flex flex-col gap-3 border-t pt-3">
+    <div v-if="showDeep" class="border-line/50 flex flex-col gap-3 border-t pt-3">
       <!-- 6. Tabs: Original + one per humanize run. -->
       <div v-if="tabs.length" class="flex flex-wrap items-center gap-1">
         <button
-          class="inline-flex items-center gap-1 border px-2 py-0.5 text-xs transition-colors"
+          class="inline-flex items-center gap-1 border px-2 py-1.5 text-xs transition-colors sm:py-0.5"
           :class="
             selectedTab === ORIGINAL
               ? 'border-accent text-ink bg-accent/10'
@@ -189,7 +230,7 @@ async function publish() {
         <button
           v-for="(_, i) in tabs"
           :key="i"
-          class="inline-flex items-center gap-1 border px-2 py-0.5 text-xs transition-colors"
+          class="inline-flex items-center gap-1 border px-2 py-1.5 text-xs transition-colors sm:py-0.5"
           :class="
             selectedTab === i
               ? 'border-accent text-ink bg-accent/10'
@@ -209,10 +250,11 @@ async function publish() {
         </button>
       </div>
 
-      <!-- 7. Actions: Humanize + Publish. -->
-      <div class="flex flex-wrap items-center gap-2">
+      <!-- 7. Actions: Humanize + Publish. Stacked and full-width on phone; the
+           original inline row is restored at sm:+. -->
+      <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
         <button
-          class="btn-line text-xs"
+          class="btn-line w-full text-xs sm:w-auto"
           :disabled="!profileId || humanizing"
           :title="profileId ? undefined : 'Select a ready profile first'"
           @click="humanize"
@@ -225,7 +267,7 @@ async function publish() {
           <span v-else class="i-lucide-feather text-sm" aria-hidden="true" />
           Humanize
         </button>
-        <button class="btn-ghost text-xs" :disabled="publishing" @click="publish">
+        <button class="btn-ghost w-full text-xs sm:w-auto" :disabled="publishing" @click="publish">
           <span
             v-if="publishing"
             class="i-lucide-loader-circle animate-spin text-sm"

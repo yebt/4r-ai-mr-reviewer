@@ -62,13 +62,21 @@ async function publish() {
 </script>
 
 <template>
+  <!-- Phone: organized left padding, flush right, and the published accent border
+       on TOP. Desktop (sm:+) restores the original flush padding and the LEFT
+       published border. Both edges of the ok border are colored with literal
+       classes so UnoCSS JIT emits them; static widths pick which edge shows. -->
   <section
-    class="border-line/50 border-b pb-6"
-    :class="review.summaryPublished ? 'border-l-2 border-l-ok bg-ok/5 pl-4' : ''"
+    class="border-line/50 border-b px-3 pt-2 pb-3 md:pb-6 md:pl-4 md:pr-0 sm:px-0"
+    :class="
+      review.summaryPublished
+        ? 'border-t-ok border-l-ok border-t-2 border-l-0 bg-ok/5 sm:border-t-0 sm:border-l-2 sm:pl-4'
+        : ''
+    "
   >
-    <div class="flex items-end justify-between gap-6">
+    <div class="flex items-end justify-between gap-4 sm:gap-6">
       <div>
-        <div class="label-mono">Recommendation</div>
+        <div class="label-mono hidden md:flex ">Recommendation</div>
         <div
           class="mt-1 text-2xl font-semibold tracking-tight"
           :class="recommendationClass[review.recommendation]"
@@ -77,7 +85,7 @@ async function publish() {
         </div>
       </div>
       <div class="text-right">
-        <div class="label-mono">Score</div>
+        <div class="label-mono hidden md:flex ">Score</div>
         <div class="text-ink mt-1 font-mono text-2xl font-semibold">
           {{ review.score }}<span class="text-muted text-base">/100</span>
         </div>
@@ -136,15 +144,15 @@ async function publish() {
     </p>
     <p v-else class="text-muted/60 mt-4 text-sm italic">No summary.</p>
 
-    <div class="label-mono mt-4 flex flex-wrap gap-x-6 gap-y-1">
+    <div class="label-mono mt-4 hidden flex-wrap gap-x-6 gap-y-1 sm:flex">
       <span>mode {{ review.contextMode }}</span>
       <span>{{ review.findings.length }} findings</span>
       <span>tokens {{ review.inputTokens }} in / {{ review.outputTokens }} out</span>
     </div>
 
-    <div class="mt-4 flex flex-wrap items-center gap-2">
+    <div class="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
       <button
-        class="btn-line text-xs"
+        class="btn-line w-full text-xs sm:w-auto"
         :disabled="!profileId || humanizing"
         :title="profileId ? undefined : 'Select a ready profile first'"
         @click="humanize"
@@ -157,7 +165,7 @@ async function publish() {
         <span v-else class="i-lucide-feather text-sm" aria-hidden="true" />
         Humanize
       </button>
-      <button class="btn-accent text-xs" :disabled="publishing" @click="publish">
+      <button class="btn-accent w-full text-xs sm:w-auto" :disabled="publishing" @click="publish">
         <span
           v-if="publishing"
           class="i-lucide-loader-circle animate-spin text-sm"

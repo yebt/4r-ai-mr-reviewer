@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useIntervalFn, useLocalStorage } from '@vueuse/core'
+import { useIntervalFn, useLocalStorage, useMediaQuery } from '@vueuse/core'
 import { errorMessage } from '@shared/api/client'
 import { confirm } from '@shared/composables/useConfirm'
 import { setBreadcrumbs } from '@shared/composables/useBreadcrumbs'
 import { toast } from '@shared/composables/useToast'
 import PageHeader from '@shared/components/ui/PageHeader.vue'
+import Alert from '@shared/components/ui/Alert.vue'
+import Modal from '@shared/components/ui/Modal.vue'
 import { useReviewsStore } from '@modules/reviews/store'
 import { useReposStore } from '@modules/repos/store'
 import { useProfilesStore } from '@modules/profiles/store'
@@ -34,6 +36,10 @@ watch(readyProfiles, (list) => {
 })
 
 const humanizingAll = ref(false)
+
+// Humanize is unusable when there are no ready profiles OR none is selected.
+// Drives the phone warning Alert and the phone toggle's warn affordance.
+const humanizeUnavailable = computed(() => !readyProfiles.value.length || !profileId.value)
 
 // Fires humanize for the summary and every finding concurrently with the
 // selected profile. Each job is independent (per-card spinners show progress);
@@ -94,6 +100,21 @@ const findingsView = useLocalStorage<'classic' | 'triage'>('reviews:findingsView
 
 // Triage state (filters/sort/counts/visible) over the review's findings.
 const triage = useFindingFilters(() => review.value?.findings ?? [])
+
+// Phone-only progressive disclosure. On desktop (`!isPhone`) the humanize bar and
+// filter toolbar always render, so these refs only affect the < sm layout.
+const isPhone = useMediaQuery('(max-width: 639px)')
+const humanizeOpen = ref(false)
+const filtersOpen = ref(false)
+
+// Count of active filter dimensions for the phone Filters toggle badge.
+const activeFilterCount = computed(
+  () =>
+    triage.filters.dimensions.size +
+    triage.filters.severities.size +
+    (triage.filters.blockingOnly ? 1 : 0) +
+    (triage.filters.status !== 'all' ? 1 : 0),
+)
 
 // Visible findings that can still be published (used by "Select all visible").
 const selectableVisible = computed(() => triage.visible.value.filter((f) => !f.published))
@@ -160,6 +181,34 @@ async function publish(payload: { all?: boolean; indices?: number[]; includeSumm
   } finally {
     publishing.value = false
   }
+}
+
+// Phone-only publish confirmation. On phone the "Include summary note" checkbox
+// is hidden from the controls and instead surfaced inside a confirm modal, so a
+// publish first opens the modal (askPublish) and only fires on confirm. Desktop
+// keeps calling publish() directly with the inline includeSummary value.
+const publishConfirmOpen = ref(false)
+const pendingPublish = ref<{ all?: boolean; indices?: number[] } | null>(null)
+const confirmIncludeSummary = ref(true)
+
+function askPublish(payload: { all?: boolean; indices?: number[] }) {
+  pendingPublish.value = payload
+  confirmIncludeSummary.value = includeSummary.value
+  publishConfirmOpen.value = true
+}
+
+async function confirmPublish() {
+  if (!pendingPublish.value) return
+  await publish({ ...pendingPublish.value, includeSummary: confirmIncludeSummary.value })
+  publishConfirmOpen.value = false
+  pendingPublish.value = null
+}
+
+// "Comment all" is shared between phone and desktop: phone routes through the
+// confirm modal, desktop publishes immediately as before.
+function onCommentAll() {
+  if (isPhone.value) askPublish({ all: true })
+  else publish({ all: true, includeSummary: includeSummary.value })
 }
 
 async function retry() {
@@ -317,52 +366,97 @@ async function remove() {
       <template v-else>
         <!-- Global humanize bar: pick a ready profile, then Humanize all fires
              the summary + every finding concurrently with per-card spinners. -->
-        <div class="border-line/50 mb-6 flex flex-wrap items-end gap-4 border-b pb-4">
-          <template v-if="readyProfiles.length">
-            <label class="block">
-              <span class="field-label">Humanize profile</span>
-              <select v-model="profileId" class="field-underline min-w-48">
-                <option v-for="p in readyProfiles" :key="p.id" :value="p.id">{{ p.name }}</option>
-              </select>
-            </label>
-            <button
-              class="btn-line text-xs"
-              :disabled="!profileId || humanizingAll"
-              @click="humanizeAll"
-            >
+        <div
+          class="border-line/50 mb-6 flex flex-col gap-3 border-b pb-4 sm:flex-row sm:flex-wrap sm:items-end sm:gap-4"
+        >
+          <!-- Phone-only toggle: collapses the humanize settings behind a button.
+               Gains a warn affordance (triangle icon + warn text) when humanize
+               is not usable so the unavailable state reads at a glance. -->
+          <button
+            type="button"
+            class="btn-line w-full justify-between text-xs sm:hidden"
+            :class="humanizeUnavailable ? 'text-warn' : ''"
+            :aria-expanded="humanizeOpen"
+            @click="humanizeOpen = !humanizeOpen"
+          >
+            <span class="flex items-center gap-2">
               <span
-                v-if="humanizingAll"
-                class="i-lucide-loader-circle animate-spin text-sm"
+                :class="humanizeUnavailable ? 'i-lucide-triangle-alert' : 'i-lucide-feather'"
+                class="text-sm"
                 aria-hidden="true"
               />
-              <span v-else class="i-lucide-feather text-sm" aria-hidden="true" />
-              Humanize all
-            </button>
+              Humanize
+            </span>
+            <span
+              class="i-lucide-chevron-down text-sm transition-transform"
+              :class="humanizeOpen ? 'rotate-180' : ''"
+              aria-hidden="true"
+            />
+          </button>
+          <!-- Phone-only warning: makes the unusable humanize state obvious even
+               while the settings stay collapsed. Desktop keeps its inline copy. -->
+          <Alert v-if="humanizeUnavailable" variant="warn" class="sm:hidden">
+            <template v-if="!readyProfiles.length">
+              No ready humanization profiles.
+              <RouterLink to="/profiles" class="text-accent hover:underline">
+                Manage profiles
+              </RouterLink>
+            </template>
+            <template v-else>Select a humanization profile to humanize.</template>
+          </Alert>
+          <template v-if="humanizeOpen || !isPhone">
+            <template v-if="readyProfiles.length">
+              <label class="block w-full sm:w-auto">
+                <span class="field-label">Humanize profile</span>
+                <select v-model="profileId" class="field-underline sm:min-w-48">
+                  <option v-for="p in readyProfiles" :key="p.id" :value="p.id">{{ p.name }}</option>
+                </select>
+              </label>
+              <button
+                class="btn-line w-full text-xs sm:w-auto"
+                :disabled="!profileId || humanizingAll"
+                @click="humanizeAll"
+              >
+                <span
+                  v-if="humanizingAll"
+                  class="i-lucide-loader-circle animate-spin text-sm"
+                  aria-hidden="true"
+                />
+                <span v-else class="i-lucide-feather text-sm" aria-hidden="true" />
+                Humanize all
+              </button>
+            </template>
+            <p v-else class="text-muted text-sm">
+              No ready humanization profiles.
+              <RouterLink to="/profiles" class="text-accent hover:underline">
+                Manage profiles
+              </RouterLink>
+            </p>
           </template>
-          <p v-else class="text-muted text-sm">
-            No ready humanization profiles.
-            <RouterLink to="/profiles" class="text-accent hover:underline">Manage profiles</RouterLink>
-          </p>
         </div>
 
         <SummaryCard :review="review" :profile-id="profileId" />
 
-        <section class="mt-6">
-          <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <h2 class="section-title flex items-center gap-2">
+        <section class="mt-6" :class="selected.length ? 'pb-24 sm:pb-0' : ''">
+          <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 class="section-title flex items-center gap-2 hidden md:inline ">
               <span class="bg-accent inline-block h-3.5 w-0.5" aria-hidden="true" />
-              Findings
+              <span class="hidden sm:inline">Findings</span>
             </h2>
             <div v-if="review.findings.length" class="flex flex-wrap items-center gap-3">
-              <div class="flex items-center gap-1" role="group" aria-label="Findings view">
+              <div
+                class="flex w-full items-center gap-1 sm:w-auto"
+                role="group"
+                aria-label="Findings view"
+              >
                 <button
                   v-for="v in (['triage', 'classic'] as const)"
                   :key="v"
                   type="button"
-                  class="border px-2 py-0.5 text-xs capitalize transition-colors"
+                  class="flex-1 border px-2 py-1.5 text-xs capitalize transition-colors sm:flex-none sm:py-0.5"
                   :class="
                     findingsView === v
-                      ? 'border-accent text-ink bg-accent/10'
+                      ? 'border-line text-ink bg-accent/10 sm:border-accent'
                       : 'border-line text-muted hover:text-ink'
                   "
                   :aria-pressed="findingsView === v"
@@ -371,22 +465,27 @@ async function remove() {
                   {{ v }}
                 </button>
               </div>
-              <label class="text-muted flex cursor-pointer items-center gap-1.5 text-xs">
+              <!-- Include-summary checkbox: desktop only. On phone the choice moves
+                   into the publish-confirm modal (askPublish). -->
+              <label
+                class="text-muted hidden cursor-pointer items-center gap-1.5 text-xs sm:flex"
+              >
                 <input v-model="includeSummary" type="checkbox" class="accent-accent" />
                 Include summary note
               </label>
-              <div class="flex items-center gap-2">
+              <div class="flex w-full items-center gap-2 sm:w-auto">
+                <!-- Publish selected: desktop only — the phone sticky bar covers it. -->
                 <button
-                  class="btn-ghost text-xs"
+                  class="btn-ghost hidden flex-1 text-xs sm:inline-flex sm:flex-none"
                   :disabled="publishing || selected.length === 0"
                   @click="publish({ indices: selected, includeSummary })"
                 >
                   Publish selected ({{ selected.length }})
                 </button>
                 <button
-                  class="btn-accent text-xs"
+                  class="btn-accent flex-1 text-xs sm:flex-none"
                   :disabled="publishing || unpublished.length === 0"
-                  @click="publish({ all: true, includeSummary })"
+                  @click="onCommentAll"
                 >
                   <span
                     v-if="publishing"
@@ -399,10 +498,19 @@ async function remove() {
             </div>
           </div>
 
-          <p v-if="review.summaryPublished" class="text-muted/70 mb-3 text-xs">
-            Summary already posted — re-check to post again.
-          </p>
-          <p v-if="publishError" class="text-danger mb-3 text-sm">{{ publishError }}</p>
+          <template v-if="review.summaryPublished">
+            <!-- Phone: compact alert box. Desktop: unchanged plain text. -->
+            <Alert variant="info" class="mb-3 sm:hidden">
+              Summary already posted — re-check to post again.
+            </Alert>
+            <p class="text-muted/70 mb-3 hidden text-xs sm:block">
+              Summary already posted — re-check to post again.
+            </p>
+          </template>
+          <template v-if="publishError">
+            <Alert variant="danger" class="mb-3 sm:hidden">{{ publishError }}</Alert>
+            <p class="text-danger mb-3 hidden text-sm sm:block">{{ publishError }}</p>
+          </template>
 
           <p v-if="review.findings.length === 0" class="text-muted text-sm">
             No findings — clean review.
@@ -424,7 +532,51 @@ async function remove() {
 
           <!-- Triage: filter/sort toolbar + the visible slice of the same cards. -->
           <div v-else>
+            <!-- Phone-only controls: Filters toggle (with active-count badge and
+                 the visible/total caption folded in) plus the selection actions.
+                 The verbose "Showing X of N" row below is desktop-only. -->
+            <div class="mb-3 flex flex-wrap items-center gap-2 text-xs sm:hidden">
+              <button
+                type="button"
+                class="btn-line text-xs"
+                :aria-expanded="filtersOpen"
+                aria-controls="triage-filters"
+                @click="filtersOpen = !filtersOpen"
+              >
+                <span class="i-lucide-sliders-horizontal text-sm" aria-hidden="true" />
+                Filters
+                <span
+                  v-if="activeFilterCount"
+                  class="border-accent/40 bg-accent/15 text-accent border px-1 font-mono"
+                >
+                  {{ activeFilterCount }}
+                </span>
+                <span class="text-muted/70">
+                  {{ triage.visible.value.length }}/{{ review.findings.length }}
+                </span>
+              </button>
+              <button
+                type="button"
+                class="btn-ghost text-xs"
+                :disabled="selectableVisible.length === 0"
+                @click="selectAllVisible"
+              >
+                Select all ({{ selectableVisible.length }})
+              </button>
+              <button
+                v-if="selected.length"
+                type="button"
+                class="btn-ghost text-xs"
+                @click="clearSelection"
+              >
+                Clear
+              </button>
+            </div>
+
+            <!-- Desktop: inline toolbar, rendered exactly as before. -->
             <FindingsToolbar
+              v-if="!isPhone"
+              id="triage-filters"
               :counts="triage.counts.value"
               :filters="triage.filters"
               :sort="triage.sort.value"
@@ -439,7 +591,27 @@ async function remove() {
               @reset="triage.reset"
             />
 
-            <div class="text-muted mb-3 flex flex-wrap items-center gap-3 text-xs">
+            <!-- Phone: the same toolbar lives in a bottom-sheet modal, opened by
+                 the Filters button. Bound to the identical triage state/handlers. -->
+            <Modal v-if="isPhone" :open="filtersOpen" title="Filters" @close="filtersOpen = false">
+              <FindingsToolbar
+                id="triage-filters"
+                :counts="triage.counts.value"
+                :filters="triage.filters"
+                :sort="triage.sort.value"
+                :dimensions="triage.dimensions"
+                :severities="triage.severities"
+                :active="triage.active.value"
+                @toggle-dimension="triage.toggleDimension"
+                @toggle-severity="triage.toggleSeverity"
+                @toggle-blocking-only="triage.toggleBlockingOnly"
+                @set-status="triage.setStatus"
+                @set-sort="triage.setSort"
+                @reset="triage.reset"
+              />
+            </Modal>
+
+            <div class="text-muted mb-3 hidden flex-wrap items-center gap-3 text-xs sm:flex">
               <span>
                 Showing {{ triage.visible.value.length }} of {{ review.findings.length }}
               </span>
@@ -461,9 +633,13 @@ async function remove() {
               </button>
             </div>
 
-            <p v-if="triage.visible.value.length === 0" class="text-muted text-sm">
-              No findings match the active filters.
-            </p>
+            <template v-if="triage.visible.value.length === 0">
+              <!-- Phone: compact alert box. Desktop: unchanged plain text. -->
+              <Alert variant="info" class="sm:hidden">No findings match the active filters.</Alert>
+              <p class="text-muted hidden text-sm sm:block">
+                No findings match the active filters.
+              </p>
+            </template>
             <div v-else class="flex flex-col gap-3">
               <FindingCardTriage
                 v-for="f in triage.visible.value"
@@ -478,6 +654,72 @@ async function remove() {
             </div>
           </div>
         </section>
+
+        <!-- Phone-only sticky selection bar: elevated bottom action strip shown
+             only while findings are selected. Desktop keeps the inline controls. -->
+        <div
+          v-if="selected.length"
+          class="border-line bg-surface fixed inset-x-0 bottom-0 z-40 flex items-center gap-2 border-t p-3 sm:hidden"
+          role="region"
+          aria-label="Selection actions"
+        >
+          <button
+            class="btn-accent flex-1 text-xs"
+            :disabled="publishing"
+            @click="askPublish({ indices: selected })"
+          >
+            <span
+              v-if="publishing"
+              class="i-lucide-loader-circle animate-spin text-sm"
+              aria-hidden="true"
+            />
+            Publish selected ({{ selected.length }})
+          </button>
+          <button class="btn-line text-xs" aria-label="Clear selection" @click="clearSelection">
+            Clear
+          </button>
+        </div>
+
+        <!-- Phone-only publish confirmation: surfaces the include-summary choice
+             (hidden from the phone controls) and defers the actual publish until
+             confirmed. Desktop publishes inline without this modal. -->
+        <Modal
+          v-if="isPhone"
+          :open="publishConfirmOpen"
+          title="Publish"
+          @close="publishConfirmOpen = false"
+        >
+          <div class="flex flex-col gap-4">
+            <p class="text-muted text-sm">
+              {{
+                pendingPublish?.all
+                  ? 'Comment all findings'
+                  : `Publish ${pendingPublish?.indices?.length ?? 0} selected findings`
+              }}
+            </p>
+            <label class="text-ink flex cursor-pointer items-center gap-2 text-sm">
+              <input v-model="confirmIncludeSummary" type="checkbox" class="accent-accent" />
+              Include summary note
+            </label>
+            <div class="flex gap-2">
+              <button
+                class="btn-accent w-full text-xs"
+                :disabled="publishing"
+                @click="confirmPublish"
+              >
+                <span
+                  v-if="publishing"
+                  class="i-lucide-loader-circle animate-spin text-sm"
+                  aria-hidden="true"
+                />
+                Publish
+              </button>
+              <button class="btn-line w-full text-xs" @click="publishConfirmOpen = false">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </Modal>
       </template>
     </template>
   </div>

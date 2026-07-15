@@ -59,12 +59,12 @@ function chipClass(isActive: boolean, disabled: boolean): string {
 
     <!-- Dimension filters -->
     <div class="flex flex-wrap items-center gap-1.5">
-      <span class="label-mono">dimension</span>
+      <span class="label-mono hidden sm:inline">dimension</span>
       <button
         v-for="d in props.dimensions"
         :key="d"
         type="button"
-        class="inline-flex items-center gap-1.5 border px-2 py-0.5 font-mono text-xs transition-colors"
+        class="inline-flex items-center gap-1.5 border px-2 py-1.5 font-mono text-xs transition-colors sm:py-0.5"
         :class="chipClass(props.filters.dimensions.has(d), props.counts.byDimension[d] === 0)"
         :disabled="props.counts.byDimension[d] === 0"
         :aria-pressed="props.filters.dimensions.has(d)"
@@ -77,12 +77,12 @@ function chipClass(isActive: boolean, disabled: boolean): string {
 
     <!-- Severity filters -->
     <div class="flex flex-wrap items-center gap-1.5">
-      <span class="label-mono">severity</span>
+      <span class="label-mono hidden sm:inline">severity</span>
       <button
         v-for="s in props.severities"
         :key="s"
         type="button"
-        class="inline-flex items-center gap-1.5 border px-2 py-0.5 font-mono text-xs uppercase transition-colors"
+        class="inline-flex items-center gap-1.5 border px-2 py-1.5 font-mono text-xs uppercase transition-colors sm:py-0.5"
         :class="chipClass(props.filters.severities.has(s), props.counts.bySeverity[s] === 0)"
         :disabled="props.counts.bySeverity[s] === 0"
         :aria-pressed="props.filters.severities.has(s)"
@@ -97,7 +97,7 @@ function chipClass(isActive: boolean, disabled: boolean): string {
     <div class="flex flex-wrap items-center gap-3">
       <button
         type="button"
-        class="inline-flex items-center gap-1.5 border px-2 py-0.5 font-mono text-xs transition-colors"
+        class="inline-flex items-center gap-1.5 border px-2 py-1.5 font-mono text-xs transition-colors sm:py-0.5"
         :class="chipClass(props.filters.blockingOnly, props.counts.blocking === 0)"
         :disabled="props.counts.blocking === 0"
         :aria-pressed="props.filters.blockingOnly"
@@ -112,7 +112,7 @@ function chipClass(isActive: boolean, disabled: boolean): string {
           v-for="st in statuses"
           :key="st.value"
           type="button"
-          class="border px-2 py-0.5 text-xs transition-colors"
+          class="border px-2 py-1.5 text-xs transition-colors sm:py-0.5"
           :class="chipClass(props.filters.status === st.value, false)"
           :aria-pressed="props.filters.status === st.value"
           @click="emit('setStatus', st.value)"
@@ -122,7 +122,7 @@ function chipClass(isActive: boolean, disabled: boolean): string {
       </div>
 
       <label class="text-muted flex items-center gap-1.5 text-xs">
-        <span class="label-mono">sort</span>
+        <span class="label-mono hidden sm:inline">sort</span>
         <select
           class="field-underline w-auto py-1"
           :value="props.sort"
