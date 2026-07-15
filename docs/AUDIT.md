@@ -27,14 +27,15 @@ Severity legend: 🔴 P0 (user-facing bug / outage / security) · 🟠 P1 (corre
   location context. **Fix:** prepend the file path in the general-note branch (or in `formatFinding`
   when `Line == 0`).
 
-- [ ] **3. No auth/authz on any HTTP endpoint + default bind on all interfaces.**
+- [~] **3. No auth/authz on any HTTP endpoint + default bind on all interfaces.**
+  *(Partial: default bind moved to `127.0.0.1:8080`. The auth middleware is still open.)*
   `internal/http/server.go:44-89` (no middleware), `internal/config/config.go:27`
   (`:8080`), `cmd/server/main.go:85`. Anyone reaching the port can publish to MRs with the stored
   PAT, delete accounts/reviews, add a provider. Defensible on localhost; serious if exposed.
   **Fix (minimum now):** default `AIR_HTTP_ADDR` to `127.0.0.1:8080`. Add a bearer/app-password
   middleware on mutating routes before any non-local exposure.
 
-- [ ] **4. Zero panic recovery anywhere → a panic crashes the whole process.**
+- [x] **4. Zero panic recovery anywhere → a panic crashes the whole process.**
   `internal/jobs/runner.go:106-117` (`go runner.Start`), `internal/app/profiles/service.go:221-229`
   (`triggerDistill` goroutine). No supervisor in the repo. **Fix:** `defer recover()` around the
   runner's handler invocation and the `triggerDistill` goroutine body, failing just that job/profile.
