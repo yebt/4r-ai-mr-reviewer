@@ -209,6 +209,11 @@ func (s *Service) Handle(ctx context.Context, reviewID string) error {
 		return nil // job done — do NOT fail/retry
 	}
 
+	// Clear cancellation bookkeeping on every exit below, including the early
+	// error/terminal returns before registerCancel runs (a racing Cancel may have
+	// set requested[id]); otherwise those entries would leak for the process life.
+	defer s.clearCancel(reviewID)
+
 	rv, err := s.reviews.Get(ctx, reviewID)
 	if err != nil {
 		return err
@@ -228,10 +233,7 @@ func (s *Service) Handle(ctx context.Context, reviewID string) error {
 	// without touching the runner's shared, long-lived ctx.
 	cctx, cancel := context.WithCancel(ctx)
 	s.registerCancel(reviewID, cancel)
-	defer func() {
-		cancel()
-		s.clearCancel(reviewID)
-	}()
+	defer cancel()
 
 	result, err := s.execute(cctx, rv)
 	if err != nil {
