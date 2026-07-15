@@ -99,7 +99,7 @@ Severity legend: 🔴 P0 (user-facing bug / outage / security) · 🟠 P1 (corre
   documented decision (`packages/spa/src/modules/reviews/components/FindingCard.vue:100-101`).
   **Fix:** drop `opacity-60`, keep the `bg-ok/5` tint.
 
-- [ ] **15. Two backend comments now lie.** "It is ephemeral / nothing is persisted" in
+- [x] **15. Two backend comments now lie.** "It is ephemeral / nothing is persisted" in
   `internal/app/humanize/service.go:1-6` and `internal/http/handlers.go:453-456` — humanize runs are
   now persisted. **Fix:** update the comments.
 
@@ -112,7 +112,7 @@ Severity legend: 🔴 P0 (user-facing bug / outage / security) · 🟠 P1 (corre
 
 - [ ] **17. No observability/alerting.** All failures go to `log.Printf`; no metrics, health/readiness
   endpoint, or alert thresholds. **Fix:** add error-rate/latency metrics + a stuck-`running` sweep.
-- [ ] **18. Type/wire mismatch.** `HumanizationsResponse.findings` typed `Record<number, ...>` but
+- [x] **18. Type/wire mismatch.** `HumanizationsResponse.findings` typed `Record<number, ...>` but
   the server emits string object keys (`packages/spa/src/shared/api/types.ts:101-104`,
   `handlers.go:687`). **Fix:** type it `Record<string, FindingHumanized[]>`.
 - [ ] **19. `hydrateHumanized` can clobber an in-flight humanize.** Navigating away/back while a
