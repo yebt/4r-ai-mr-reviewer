@@ -18,8 +18,8 @@ import (
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/review"
 	"github.com/webcloster-dev/ai-reviewer/internal/id"
 	"github.com/webcloster-dev/ai-reviewer/internal/jobs"
-	"github.com/webcloster-dev/ai-reviewer/internal/review/engine"
 	reviewctx "github.com/webcloster-dev/ai-reviewer/internal/review/context"
+	"github.com/webcloster-dev/ai-reviewer/internal/review/engine"
 )
 
 // ErrNotCancelable is returned when a review is already in a terminal state and
@@ -213,6 +213,13 @@ func (s *Service) Handle(ctx context.Context, reviewID string) error {
 	if err != nil {
 		return err
 	}
+	// Crash-recovery guard: RequeueRunning may re-queue a job whose review
+	// already reached a terminal state (a crash between persisting the review and
+	// completing the job). Re-running would re-charge the LLM and wipe published
+	// state, so treat the job as already done.
+	if rv.Status.Terminal() {
+		return nil
+	}
 	if err := s.reviews.SetStatus(ctx, reviewID, review.StatusRunning, ""); err != nil {
 		return err
 	}
@@ -243,7 +250,14 @@ func (s *Service) Handle(ctx context.Context, reviewID string) error {
 	result.ID = rv.ID
 	result.RepoID = rv.RepoID
 	result.MRIID = rv.MRIID
-	return s.reviews.Save(ctx, result)
+	if err := s.reviews.Save(ctx, result); err != nil {
+		// The review succeeded but persisting the result failed; don't leave it
+		// stuck in "running" forever (RequeueRunning wouldn't recover it once the
+		// job is terminal). Mark it errored so it surfaces and can be retried.
+		_ = s.reviews.SetStatus(ctx, reviewID, review.StatusError, err.Error())
+		return err
+	}
+	return nil
 }
 
 func (s *Service) execute(ctx context.Context, rv review.Review) (review.Review, error) {
