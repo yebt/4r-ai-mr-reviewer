@@ -90,7 +90,7 @@ Severity legend: 🔴 P0 (user-facing bug / outage / security) · 🟠 P1 (corre
   the API key / GitLab PAT in cleartext (`internal/adapters/ai/openai.go`, `anthropic.go`,
   `gitlab/client.go`). **Fix:** require `https://` on persist (allow-list `http://localhost` for local).
 
-- [ ] **13. `Modal.vue` has no focus trap and no `aria-labelledby`.** Tab leaks to the background
+- [x] **13. `Modal.vue` has no focus trap and no `aria-labelledby`.** Tab leaks to the background
   page; the title `<h2>` has no `id` linked to the dialog. Used by phone Filters and publish-confirm.
   **Fix:** trap Tab within the panel, mark background inert while open, wire `aria-labelledby`.
 
