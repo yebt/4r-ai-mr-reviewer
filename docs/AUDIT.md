@@ -110,8 +110,10 @@ Severity legend: 🔴 P0 (user-facing bug / outage / security) · 🟠 P1 (corre
 
 ## ⚪ P3 — Minor / cleanup
 
-- [ ] **17. No observability/alerting.** All failures go to `log.Printf`; no metrics, health/readiness
-  endpoint, or alert thresholds. **Fix:** add error-rate/latency metrics + a stuck-`running` sweep.
+- [~] **17. No observability/alerting.** A `GET /health` liveness endpoint already exists, and the
+  stuck-`running` risk is now covered by #5 (terminal guard + Save-failure fallback). Full
+  metrics/alerting (Prometheus, SLO thresholds, dashboards) is deliberately **deferred** as
+  over-engineering for a self-hosted single-user tool; revisit if it ever runs as a shared service.
 - [x] **18. Type/wire mismatch.** `HumanizationsResponse.findings` typed `Record<number, ...>` but
   the server emits string object keys (`packages/spa/src/shared/api/types.ts:101-104`,
   `handlers.go:687`). **Fix:** type it `Record<string, FindingHumanized[]>`.
@@ -121,10 +123,11 @@ Severity legend: 🔴 P0 (user-facing bug / outage / security) · 🟠 P1 (corre
 - [x] **20. Duplicated finding-card script (~50 lines).** `FindingCard.vue` and
   `FindingCardTriage.vue` share identical props/bindings/`publish()`. Fix #7 would need editing both.
   **Fix:** extract a `useFindingCard(props)` composable.
-- [ ] **21. Small cleanups.** Store returns raw refs never read directly; N `matchMedia` listeners
-  (one per triage card); `id.New()` panics on `crypto/rand` failure with no recover boundary;
-  unbounded map growth in cancel bookkeeping on a rare error path; cancel-vs-error can misclassify a
-  genuine failure as `cancelled` (`internal/app/reviews/service.go:229-241`).
+- [x] **21. Small cleanups.** Done: dropped the unused raw refs from the store's return; added a
+  shared `useIsPhone()` singleton so N triage cards reuse one `matchMedia` listener; fixed the
+  cancel-bookkeeping map leak (a top-level `defer clearCancel` now covers the early error/terminal
+  returns). Accepted as-is: `id.New()`'s panic is now contained by the recover boundaries from #4;
+  the cancel-vs-error classification is an intentional trade-off.
 
 ---
 
