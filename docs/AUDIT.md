@@ -103,7 +103,7 @@ Severity legend: 🔴 P0 (user-facing bug / outage / security) · 🟠 P1 (corre
   `internal/app/humanize/service.go:1-6` and `internal/http/handlers.go:453-456` — humanize runs are
   now persisted. **Fix:** update the comments.
 
-- [ ] **16. `git clone --branch <ref>` uses an MR-controlled ref with no explicit validation.**
+- [x] **16. `git clone --branch <ref>` uses an MR-controlled ref with no explicit validation.**
   `internal/adapters/gitlab/clone.go:37-41` (ref = MR source branch). Mitigated only by upstream
   git/GitLab ref-format rules, not enforced here. **Fix:** validate `ref` (reject leading `-`,
   restrict charset) before use.
@@ -118,7 +118,7 @@ Severity legend: 🔴 P0 (user-facing bug / outage / security) · 🟠 P1 (corre
 - [x] **19. `hydrateHumanized` can clobber an in-flight humanize.** Navigating away/back while a
   humanize call is pending overwrites from the server (which lacks the not-yet-persisted run)
   (`store.ts:257-263`). **Fix:** skip/merge hydrate when `humanizing` is active.
-- [ ] **20. Duplicated finding-card script (~50 lines).** `FindingCard.vue` and
+- [x] **20. Duplicated finding-card script (~50 lines).** `FindingCard.vue` and
   `FindingCardTriage.vue` share identical props/bindings/`publish()`. Fix #7 would need editing both.
   **Fix:** extract a `useFindingCard(props)` composable.
 - [ ] **21. Small cleanups.** Store returns raw refs never read directly; N `matchMedia` listeners
