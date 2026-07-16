@@ -49,9 +49,11 @@ function chipClass(isActive: boolean, disabled: boolean): string {
 </script>
 
 <template>
-  <div class="mb-4 flex flex-col gap-3">
+  <!-- Mobile (inside the filters modal): stacked rows. Desktop: one horizontal
+       filter bar that wraps, with a divider splitting filters from controls. -->
+  <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4 sm:gap-y-2">
     <!-- Counts summary -->
-    <p class="text-muted text-xs">
+    <p class="text-muted shrink-0 text-xs">
       <span class="text-ink font-medium">{{ props.counts.total }}</span> findings
       <span aria-hidden="true">·</span>
       <span class="text-flame font-medium">{{ props.counts.blocking }}</span> blocking
@@ -94,7 +96,9 @@ function chipClass(isActive: boolean, disabled: boolean): string {
     </div>
 
     <!-- Blocking toggle, status control, sort, reset -->
-    <div class="flex flex-wrap items-center gap-3">
+    <div
+      class="flex flex-wrap items-center gap-3 sm:border-line/50 sm:ml-1 sm:border-l sm:pl-4"
+    >
       <button
         type="button"
         class="inline-flex items-center gap-1.5 border px-2 py-1.5 font-mono text-xs transition-colors sm:py-0.5"
