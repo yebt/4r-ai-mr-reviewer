@@ -343,15 +343,17 @@ func (s *Server) listReviews(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) createReview(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		RepoID string `json:"repoId"`
-		MRIID  int    `json:"mrIid"`
-		Mode   string `json:"mode"`
+		RepoID     string `json:"repoId"`
+		MRIID      int    `json:"mrIid"`
+		Mode       string `json:"mode"`
+		ProviderID string `json:"providerId"`
+		Model      string `json:"model"`
 	}
 	if err := decode(r, &in); err != nil {
 		writeErr(w, err, http.StatusBadRequest)
 		return
 	}
-	rv, err := s.reviews.Create(r.Context(), in.RepoID, in.MRIID, review.ContextMode(in.Mode))
+	rv, err := s.reviews.Create(r.Context(), in.RepoID, in.MRIID, review.ContextMode(in.Mode), in.ProviderID, in.Model)
 	if err != nil {
 		writeErr(w, err, http.StatusBadRequest)
 		return

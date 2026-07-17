@@ -131,7 +131,7 @@ func TestPublishSelectedFindings(t *testing.T) {
 	runner := jobs.NewRunner(sqlite.NewJobStore(db), svc.Handle, jobs.WithLogger(log.New(io.Discard, "", 0)))
 	svc.AttachRunner(runner)
 
-	rv, _ := svc.Create(ctx, rp.ID, 7, review.ModeFast)
+	rv, _ := svc.Create(ctx, rp.ID, 7, review.ModeFast, "", "")
 	runner.Drain(ctx)
 
 	if err := svc.Publish(ctx, rv.ID, Selection{All: true}); err != nil {
@@ -204,7 +204,7 @@ func setupPublishTestJSON(t *testing.T, reviewJSON string) (context.Context, *Se
 	runner := jobs.NewRunner(sqlite.NewJobStore(db), svc.Handle, jobs.WithLogger(log.New(io.Discard, "", 0)))
 	svc.AttachRunner(runner)
 
-	rv, _ := svc.Create(ctx, rp.ID, 7, review.ModeFast)
+	rv, _ := svc.Create(ctx, rp.ID, 7, review.ModeFast, "", "")
 	runner.Drain(ctx)
 
 	return ctx, svc, gl, rv.ID

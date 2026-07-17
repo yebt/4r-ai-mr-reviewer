@@ -120,8 +120,10 @@ func (s *Service) Cancel(ctx context.Context, reviewID string) error {
 // construction cycle (the runner's handler is this service's Handle).
 func (s *Service) AttachRunner(r *jobs.Runner) { s.runner = r }
 
-// Create records a pending review and enqueues it. An empty mode defaults to fast.
-func (s *Service) Create(ctx context.Context, repoID string, mrIID int, mode review.ContextMode) (review.Review, error) {
+// Create records a pending review and enqueues it. An empty mode defaults to
+// fast. providerID and model are optional overrides chosen at launch: empty
+// means resolve from the repo, then the default provider (see execute).
+func (s *Service) Create(ctx context.Context, repoID string, mrIID int, mode review.ContextMode, providerID, model string) (review.Review, error) {
 	if _, err := s.repos.Get(ctx, repoID); err != nil {
 		return review.Review{}, err
 	}
@@ -133,6 +135,8 @@ func (s *Service) Create(ctx context.Context, repoID string, mrIID int, mode rev
 		RepoID:      repoID,
 		MRIID:       mrIID,
 		ContextMode: mode,
+		ProviderID:  providerID,
+		Model:       model,
 		Status:      review.StatusPending,
 	}
 	if err := s.reviews.Create(ctx, rv); err != nil {
@@ -195,7 +199,7 @@ func (s *Service) Retry(ctx context.Context, reviewID string) (review.Review, er
 	if err != nil {
 		return review.Review{}, err
 	}
-	return s.Create(ctx, old.RepoID, old.MRIID, old.ContextMode)
+	return s.Create(ctx, old.RepoID, old.MRIID, old.ContextMode, old.ProviderID, old.Model)
 }
 
 // Handle is the job handler: it executes one review by id and persists the
@@ -268,7 +272,8 @@ func (s *Service) execute(ctx context.Context, rv review.Review) (review.Review,
 		return review.Review{}, err
 	}
 
-	prov, err := s.resolveProvider(ctx, rp.ProviderID)
+	// Provider precedence: review override, then repo, then default provider.
+	prov, err := s.resolveProvider(ctx, firstNonEmpty(rv.ProviderID, rp.ProviderID))
 	if err != nil {
 		return review.Review{}, err
 	}
@@ -276,12 +281,10 @@ func (s *Service) execute(ctx context.Context, rv review.Review) (review.Review,
 	if err != nil {
 		return review.Review{}, err
 	}
-	model := rp.Model
+	// Model precedence: review override, then repo, then the provider's model.
+	model := firstNonEmpty(rv.Model, rp.Model, prov.Model)
 	if model == "" {
-		model = prov.Model
-	}
-	if model == "" {
-		return review.Review{}, fmt.Errorf("reviews: no model set on repo or provider %q", prov.Name)
+		return review.Review{}, fmt.Errorf("reviews: no model set on review, repo or provider %q", prov.Name)
 	}
 	aiClient, err := ai.New(prov, apiKey)
 	if err != nil {
@@ -310,6 +313,16 @@ func (s *Service) resolveProvider(ctx context.Context, providerID string) (provi
 		return s.providers.Get(ctx, providerID)
 	}
 	return s.providers.Default(ctx)
+}
+
+// firstNonEmpty returns the first non-empty string, or "" if all are empty.
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func (s *Service) contextStrategy(mode review.ContextMode, gl *gitlab.Client, token string) reviewctx.Strategy {

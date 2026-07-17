@@ -244,8 +244,14 @@ export const useReviewsStore = defineStore('reviews', () => {
     }
   }
 
-  async function create(repoId: string, mrIid: number, mode: string) {
-    const created = await api.createReview({ repoId, mrIid, mode })
+  async function create(
+    repoId: string,
+    mrIid: number,
+    mode: string,
+    providerId?: string,
+    model?: string,
+  ) {
+    const created = await api.createReview({ repoId, mrIid, mode, providerId, model })
     cacheReview(created)
     return created
   }

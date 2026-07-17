@@ -8,6 +8,7 @@ import { toast } from '@shared/composables/useToast'
 import PageHeader from '@shared/components/ui/PageHeader.vue'
 import { useReposStore } from '@modules/repos/store'
 import { useReviewsStore } from '@modules/reviews/store'
+import { useProvidersStore } from '@modules/providers/store'
 import { isTerminal } from '@modules/reviews/format'
 import MergeRequestList from '@modules/reviews/components/MergeRequestList.vue'
 import ReviewList from '@modules/reviews/components/ReviewList.vue'
@@ -18,10 +19,17 @@ const repoId = (route.params as { id: string }).id
 
 const repos = useReposStore()
 const reviews = useReviewsStore()
+const providers = useProvidersStore()
 
 const creatingIid = ref<number | null>(null)
 
 const repo = computed(() => repos.items.find((r) => r.id === repoId) ?? null)
+
+// Preselected provider for launching a review: the repo's assigned provider if
+// set, otherwise the global default provider, otherwise none.
+const defaultProviderId = computed(
+  () => repo.value?.providerId || providers.items.find((p) => p.isDefault)?.id || '',
+)
 const mrs = computed(() => reviews.mergeRequestsFor(repoId))
 const repoReviews = computed(() => reviews.reviewsFor(repoId))
 const archivedReviews = computed(() => reviews.archivedReviewsFor(repoId))
@@ -48,11 +56,12 @@ watchEffect(() => {
 
 onMounted(async () => {
   if (repos.items.length === 0) await repos.fetchAll()
+  if (providers.items.length === 0) providers.fetchAll()
   reviews.fetchMergeRequests(repoId)
   reviews.fetchReviews(repoId)
 })
 
-async function startReview(iid: number, mode: string) {
+async function startReview(iid: number, mode: string, providerId: string, model: string) {
   // If other reviews are already in progress, let the user choose to watch this
   // one now (it runs in parallel, up to the server's bound) or queue it and keep
   // working. Both paths create the review; the choice only decides navigation.
@@ -69,7 +78,7 @@ async function startReview(iid: number, mode: string) {
 
   creatingIid.value = iid
   try {
-    const rv = await reviews.create(repoId, iid, mode)
+    const rv = await reviews.create(repoId, iid, mode, providerId, model)
     if (watchNow) router.push(`/reviews/${rv.id}`)
     else toast.success('Review queued — it will run when a slot is free.')
   } catch (e) {
@@ -94,6 +103,8 @@ async function startReview(iid: number, mode: string) {
         :loading="mrsLoading"
         :error="reviews.mrsError"
         :busy-iid="creatingIid"
+        :providers="providers.items"
+        :default-provider-id="defaultProviderId"
         @review="startReview"
       />
     </section>

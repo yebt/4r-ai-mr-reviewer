@@ -2,6 +2,7 @@
 // which Vite proxies to the server in dev (see vite.config.ts).
 import type {
   Account,
+  CreateReviewInput,
   FindingHumanized,
   HumanizationsResponse,
   HumanizeFindingText,
@@ -123,8 +124,18 @@ export const api = {
     request<Review[]>('GET', `/repos/${repoId}/reviews${archived ? '?archived=1' : ''}`),
 
   // reviews
-  createReview: (input: { repoId: string; mrIid: number; mode: string }) =>
-    request<Review>('POST', '/reviews', input),
+  createReview: (input: CreateReviewInput) => {
+    const { repoId, mrIid, mode, providerId, model } = input
+    // Only send provider/model overrides when non-empty; the backend treats an
+    // empty value the same as omitted (resolve from the repo/default provider).
+    const body: CreateReviewInput = { repoId, mrIid, mode }
+    if (providerId) body.providerId = providerId
+    // Trim the free-text model so a whitespace-only value is omitted (falls back
+    // to the provider default) instead of being sent as a literal model name.
+    const m = model?.trim()
+    if (m) body.model = m
+    return request<Review>('POST', '/reviews', body)
+  },
   getReview: (id: string) => request<Review>('GET', `/reviews/${id}`),
   deleteReview: (id: string) => request<void>('DELETE', `/reviews/${id}`),
   retryReview: (id: string) => request<Review>('POST', `/reviews/${id}/retry`),

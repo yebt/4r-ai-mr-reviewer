@@ -93,7 +93,12 @@ type Review struct {
 	RepoID      string
 	MRIID       int
 	ContextMode ContextMode
-	Status      Status
+	// ProviderID and Model optionally pin the review to a specific provider and
+	// model chosen at launch. Empty means resolve from the repo, then the default
+	// provider (the default, backward-compatible behavior).
+	ProviderID string
+	Model      string
+	Status     Status
 	// Phase reports fine-grained progress while running (e.g. the current 4R
 	// lens in a multi-pass review). Empty when not running.
 	Phase string

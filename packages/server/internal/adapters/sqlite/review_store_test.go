@@ -50,6 +50,23 @@ func TestReviewCreateGet(t *testing.T) {
 	}
 }
 
+func TestReviewProviderModelRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	s, repoID := newReviewStore(t)
+
+	rv := review.Review{ID: id.New(), RepoID: repoID, MRIID: 7, Status: review.StatusPending, ProviderID: "prov-1", Model: "gpt-x"}
+	if err := s.Create(ctx, rv); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	got, err := s.Get(ctx, rv.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.ProviderID != "prov-1" || got.Model != "gpt-x" {
+		t.Fatalf("provider/model not persisted: %+v", got)
+	}
+}
+
 func TestReviewSaveWithFindings(t *testing.T) {
 	ctx := context.Background()
 	s, repoID := newReviewStore(t)

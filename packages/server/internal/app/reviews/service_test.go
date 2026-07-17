@@ -106,7 +106,7 @@ func TestReviewEndToEnd(t *testing.T) {
 	runner := jobs.NewRunner(sqlite.NewJobStore(db), svc.Handle, jobs.WithLogger(log.New(io.Discard, "", 0)))
 	svc.AttachRunner(runner)
 
-	rv, err := svc.Create(ctx, rp.ID, 7, review.ModeFast)
+	rv, err := svc.Create(ctx, rp.ID, 7, review.ModeFast, "", "")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -167,7 +167,7 @@ func TestCancelPendingBeforeRun(t *testing.T) {
 	runner := jobs.NewRunner(sqlite.NewJobStore(db), svc.Handle, jobs.WithLogger(log.New(io.Discard, "", 0)))
 	svc.AttachRunner(runner)
 
-	rv, err := svc.Create(ctx, rp.ID, 7, review.ModeFast)
+	rv, err := svc.Create(ctx, rp.ID, 7, review.ModeFast, "", "")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -225,7 +225,7 @@ func TestCancelTerminalRejected(t *testing.T) {
 	runner := jobs.NewRunner(sqlite.NewJobStore(db), svc.Handle, jobs.WithLogger(log.New(io.Discard, "", 0)))
 	svc.AttachRunner(runner)
 
-	rv, err := svc.Create(ctx, rp.ID, 7, review.ModeFast)
+	rv, err := svc.Create(ctx, rp.ID, 7, review.ModeFast, "", "")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -236,6 +236,135 @@ func TestCancelTerminalRejected(t *testing.T) {
 
 	if err := svc.Cancel(ctx, rv.ID); !errors.Is(err, ErrNotCancelable) {
 		t.Fatalf("Cancel on terminal = %v, want ErrNotCancelable", err)
+	}
+}
+
+// modelCapturingAIStub serves a canned review and records the model field of
+// the last /chat/completions request, so a test can assert which model the
+// resolution precedence selected.
+func modelCapturingAIStub(t *testing.T, reviewJSON string, got *string) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/chat/completions") {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		var body struct {
+			Model string `json:"model"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		*got = body.Model
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"model":   body.Model,
+			"choices": []map[string]any{{"message": map[string]any{"content": reviewJSON}}},
+			"usage":   map[string]any{"prompt_tokens": 1, "completion_tokens": 1},
+		})
+	}))
+}
+
+// TestReviewModelOverride asserts a per-review model override takes precedence
+// over the repo's and provider's model when resolving the run.
+func TestReviewModelOverride(t *testing.T) {
+	ctx := context.Background()
+
+	gl := gitlabStub(t)
+	defer gl.Close()
+	var usedModel string
+	aiSrv := modelCapturingAIStub(t, `{"summary":"clean","findings":[]}`, &usedModel)
+	defer aiSrv.Close()
+
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer db.Close()
+
+	salt, _ := crypto.NewSalt()
+	key, _ := crypto.DeriveKey("pw", salt)
+	cipher, _ := crypto.NewCipher(key)
+	secrets := sqlite.NewSecretStore(db, cipher)
+	accountSvc := accounts.NewService(sqlite.NewAccountRepo(db), secrets)
+	providerSvc := providers.NewService(sqlite.NewProviderRepo(db), secrets)
+	repoSvc := appRepos.NewService(sqlite.NewRepoStore(db), sqlite.NewAccountRepo(db), sqlite.NewProviderRepo(db))
+	reviewStore := sqlite.NewReviewStore(db)
+
+	acc, _ := accountSvc.Add(ctx, "acc", gl.URL, "token")
+	prov, _ := providerSvc.Add(ctx, providers.AddInput{Name: "p", Kind: provider.KindOpenAICompat, BaseURL: aiSrv.URL, Model: "provider-model", APIKey: "k"})
+	rp, _ := repoSvc.Add(ctx, appRepos.AddInput{Name: "web", URL: "https://gitlab.test/group/project", AccountID: acc.ID, ProviderID: prov.ID})
+
+	set, _ := skills.Load("")
+	svc := NewService(reviewStore, sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.New(set))
+	runner := jobs.NewRunner(sqlite.NewJobStore(db), svc.Handle, jobs.WithLogger(log.New(io.Discard, "", 0)))
+	svc.AttachRunner(runner)
+
+	if _, err := svc.Create(ctx, rp.ID, 7, review.ModeFast, "", "override-model"); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	runner.Drain(ctx)
+
+	if usedModel != "override-model" {
+		t.Fatalf("model = %q, want override-model (per-review override must win)", usedModel)
+	}
+}
+
+// TestRetryPreservesModelOverride guards the contract that Retry reloads the
+// persisted per-review override rather than resetting it: a future Retry that
+// called Create with empty overrides would fail here. It asserts both at the
+// struct level and by observing the model the AI stub receives on the retried
+// run.
+func TestRetryPreservesModelOverride(t *testing.T) {
+	ctx := context.Background()
+
+	gl := gitlabStub(t)
+	defer gl.Close()
+	var usedModel string
+	aiSrv := modelCapturingAIStub(t, `{"summary":"clean","findings":[]}`, &usedModel)
+	defer aiSrv.Close()
+
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer db.Close()
+
+	salt, _ := crypto.NewSalt()
+	key, _ := crypto.DeriveKey("pw", salt)
+	cipher, _ := crypto.NewCipher(key)
+	secrets := sqlite.NewSecretStore(db, cipher)
+	accountSvc := accounts.NewService(sqlite.NewAccountRepo(db), secrets)
+	providerSvc := providers.NewService(sqlite.NewProviderRepo(db), secrets)
+	repoSvc := appRepos.NewService(sqlite.NewRepoStore(db), sqlite.NewAccountRepo(db), sqlite.NewProviderRepo(db))
+	reviewStore := sqlite.NewReviewStore(db)
+
+	acc, _ := accountSvc.Add(ctx, "acc", gl.URL, "token")
+	prov, _ := providerSvc.Add(ctx, providers.AddInput{Name: "p", Kind: provider.KindOpenAICompat, BaseURL: aiSrv.URL, Model: "provider-model", APIKey: "k"})
+	rp, _ := repoSvc.Add(ctx, appRepos.AddInput{Name: "web", URL: "https://gitlab.test/group/project", AccountID: acc.ID, ProviderID: prov.ID})
+
+	set, _ := skills.Load("")
+	svc := NewService(reviewStore, sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.New(set))
+	runner := jobs.NewRunner(sqlite.NewJobStore(db), svc.Handle, jobs.WithLogger(log.New(io.Discard, "", 0)))
+	svc.AttachRunner(runner)
+
+	original, err := svc.Create(ctx, rp.ID, 7, review.ModeFast, prov.ID, "override-model")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	runner.Drain(ctx)
+
+	// Retry must carry the persisted override into the clone.
+	clone, err := svc.Retry(ctx, original.ID)
+	if err != nil {
+		t.Fatalf("Retry: %v", err)
+	}
+	if clone.ProviderID != prov.ID || clone.Model != "override-model" {
+		t.Fatalf("clone override = %q/%q, want %q/override-model", clone.ProviderID, clone.Model, prov.ID)
+	}
+
+	// Observe the model the retried run actually sends to the provider.
+	usedModel = ""
+	runner.Drain(ctx)
+	if usedModel != "override-model" {
+		t.Fatalf("retried run model = %q, want override-model (persisted override must survive retry)", usedModel)
 	}
 }
 
@@ -271,7 +400,7 @@ func TestRetryClonesReview(t *testing.T) {
 	runner := jobs.NewRunner(sqlite.NewJobStore(db), svc.Handle, jobs.WithLogger(log.New(io.Discard, "", 0)))
 	svc.AttachRunner(runner)
 
-	original, _ := svc.Create(ctx, rp.ID, 7, review.ModeFast)
+	original, _ := svc.Create(ctx, rp.ID, 7, review.ModeFast, "", "")
 	clone, err := svc.Retry(ctx, original.ID)
 	if err != nil {
 		t.Fatalf("Retry: %v", err)

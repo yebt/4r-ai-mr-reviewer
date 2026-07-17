@@ -104,6 +104,16 @@ export interface HumanizationsResponse {
   findings: Record<string, FindingHumanized[]>
 }
 
+// Create-review request body. providerId/model are optional overrides: an empty
+// or omitted value tells the backend to resolve from the repo/default provider.
+export interface CreateReviewInput {
+  repoId: string
+  mrIid: number
+  mode: string
+  providerId?: string
+  model?: string
+}
+
 export type ReviewStatus = 'pending' | 'running' | 'done' | 'error' | 'cancelled'
 export type ContextMode = 'fast' | 'deep'
 export type Recommendation = 'approve' | 'request_changes' | 'comment'

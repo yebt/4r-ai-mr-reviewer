@@ -55,7 +55,7 @@ func TestReviewMultiPassEndToEnd(t *testing.T) {
 	runner := jobs.NewRunner(sqlite.NewJobStore(db), svc.Handle, jobs.WithLogger(log.New(io.Discard, "", 0)))
 	svc.AttachRunner(runner)
 
-	rv, _ := svc.Create(ctx, rp.ID, 7, review.ModeFast)
+	rv, _ := svc.Create(ctx, rp.ID, 7, review.ModeFast, "", "")
 	runner.Drain(ctx)
 
 	got, err := reviewStore.Get(ctx, rv.ID)
