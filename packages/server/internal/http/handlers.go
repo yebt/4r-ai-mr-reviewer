@@ -403,6 +403,10 @@ func (s *Server) cancelReview(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) archiveReview(w http.ResponseWriter, r *http.Request) {
 	if err := s.reviews.Archive(r.Context(), r.PathValue("id")); err != nil {
+		if errors.Is(err, reviews.ErrNotArchivable) {
+			writeErr(w, err, http.StatusConflict)
+			return
+		}
 		writeErr(w, err, http.StatusInternalServerError)
 		return
 	}

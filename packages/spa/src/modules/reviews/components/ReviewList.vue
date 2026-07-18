@@ -2,6 +2,7 @@
 import type { Review } from '@shared/api/types'
 import {
   formatDateTime,
+  isTerminal,
   recommendationClass,
   recommendationLabel,
   shortId,
@@ -12,7 +13,10 @@ defineProps<{
   items: Review[]
   loading?: boolean
   error?: string | null
+  busyId?: string | null
 }>()
+
+const emit = defineEmits<{ archive: [id: string]; unarchive: [id: string] }>()
 </script>
 
 <template>
@@ -39,16 +43,37 @@ defineProps<{
             <span v-if="rv.createdAt">{{ formatDateTime(rv.createdAt) }}</span>
           </div>
         </div>
-        <div class="shrink-0 text-right">
-          <div
-            v-if="rv.status === 'done'"
-            class="text-sm"
-            :class="recommendationClass[rv.recommendation]"
-          >
-            {{ recommendationLabel(rv.recommendation) }}
+        <div class="flex shrink-0 items-center gap-3">
+          <div class="text-right">
+            <div
+              v-if="rv.status === 'done'"
+              class="text-sm"
+              :class="recommendationClass[rv.recommendation]"
+            >
+              {{ recommendationLabel(rv.recommendation) }}
+            </div>
+            <div v-if="rv.status === 'done'" class="label-mono mt-0.5">score {{ rv.score }}</div>
+            <div v-else-if="rv.status === 'error'" class="text-danger text-xs">failed</div>
           </div>
-          <div v-if="rv.status === 'done'" class="label-mono mt-0.5">score {{ rv.score }}</div>
-          <div v-else-if="rv.status === 'error'" class="text-danger text-xs">failed</div>
+          <button
+            class="btn-ghost text-xs"
+            :disabled="busyId === rv.id || (!rv.archived && !isTerminal(rv.status))"
+            :aria-label="rv.archived ? `Unarchive review !${rv.mrIid}` : `Archive review !${rv.mrIid}`"
+            :title="
+              rv.archived
+                ? 'Unarchive'
+                : isTerminal(rv.status)
+                  ? 'Archive'
+                  : 'Cannot archive a running review'
+            "
+            @click="rv.archived ? emit('unarchive', rv.id) : emit('archive', rv.id)"
+          >
+            <span
+              :class="rv.archived ? 'i-lucide-archive-restore' : 'i-lucide-archive'"
+              class="text-sm"
+              aria-hidden="true"
+            />
+          </button>
         </div>
       </li>
     </ul>

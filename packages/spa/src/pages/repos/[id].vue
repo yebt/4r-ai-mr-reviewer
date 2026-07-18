@@ -22,6 +22,7 @@ const reviews = useReviewsStore()
 const providers = useProvidersStore()
 
 const creatingIid = ref<number | null>(null)
+const archivingId = ref<string | null>(null)
 
 const repo = computed(() => repos.items.find((r) => r.id === repoId) ?? null)
 
@@ -87,6 +88,32 @@ async function startReview(iid: number, mode: string, providerId: string, model:
     creatingIid.value = null
   }
 }
+
+async function archiveReview(id: string) {
+  archivingId.value = id
+  try {
+    await reviews.archive(id)
+    if (showArchived.value) await reviews.fetchArchivedReviews(repoId)
+    toast.success('Review archived')
+  } catch (e) {
+    toast.error(errorMessage(e))
+  } finally {
+    archivingId.value = null
+  }
+}
+
+async function unarchiveReview(id: string) {
+  archivingId.value = id
+  try {
+    await reviews.unarchive(id)
+    await reviews.fetchReviews(repoId)
+    toast.success('Review unarchived')
+  } catch (e) {
+    toast.error(errorMessage(e))
+  } finally {
+    archivingId.value = null
+  }
+}
 </script>
 
 <template>
@@ -124,7 +151,13 @@ async function startReview(iid: number, mode: string, providerId: string, model:
           {{ showArchived ? 'Hide archived' : 'Show archived' }}
         </button>
       </div>
-      <ReviewList :items="repoReviews" :loading="reviewsLoading" :error="reviews.listError" />
+      <ReviewList
+        :items="repoReviews"
+        :loading="reviewsLoading"
+        :error="reviews.listError"
+        :busy-id="archivingId"
+        @archive="archiveReview"
+      />
 
       <template v-if="showArchived">
         <h3 class="section-title text-muted mt-6 mb-3 flex items-center gap-2">
@@ -135,6 +168,8 @@ async function startReview(iid: number, mode: string, providerId: string, model:
           :items="archivedReviews"
           :loading="archivedLoading"
           :error="reviews.archivedError"
+          :busy-id="archivingId"
+          @unarchive="unarchiveReview"
         />
       </template>
     </section>

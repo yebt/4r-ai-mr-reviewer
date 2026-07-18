@@ -7,14 +7,30 @@ import { useReviewsStore } from '@modules/reviews/store'
 import ReviewStatusChip from '@modules/reviews/components/ReviewStatusChip.vue'
 import {
   formatDateTime,
+  isTerminal,
   recommendationClass,
   recommendationLabel,
   shortId,
 } from '@modules/reviews/format'
+import { toast } from '@shared/composables/useToast'
+import { errorMessage } from '@shared/api/client'
 
 const repos = useReposStore()
 const reviews = useReviewsStore()
 const loading = ref(false)
+const archivingId = ref<string | null>(null)
+
+async function archiveReview(id: string) {
+  archivingId.value = id
+  try {
+    await reviews.archive(id)
+    toast.success('Review archived')
+  } catch (e) {
+    toast.error(errorMessage(e))
+  } finally {
+    archivingId.value = null
+  }
+}
 
 const repoName = (id: string) => repos.items.find((r) => r.id === id)?.name ?? 'repo'
 
@@ -55,11 +71,22 @@ const items = computed(() => reviews.allReviews)
             <span v-if="rv.createdAt">{{ formatDateTime(rv.createdAt) }}</span>
           </div>
         </div>
-        <div v-if="rv.status === 'done'" class="shrink-0 text-right">
-          <div class="text-sm" :class="recommendationClass[rv.recommendation]">
-            {{ recommendationLabel(rv.recommendation) }}
+        <div class="flex shrink-0 items-center gap-3">
+          <div v-if="rv.status === 'done'" class="text-right">
+            <div class="text-sm" :class="recommendationClass[rv.recommendation]">
+              {{ recommendationLabel(rv.recommendation) }}
+            </div>
+            <div class="label-mono mt-0.5">score {{ rv.score }}</div>
           </div>
-          <div class="label-mono mt-0.5">score {{ rv.score }}</div>
+          <button
+            class="btn-ghost text-xs"
+            :disabled="archivingId === rv.id || !isTerminal(rv.status)"
+            :aria-label="`Archive review !${rv.mrIid}`"
+            :title="isTerminal(rv.status) ? 'Archive' : 'Cannot archive a running review'"
+            @click="archiveReview(rv.id)"
+          >
+            <span class="i-lucide-archive text-sm" aria-hidden="true" />
+          </button>
         </div>
       </li>
     </ul>

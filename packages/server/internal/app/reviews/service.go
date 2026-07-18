@@ -26,6 +26,11 @@ import (
 // therefore cannot be cancelled. The HTTP layer maps it to 409 Conflict.
 var ErrNotCancelable = errors.New("reviews: review is not cancelable")
 
+// ErrNotArchivable is returned when a review is still pending or running and
+// therefore cannot be archived (archiving an in-flight job would hide it while
+// the worker keeps writing to it). The HTTP layer maps it to 409 Conflict.
+var ErrNotArchivable = errors.New("reviews: cannot archive a running review")
+
 // Service orchestrates reviews.
 type Service struct {
 	reviews   review.Repository
@@ -169,8 +174,17 @@ func (s *Service) Delete(ctx context.Context, reviewID string) error {
 	return s.reviews.Delete(ctx, reviewID)
 }
 
-// Archive soft-hides a review from the active list, keeping its history.
+// Archive soft-hides a review from the active list, keeping its history. Only
+// terminal reviews can be archived; a pending or running review returns
+// ErrNotArchivable so an in-flight job is never hidden mid-run.
 func (s *Service) Archive(ctx context.Context, reviewID string) error {
+	rv, err := s.reviews.Get(ctx, reviewID)
+	if err != nil {
+		return err
+	}
+	if !rv.Status.Terminal() {
+		return ErrNotArchivable
+	}
 	return s.reviews.SetArchived(ctx, reviewID, true)
 }
 

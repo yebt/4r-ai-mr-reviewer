@@ -239,6 +239,64 @@ func TestCancelTerminalRejected(t *testing.T) {
 	}
 }
 
+// TestArchiveRunningRejected asserts a non-terminal review cannot be archived
+// (ErrNotArchivable), while a terminal one archives fine. The review row is
+// inserted directly so the status is fully deterministic (no runner race).
+func TestArchiveRunningRejected(t *testing.T) {
+	ctx := context.Background()
+
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer db.Close()
+
+	salt, _ := crypto.NewSalt()
+	key, _ := crypto.DeriveKey("pw", salt)
+	cipher, _ := crypto.NewCipher(key)
+	secrets := sqlite.NewSecretStore(db, cipher)
+	accountSvc := accounts.NewService(sqlite.NewAccountRepo(db), secrets)
+	providerSvc := providers.NewService(sqlite.NewProviderRepo(db), secrets)
+	repoSvc := appRepos.NewService(sqlite.NewRepoStore(db), sqlite.NewAccountRepo(db), sqlite.NewProviderRepo(db))
+	reviewStore := sqlite.NewReviewStore(db)
+	set, _ := skills.Load("")
+	svc := NewService(reviewStore, sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.NewMultiPass(set))
+
+	acc, _ := accountSvc.Add(ctx, "acc", "https://gitlab.test", "token")
+	prov, _ := providerSvc.Add(ctx, providers.AddInput{Name: "p", Kind: provider.KindOpenAICompat, BaseURL: "https://ai.test", Model: "m", APIKey: "k"})
+	rp, _ := repoSvc.Add(ctx, appRepos.AddInput{Name: "web", URL: "https://gitlab.test/group/project", AccountID: acc.ID, ProviderID: prov.ID})
+
+	rv := review.Review{
+		ID:          "rev-running",
+		RepoID:      rp.ID,
+		MRIID:       9,
+		ContextMode: review.ModeFast,
+		Status:      review.StatusRunning,
+	}
+	if err := reviewStore.Create(ctx, rv); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	if err := svc.Archive(ctx, rv.ID); !errors.Is(err, ErrNotArchivable) {
+		t.Fatalf("Archive on running = %v, want ErrNotArchivable", err)
+	}
+
+	// A terminal review archives without complaint.
+	if err := reviewStore.SetStatus(ctx, rv.ID, review.StatusDone, ""); err != nil {
+		t.Fatalf("SetStatus: %v", err)
+	}
+	if err := svc.Archive(ctx, rv.ID); err != nil {
+		t.Fatalf("Archive on terminal = %v, want nil", err)
+	}
+	got, err := reviewStore.Get(ctx, rv.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if !got.Archived {
+		t.Fatalf("Archived = false, want true after archiving a terminal review")
+	}
+}
+
 // modelCapturingAIStub serves a canned review and records the model field of
 // the last /chat/completions request, so a test can assert which model the
 // resolution precedence selected.
