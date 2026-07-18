@@ -22,7 +22,10 @@ const reviews = useReviewsStore()
 const providers = useProvidersStore()
 
 const creatingIid = ref<number | null>(null)
-const archivingId = ref<string | null>(null)
+// Ids with an archive/unarchive request in flight. Tracked as a set (not a
+// single ref) so concurrent actions on different rows/lists each keep their own
+// button disabled without clearing one another.
+const archivingIds = ref<string[]>([])
 
 const repo = computed(() => repos.items.find((r) => r.id === repoId) ?? null)
 
@@ -90,7 +93,7 @@ async function startReview(iid: number, mode: string, providerId: string, model:
 }
 
 async function archiveReview(id: string) {
-  archivingId.value = id
+  archivingIds.value = [...archivingIds.value, id]
   try {
     await reviews.archive(id)
     if (showArchived.value) await reviews.fetchArchivedReviews(repoId)
@@ -98,12 +101,12 @@ async function archiveReview(id: string) {
   } catch (e) {
     toast.error(errorMessage(e))
   } finally {
-    archivingId.value = null
+    archivingIds.value = archivingIds.value.filter((x) => x !== id)
   }
 }
 
 async function unarchiveReview(id: string) {
-  archivingId.value = id
+  archivingIds.value = [...archivingIds.value, id]
   try {
     await reviews.unarchive(id)
     await reviews.fetchReviews(repoId)
@@ -111,7 +114,7 @@ async function unarchiveReview(id: string) {
   } catch (e) {
     toast.error(errorMessage(e))
   } finally {
-    archivingId.value = null
+    archivingIds.value = archivingIds.value.filter((x) => x !== id)
   }
 }
 </script>
@@ -155,7 +158,7 @@ async function unarchiveReview(id: string) {
         :items="repoReviews"
         :loading="reviewsLoading"
         :error="reviews.listError"
-        :busy-id="archivingId"
+        :busy-ids="archivingIds"
         @archive="archiveReview"
       />
 
@@ -168,7 +171,7 @@ async function unarchiveReview(id: string) {
           :items="archivedReviews"
           :loading="archivedLoading"
           :error="reviews.archivedError"
-          :busy-id="archivingId"
+          :busy-ids="archivingIds"
           @unarchive="unarchiveReview"
         />
       </template>

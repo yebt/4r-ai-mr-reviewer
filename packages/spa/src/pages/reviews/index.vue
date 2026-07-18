@@ -18,17 +18,19 @@ import { errorMessage } from '@shared/api/client'
 const repos = useReposStore()
 const reviews = useReviewsStore()
 const loading = ref(false)
-const archivingId = ref<string | null>(null)
+// Ids with an archive request in flight, so concurrent clicks on different rows
+// each keep their own button disabled independently.
+const archivingIds = ref<string[]>([])
 
 async function archiveReview(id: string) {
-  archivingId.value = id
+  archivingIds.value = [...archivingIds.value, id]
   try {
     await reviews.archive(id)
     toast.success('Review archived')
   } catch (e) {
     toast.error(errorMessage(e))
   } finally {
-    archivingId.value = null
+    archivingIds.value = archivingIds.value.filter((x) => x !== id)
   }
 }
 
@@ -80,7 +82,7 @@ const items = computed(() => reviews.allReviews)
           </div>
           <button
             class="btn-ghost text-xs"
-            :disabled="archivingId === rv.id || !isTerminal(rv.status)"
+            :disabled="archivingIds.includes(rv.id) || !isTerminal(rv.status)"
             :aria-label="`Archive review !${rv.mrIid}`"
             :title="isTerminal(rv.status) ? 'Archive' : 'Cannot archive a running review'"
             @click="archiveReview(rv.id)"

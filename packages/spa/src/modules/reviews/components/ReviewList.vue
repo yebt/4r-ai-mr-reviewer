@@ -13,7 +13,8 @@ defineProps<{
   items: Review[]
   loading?: boolean
   error?: string | null
-  busyId?: string | null
+  // Ids with an archive/unarchive request in flight (their button is disabled).
+  busyIds?: string[]
 }>()
 
 const emit = defineEmits<{ archive: [id: string]; unarchive: [id: string] }>()
@@ -57,7 +58,7 @@ const emit = defineEmits<{ archive: [id: string]; unarchive: [id: string] }>()
           </div>
           <button
             class="btn-ghost text-xs"
-            :disabled="busyId === rv.id || (!rv.archived && !isTerminal(rv.status))"
+            :disabled="(busyIds?.includes(rv.id) ?? false) || (!rv.archived && !isTerminal(rv.status))"
             :aria-label="rv.archived ? `Unarchive review !${rv.mrIid}` : `Archive review !${rv.mrIid}`"
             :title="
               rv.archived

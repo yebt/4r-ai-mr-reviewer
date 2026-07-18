@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -266,29 +267,39 @@ func TestArchiveRunningRejected(t *testing.T) {
 	prov, _ := providerSvc.Add(ctx, providers.AddInput{Name: "p", Kind: provider.KindOpenAICompat, BaseURL: "https://ai.test", Model: "m", APIKey: "k"})
 	rp, _ := repoSvc.Add(ctx, appRepos.AddInput{Name: "web", URL: "https://gitlab.test/group/project", AccountID: acc.ID, ProviderID: prov.ID})
 
-	rv := review.Review{
-		ID:          "rev-running",
-		RepoID:      rp.ID,
-		MRIID:       9,
-		ContextMode: review.ModeFast,
-		Status:      review.StatusRunning,
-	}
-	if err := reviewStore.Create(ctx, rv); err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-
-	if err := svc.Archive(ctx, rv.ID); !errors.Is(err, ErrNotArchivable) {
-		t.Fatalf("Archive on running = %v, want ErrNotArchivable", err)
+	// Both non-terminal states must be rejected: pending (job not started yet)
+	// and running (job in flight). Each uses its own review row.
+	for i, status := range []review.Status{review.StatusPending, review.StatusRunning} {
+		rv := review.Review{
+			ID:          fmt.Sprintf("rev-nonterminal-%d", i),
+			RepoID:      rp.ID,
+			MRIID:       9 + i,
+			ContextMode: review.ModeFast,
+			Status:      status,
+		}
+		if err := reviewStore.Create(ctx, rv); err != nil {
+			t.Fatalf("Create(%s): %v", status, err)
+		}
+		if err := svc.Archive(ctx, rv.ID); !errors.Is(err, ErrNotArchivable) {
+			t.Fatalf("Archive on %s = %v, want ErrNotArchivable", status, err)
+		}
 	}
 
 	// A terminal review archives without complaint.
-	if err := reviewStore.SetStatus(ctx, rv.ID, review.StatusDone, ""); err != nil {
-		t.Fatalf("SetStatus: %v", err)
+	done := review.Review{
+		ID:          "rev-terminal",
+		RepoID:      rp.ID,
+		MRIID:       42,
+		ContextMode: review.ModeFast,
+		Status:      review.StatusDone,
 	}
-	if err := svc.Archive(ctx, rv.ID); err != nil {
+	if err := reviewStore.Create(ctx, done); err != nil {
+		t.Fatalf("Create(done): %v", err)
+	}
+	if err := svc.Archive(ctx, done.ID); err != nil {
 		t.Fatalf("Archive on terminal = %v, want nil", err)
 	}
-	got, err := reviewStore.Get(ctx, rv.ID)
+	got, err := reviewStore.Get(ctx, done.ID)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
