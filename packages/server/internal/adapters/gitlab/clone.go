@@ -2,6 +2,7 @@ package gitlab
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -9,6 +10,12 @@ import (
 	"path/filepath"
 	"strings"
 )
+
+// ErrCloneAuth wraps a clone failure caused by the git server rejecting the
+// token. It carries a hint about the most common cause (a token that works for
+// the API but lacks the read_repository scope) so the message surfaced to the
+// user is actionable instead of a bare git exit code.
+var ErrCloneAuth = errors.New("gitlab clone: authentication rejected by the git server")
 
 // Cloner performs shallow clones of GitLab repositories using the system git.
 //
@@ -67,9 +74,29 @@ func (c *Cloner) Clone(ctx context.Context, repoURL, ref, workDir string) (strin
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("gitlab clone: %w: %s", err, strings.TrimSpace(stderr.String()))
+		msg := strings.TrimSpace(stderr.String())
+		if isAuthDenied(msg) {
+			// The token reached the server and was rejected. Deep mode already
+			// made a successful API call before this point, so the token is
+			// valid for the API — the usual cause is a missing read_repository
+			// scope. Point the user straight at it.
+			return "", fmt.Errorf(
+				"%w — the token works for the API but git access was denied; it most likely lacks the 'read_repository' scope. Regenerate the GitLab token with 'api' + 'read_repository'. git said: %s",
+				ErrCloneAuth, msg,
+			)
+		}
+		return "", fmt.Errorf("gitlab clone: %w: %s", err, msg)
 	}
 	return dest, nil
+}
+
+// isAuthDenied reports whether git's stderr indicates the server rejected the
+// credentials (as opposed to a missing ref, network error, etc.). It matches
+// the markers GitLab/git emit for HTTP basic-auth denial.
+func isAuthDenied(stderr string) bool {
+	s := strings.ToLower(stderr)
+	return strings.Contains(s, "access denied") ||
+		strings.Contains(s, "authentication failed")
 }
 
 // validateRef guards the ref passed to `git clone --branch`. It comes from the

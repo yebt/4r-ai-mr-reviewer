@@ -83,3 +83,31 @@ func TestCloneRejectsInjectingRef(t *testing.T) {
 		t.Fatal("expected error for option-like ref")
 	}
 }
+
+func TestIsAuthDenied(t *testing.T) {
+	// The exact message GitLab returned when the token lacked read_repository.
+	gitlabDenied := "remote: HTTP Basic: Access denied. If a password was provided " +
+		"for Git authentication, the password was incorrect.\n" +
+		"fatal: Authentication failed for 'https://gitlab.com/group/project.git/'"
+	denied := []string{
+		gitlabDenied,
+		"fatal: Authentication failed for 'https://gitlab.com/x.git/'",
+		"remote: HTTP Basic: Access denied.",
+	}
+	for _, s := range denied {
+		if !isAuthDenied(s) {
+			t.Errorf("isAuthDenied(%q) = false, want true", s)
+		}
+	}
+
+	notDenied := []string{
+		"fatal: Remote branch does-not-exist not found in upstream origin",
+		"fatal: unable to access 'https://gitlab.com/x.git/': Could not resolve host",
+		"",
+	}
+	for _, s := range notDenied {
+		if isAuthDenied(s) {
+			t.Errorf("isAuthDenied(%q) = true, want false", s)
+		}
+	}
+}
