@@ -9,6 +9,7 @@ vi.mock('@shared/api/client', () => ({
     setDefaultTelegram: vi.fn(),
     testTelegram: vi.fn(),
     deleteTelegram: vi.fn(),
+    resolveTelegram: vi.fn(),
   },
 }))
 
@@ -21,6 +22,7 @@ const mocked = api as unknown as {
   setDefaultTelegram: ReturnType<typeof vi.fn>
   testTelegram: ReturnType<typeof vi.fn>
   deleteTelegram: ReturnType<typeof vi.fn>
+  resolveTelegram: ReturnType<typeof vi.fn>
 }
 
 const target = (id: string, isDefault = false) => ({
@@ -72,6 +74,21 @@ describe('telegram store', () => {
     const res = await store.test('1')
     expect(mocked.testTelegram).toHaveBeenCalledWith('1')
     expect(res).toEqual({ status: 'sent' })
+  })
+
+  it('resolve returns the chats from the api', async () => {
+    const chats = [{ chatId: '-100', title: 'Team', type: 'supergroup', threads: [] }]
+    mocked.resolveTelegram.mockResolvedValue({ chats })
+    const store = useTelegramStore()
+    const res = await store.resolve('bot-token')
+    expect(mocked.resolveTelegram).toHaveBeenCalledWith('bot-token')
+    expect(res).toEqual(chats)
+  })
+
+  it('resolve propagates api errors', async () => {
+    mocked.resolveTelegram.mockRejectedValue(new Error('bad token'))
+    const store = useTelegramStore()
+    await expect(store.resolve('bad')).rejects.toThrow('bad token')
   })
 
   it('remove drops the target', async () => {

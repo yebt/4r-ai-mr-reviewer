@@ -11,6 +11,7 @@ import type {
   Provider,
   ProviderKind,
   Repo,
+  ResolvedChat,
   Review,
   SummaryHumanized,
   TelegramTarget,
@@ -113,6 +114,10 @@ export const api = {
     if (input.isDefault) body.isDefault = true
     return request<TelegramTarget>('POST', '/telegram', body)
   },
+  // Discover chats/threads the bot has recently seen so the user can pick an id
+  // instead of copying it by hand. A bad token yields a non-2xx -> ApiError.
+  resolveTelegram: (botToken: string) =>
+    request<{ chats: ResolvedChat[] }>('POST', '/telegram/resolve', { botToken }),
   setDefaultTelegram: (id: string) =>
     request<{ status: string }>('POST', `/telegram/${id}/default`),
   testTelegram: (id: string) => request<{ status: string }>('POST', `/telegram/${id}/test`),

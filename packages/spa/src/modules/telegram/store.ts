@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api, errorMessage } from '@shared/api/client'
-import type { TelegramTarget, TelegramTargetInput } from '@shared/api/types'
+import type { ResolvedChat, TelegramTarget, TelegramTargetInput } from '@shared/api/types'
 
 export const useTelegramStore = defineStore('telegram', () => {
   const items = ref<TelegramTarget[]>([])
@@ -41,5 +41,12 @@ export const useTelegramStore = defineStore('telegram', () => {
     items.value = items.value.filter((t) => t.id !== id)
   }
 
-  return { items, loading, error, fetchAll, add, setDefault, test, remove }
+  // Ask the backend which chats/threads the bot has recently seen. Errors are
+  // let propagate so the page can toast them.
+  async function resolve(botToken: string): Promise<ResolvedChat[]> {
+    const res = await api.resolveTelegram(botToken)
+    return res.chats
+  }
+
+  return { items, loading, error, fetchAll, add, setDefault, test, remove, resolve }
 })

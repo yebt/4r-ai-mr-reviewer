@@ -193,6 +193,14 @@ export const useReviewsStore = defineStore('reviews', () => {
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)),
   )
 
+  // Flattened view of every cached archived review, newest first — for the
+  // global list's "show archived" toggle.
+  const allArchived = computed(() =>
+    Object.values(archivedByRepo.value)
+      .flat()
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)),
+  )
+
   async function fetchMergeRequests(repoId: string) {
     mrsLoading.value = true
     mrsError.value = null
@@ -407,6 +415,7 @@ export const useReviewsStore = defineStore('reviews', () => {
     reviewsFor,
     archivedReviewsFor,
     allReviews,
+    allArchived,
     fetchMergeRequests,
     fetchReviews,
     fetchArchivedReviews,

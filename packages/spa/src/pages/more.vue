@@ -15,6 +15,12 @@ const items = [
     hint: 'Configure models and keys',
   },
   {
+    to: '/telegram',
+    label: 'Telegram',
+    icon: 'i-lucide-send',
+    hint: 'Notification targets and bot',
+  },
+  {
     to: '/profiles',
     label: 'Humanization profiles',
     icon: 'i-lucide-feather',

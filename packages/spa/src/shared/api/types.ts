@@ -42,6 +42,21 @@ export interface TelegramTargetInput {
   isDefault?: boolean
 }
 
+// Discovered Telegram thread (forum topic) the bot has recently seen.
+export interface ResolvedThread {
+  threadId: string
+  name: string
+}
+
+// Discovered Telegram chat the bot has recently seen, with any known threads.
+// chats and threads are always arrays but may be empty.
+export interface ResolvedChat {
+  chatId: string
+  title: string
+  type: string
+  threads: ResolvedThread[]
+}
+
 // Style-guide distillation state for a humanization profile. Empty string means
 // no samples were provided (nothing to distill).
 export type ProfileStyleStatus = '' | 'pending' | 'ready' | 'error'
