@@ -57,7 +57,17 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   if (res.status === 204) return undefined as T
 
   const text = await res.text()
-  const data = text ? JSON.parse(text) : undefined
+
+  let data: unknown
+  try {
+    data = text ? JSON.parse(text) : undefined
+  } catch {
+    // Non-JSON body — e.g. a plain-text "404 page not found" from the router or a
+    // proxy/gateway error. Surface the status and raw text instead of a cryptic
+    // JSON.parse failure.
+    if (!res.ok) throw new ApiError(res.status, text.trim() || `request failed (${res.status})`)
+    throw new Error(`unexpected non-JSON response (${res.status})`)
+  }
 
   if (!res.ok) {
     const message = (data as { error?: string })?.error ?? `request failed (${res.status})`
