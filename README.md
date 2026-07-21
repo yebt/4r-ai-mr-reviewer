@@ -9,10 +9,13 @@ You configure your GitLab accounts and an AI provider, track repositories, and
 run a review on any open merge request. The engine loads the 4R rule sets,
 sends the diff to the model, and produces **located, structured findings** with
 a deterministic score and an approve / request-changes recommendation. You then
-choose which findings to publish back to the MR as inline discussions.
+choose which findings to publish back to the MR as inline discussions — and can
+optionally rewrite them in your own voice before sending.
 
-> Status: **backend MVP complete** (GitLab-first, single-user). Web SPA in
-> active development. See the [roadmap](#roadmap).
+> Status: **usable, single-user, GitLab-first.** Backend and web client are both
+> feature-complete for the core review loop (configure → review → publish), with
+> Telegram notifications and a humanize pass. Automation (webhooks, bot commands)
+> and GitHub support are on the [roadmap](#roadmap).
 
 ## Why 4R
 
@@ -33,15 +36,26 @@ genuinely safe:
   for deeper context (deep), run the 4R engine, publish selected findings.
 - **Deterministic scoring** — the recommendation and 0–100 score are computed
   from findings, not asked of the model.
+- **Phased, multi-pass reviews** — each 4R lens runs as its own pass with live
+  progress, so results stream in instead of arriving all at once.
 - **Multiple AI providers** — OpenAI-compatible (Groq, OpenAI, Moonshot, Kimi,
-  OpenRouter) and Anthropic (Claude), with per-repo provider/model and optional
-  temperature.
-- **Secrets encrypted at rest** — tokens and API keys are AES-256-GCM encrypted;
-  the API never returns them.
-- **Async jobs** — reviews run in the background with status polling; retry
-  clones the review and keeps the failed one for history.
+  OpenRouter) and Anthropic (Claude), with a default provider, a per-repo
+  provider/model, and a per-review override chosen at launch.
+- **Humanize** — capture your writing voice into style profiles and generate
+  humanized versions of the summary and each finding, publishable per card.
+- **Review lifecycle** — reviews run async with status polling; **retry** clones
+  the review (keeping the failed one for history), and you can **cancel**,
+  **archive**, or **delete** from the detail view or the lists.
+- **Telegram notifications** — register targets (bot token + chat, optional
+  topic thread), get pinged when a review finishes, send a test message, and
+  **resolve** recent chats/threads straight from `getUpdates` so you pick a
+  destination instead of copying IDs.
+- **Secrets encrypted at rest** — GitLab tokens, provider API keys, and bot
+  tokens are AES-256-GCM encrypted; the API never returns them.
 - **Selective publishing** — pick which findings become inline discussions, or
-  comment them all.
+  comment them all; already-published findings are never re-posted.
+- **Responsive web UI** — a desktop sidebar and a mobile bottom-nav / "More"
+  layout over the same feature set.
 
 ## Architecture
 
@@ -56,8 +70,9 @@ docs/       API reference, design notes, banner prompt
 ```
 
 - **Backend**: Go + SQLite (`modernc.org/sqlite`, pure-Go → single binary), an
-  encrypted secret vault, a job runner, and the 4R engine behind strategy
-  interfaces (fast/deep context × single/multi-pass).
+  encrypted secret vault, a bounded job runner, and the 4R engine behind
+  strategy interfaces (fast/deep context × single/multi-pass). Adapters for
+  GitLab (clone + REST) and Telegram (Bot API) live at the edges.
 - **Web**: file-based routing, feature modules, a borderless technical-minimal
   design system.
 
@@ -77,6 +92,10 @@ make run-spa
 Then open <http://localhost:5173>. The Vite dev server proxies `/api` to the
 backend, so no CORS setup is needed.
 
+> **Deep reviews clone over HTTPS.** The GitLab token must include the
+> `read_repository` scope (in addition to `api`) — an `api`-only token passes
+> fast reviews but is rejected at clone time.
+
 ### Configuration (backend env vars)
 
 | Variable | Default | Purpose |
@@ -86,6 +105,7 @@ backend, so no CORS setup is needed.
 | `AIR_PASSWORD` | _(empty)_ | Unlocks the secret vault; empty → key-file mode |
 | `AIR_KEYFILE_PATH` | `<db>.key` | Master key file (key-file mode) |
 | `AIR_SKILLS_DIR` | _(empty)_ | Override dir for the 4R rule files |
+| `AIR_REVIEW_CONCURRENCY` | `2` | Max reviews running in parallel (min 1) |
 
 ## Make targets
 
@@ -96,7 +116,13 @@ make run-server # backend only
 make run-spa    # SPA only
 make build      # compile the server binary to ./bin
 make test       # server test suite
+make vet        # go vet
+make fmt        # go fmt
+make clean      # remove build artifacts and local db files
 ```
+
+The SPA has its own scripts (run from `packages/spa` with `bun run`):
+`dev`, `build`, `type-check`, `test:unit`, `lint`.
 
 ## API
 
@@ -106,12 +132,16 @@ request collection.
 
 ## Roadmap
 
-Deferred beyond the current MVP:
+Not built yet:
 
-- GitHub support, OAuth, multiple accounts
-- Webhook auto-trigger (on VPS deploy)
-- Telegram bot (notify → trigger → publish)
-- Multi-pass review with prompt caching; adaptive contextual memory
-- **Humanize** module — capture the user's writing style into profiles and
-  generate humanized versions of a review's comments
-- Progressive/streaming review feedback; mobile-first responsive redesign
+- **GitHub support** — the review pipeline is GitLab-only today (clone + PR
+  fetch + publish adapter needed).
+- **Webhook auto-trigger** — kick off a review automatically when an MR is
+  opened or updated.
+- **Telegram bot commands** — trigger a review and publish results from chat
+  (notifications and chat/thread resolving already ship).
+- **Add repos by search** — list a GitLab account's projects and pick one,
+  instead of pasting a URL.
+- **Auth & multi-user** — request authentication, OAuth, multiple accounts.
+- **Loading polish** — skeletons and progress indicators; an enhanced review
+  detail view behind a toggle.
