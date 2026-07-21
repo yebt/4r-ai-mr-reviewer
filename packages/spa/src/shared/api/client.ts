@@ -7,6 +7,7 @@ import type {
   HumanizationsResponse,
   HumanizeFindingText,
   MergeRequest,
+  NotificationRule,
   Profile,
   Provider,
   ProviderKind,
@@ -122,6 +123,16 @@ export const api = {
     request<{ status: string }>('POST', `/telegram/${id}/default`),
   testTelegram: (id: string) => request<{ status: string }>('POST', `/telegram/${id}/test`),
   deleteTelegram: (id: string) => request<void>('DELETE', `/telegram/${id}`),
+
+  // notifications
+  listNotificationEvents: () =>
+    request<{ events: string[] }>('GET', '/notifications/events'),
+  listNotificationRules: () => request<NotificationRule[]>('GET', '/notifications/rules'),
+  createNotificationRule: (input: { event: string; notifierId: string }) =>
+    request<NotificationRule>('POST', '/notifications/rules', input),
+  setNotificationRuleEnabled: (id: string, enabled: boolean) =>
+    request<NotificationRule>('PATCH', `/notifications/rules/${id}`, { enabled }),
+  deleteNotificationRule: (id: string) => request<void>('DELETE', `/notifications/rules/${id}`),
 
   // profiles (humanization)
   listProfiles: () => request<Profile[]>('GET', '/profiles'),

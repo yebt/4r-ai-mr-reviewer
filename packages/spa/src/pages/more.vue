@@ -32,6 +32,12 @@ const items = [
     icon: 'i-lucide-book-open',
     hint: 'Rule sets used by the engine',
   },
+  {
+    to: '/settings',
+    label: 'Settings',
+    icon: 'i-lucide-settings',
+    hint: 'App configuration & notifications',
+  },
 ]
 </script>
 

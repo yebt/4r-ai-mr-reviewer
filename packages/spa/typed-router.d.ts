@@ -94,6 +94,13 @@ declare module 'vue-router/auto-routes' {
       { id: ParamValue<false> },
       | never
     >,
+    '/settings': RouteRecordInfo<
+      '/settings',
+      '/settings',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/skills': RouteRecordInfo<
       '/skills',
       '/skills',
@@ -192,6 +199,14 @@ declare module 'vue-router/auto-routes' {
         | never
       pathParamNames:
         | 'id'
+    }
+    'src/pages/settings.vue': {
+      routes:
+        | '/settings'
+      views:
+        | never
+      pathParamNames:
+        | never
     }
     'src/pages/skills.vue': {
       routes:

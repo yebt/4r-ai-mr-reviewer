@@ -57,6 +57,17 @@ export interface ResolvedChat {
   threads: ResolvedThread[]
 }
 
+// Notification rule: routes an event (e.g. "review.finished") to a notifier
+// target (currently always a Telegram target, identified by notifierId).
+export interface NotificationRule {
+  id: string
+  event: string
+  notifierKind: string
+  notifierId: string
+  enabled: boolean
+  createdAt: string
+}
+
 // Style-guide distillation state for a humanization profile. Empty string means
 // no samples were provided (nothing to distill).
 export type ProfileStyleStatus = '' | 'pending' | 'ready' | 'error'

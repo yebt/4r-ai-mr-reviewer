@@ -10,6 +10,7 @@ const links = [
   { to: '/telegram', label: 'Telegram', icon: 'i-lucide-send' },
   { to: '/profiles', label: 'Profiles', icon: 'i-lucide-feather' },
   { to: '/skills', label: 'Skills', icon: 'i-lucide-book-open' },
+  { to: '/settings', label: 'Settings', icon: 'i-lucide-settings' },
 ]
 </script>
 
