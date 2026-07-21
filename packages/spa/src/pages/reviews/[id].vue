@@ -78,7 +78,8 @@ const crumbs = computed(() => {
   return items
 })
 
-watchEffect(() => setBreadcrumbs(crumbs.value))
+// The review view scrolls a lot (findings), so offer a sticky-breadcrumb toggle.
+watchEffect(() => setBreadcrumbs(crumbs.value, { pinnable: true }))
 
 const selected = ref<number[]>([])
 const publishing = ref(false)
