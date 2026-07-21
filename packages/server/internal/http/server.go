@@ -15,6 +15,7 @@ import (
 	"github.com/webcloster-dev/ai-reviewer/internal/app/providers"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/repos"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/reviews"
+	apptelegram "github.com/webcloster-dev/ai-reviewer/internal/app/telegram"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/account"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/job"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/profile"
@@ -22,6 +23,7 @@ import (
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/repo"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/review"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/secret"
+	tgdomain "github.com/webcloster-dev/ai-reviewer/internal/domain/telegram"
 	"github.com/webcloster-dev/ai-reviewer/internal/review/skills"
 )
 
@@ -33,12 +35,13 @@ type Server struct {
 	repos     *repos.Service
 	reviews   *reviews.Service
 	humanize  *apphumanize.Service
+	telegram  *apptelegram.Service
 	skills    skills.Set
 }
 
 // NewServer wires a Server.
-func NewServer(a *accounts.Service, p *providers.Service, pr *profiles.Service, r *repos.Service, rv *reviews.Service, hz *apphumanize.Service, sk skills.Set) *Server {
-	return &Server{accounts: a, providers: p, profiles: pr, repos: r, reviews: rv, humanize: hz, skills: sk}
+func NewServer(a *accounts.Service, p *providers.Service, pr *profiles.Service, r *repos.Service, rv *reviews.Service, hz *apphumanize.Service, tg *apptelegram.Service, sk skills.Set) *Server {
+	return &Server{accounts: a, providers: p, profiles: pr, repos: r, reviews: rv, humanize: hz, telegram: tg, skills: sk}
 }
 
 // Routes returns the HTTP handler with every endpoint registered.
@@ -60,6 +63,12 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PATCH /providers/{id}", s.updateProvider)
 	mux.HandleFunc("POST /providers/{id}/default", s.setDefaultProvider)
 	mux.HandleFunc("DELETE /providers/{id}", s.deleteProvider)
+
+	mux.HandleFunc("POST /telegram", s.createTelegram)
+	mux.HandleFunc("GET /telegram", s.listTelegram)
+	mux.HandleFunc("DELETE /telegram/{id}", s.deleteTelegram)
+	mux.HandleFunc("POST /telegram/{id}/default", s.setDefaultTelegram)
+	mux.HandleFunc("POST /telegram/{id}/test", s.testTelegram)
 
 	mux.HandleFunc("POST /profiles", s.createProfile)
 	mux.HandleFunc("GET /profiles", s.listProfiles)
@@ -124,7 +133,8 @@ func isNotFound(err error) bool {
 		errors.Is(err, repo.ErrNotFound) ||
 		errors.Is(err, review.ErrNotFound) ||
 		errors.Is(err, job.ErrNotFound) ||
-		errors.Is(err, secret.ErrNotFound)
+		errors.Is(err, secret.ErrNotFound) ||
+		errors.Is(err, tgdomain.ErrNotFound)
 }
 
 // decode reads a JSON body into dst, rejecting empty or malformed input.

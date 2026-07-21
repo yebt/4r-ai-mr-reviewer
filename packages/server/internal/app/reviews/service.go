@@ -7,7 +7,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"sync"
+	"time"
 
 	"github.com/webcloster-dev/ai-reviewer/internal/adapters/ai"
 	"github.com/webcloster-dev/ai-reviewer/internal/adapters/gitlab"
@@ -31,6 +33,13 @@ var ErrNotCancelable = errors.New("reviews: review is not cancelable")
 // the worker keeps writing to it). The HTTP layer maps it to 409 Conflict.
 var ErrNotArchivable = errors.New("reviews: cannot archive a running review")
 
+// Notifier sends a best-effort notification when a review finishes. It is kept
+// as a minimal interface so the reviews package stays decoupled from any
+// concrete notification backend (e.g. Telegram).
+type Notifier interface {
+	Notify(ctx context.Context, text string) error
+}
+
 // Service orchestrates reviews.
 type Service struct {
 	reviews   review.Repository
@@ -39,6 +48,7 @@ type Service struct {
 	providers *providers.Service
 	strategy  engine.Strategy
 	runner    *jobs.Runner
+	notifier  Notifier
 
 	// Cancellation state. Jobs run sequentially on the runner's shared context,
 	// so each running review gets its own cancelable context registered here;
@@ -124,6 +134,41 @@ func (s *Service) Cancel(ctx context.Context, reviewID string) error {
 // AttachRunner sets the job runner used to enqueue reviews. This breaks the
 // construction cycle (the runner's handler is this service's Handle).
 func (s *Service) AttachRunner(r *jobs.Runner) { s.runner = r }
+
+// AttachNotifier sets the notifier called when a review finishes. It is
+// optional: when nil, notifications are simply skipped.
+func (s *Service) AttachNotifier(n Notifier) { s.notifier = n }
+
+// notifyFinished fires a best-effort notification about a finished review. It
+// never blocks the worker nor affects the job's outcome: it runs on its own
+// goroutine with its own bounded, background context, recovers from any panic,
+// and ignores any error.
+//
+// The failure message deliberately omits the raw error: it is sent to an
+// external third party (Telegram) and could carry internal or upstream detail
+// (DB operation names, provider/GitLab bodies, filesystem paths).
+func (s *Service) notifyFinished(rv review.Review, status review.Status, _ string) {
+	if s.notifier == nil {
+		return
+	}
+	var text string
+	switch status {
+	case review.StatusDone:
+		text = fmt.Sprintf("Review !%d finished — %d finding(s).", rv.MRIID, len(rv.Findings))
+	default:
+		text = fmt.Sprintf("Review !%d failed.", rv.MRIID)
+	}
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("reviews: notify panic: %v", r)
+			}
+		}()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_ = s.notifier.Notify(ctx, text)
+	}()
+}
 
 // Create records a pending review and enqueues it. An empty mode defaults to
 // fast. providerID and model are optional overrides chosen at launch: empty
@@ -264,6 +309,7 @@ func (s *Service) Handle(ctx context.Context, reviewID string) error {
 		}
 		// Record the failure on the review; the job also fails so it can retry.
 		_ = s.reviews.SetStatus(ctx, reviewID, review.StatusError, err.Error())
+		s.notifyFinished(rv, review.StatusError, err.Error())
 		return err
 	}
 
@@ -275,8 +321,10 @@ func (s *Service) Handle(ctx context.Context, reviewID string) error {
 		// stuck in "running" forever (RequeueRunning wouldn't recover it once the
 		// job is terminal). Mark it errored so it surfaces and can be retried.
 		_ = s.reviews.SetStatus(ctx, reviewID, review.StatusError, err.Error())
+		s.notifyFinished(result, review.StatusError, err.Error())
 		return err
 	}
+	s.notifyFinished(result, review.StatusDone, "")
 	return nil
 }
 

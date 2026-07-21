@@ -18,6 +18,7 @@ import (
 	"github.com/webcloster-dev/ai-reviewer/internal/app/providers"
 	apprepos "github.com/webcloster-dev/ai-reviewer/internal/app/repos"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/reviews"
+	apptelegram "github.com/webcloster-dev/ai-reviewer/internal/app/telegram"
 	"github.com/webcloster-dev/ai-reviewer/internal/jobs"
 	"github.com/webcloster-dev/ai-reviewer/internal/review/engine"
 	"github.com/webcloster-dev/ai-reviewer/internal/review/skills"
@@ -43,10 +44,11 @@ func newTestServer(t *testing.T) *httptest.Server {
 	set, _ := skills.Load("")
 	reviewSvc := reviews.NewService(sqlite.NewReviewStore(db), sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.New(set))
 	humanizeSvc := apphumanize.NewService(sqlite.NewReviewStore(db), sqlite.NewProfileStore(db), sqlite.NewHumanizationStore(db), providerSvc, log.New(io.Discard, "", 0))
+	telegramSvc := apptelegram.NewService(sqlite.NewTelegramStore(db), secrets)
 	runner := jobs.NewRunner(sqlite.NewJobStore(db), reviewSvc.Handle, jobs.WithLogger(log.New(io.Discard, "", 0)))
 	reviewSvc.AttachRunner(runner)
 
-	srv := httptest.NewServer(NewServer(accountSvc, providerSvc, profileSvc, repoSvc, reviewSvc, humanizeSvc, set).Routes())
+	srv := httptest.NewServer(NewServer(accountSvc, providerSvc, profileSvc, repoSvc, reviewSvc, humanizeSvc, telegramSvc, set).Routes())
 	t.Cleanup(srv.Close)
 	return srv
 }
@@ -143,6 +145,50 @@ func TestCreateReviewOverHTTP(t *testing.T) {
 	decodeBody(t, listResp, &reviewsList)
 	if len(reviewsList) != 1 {
 		t.Fatalf("repo reviews len = %d, want 1", len(reviewsList))
+	}
+}
+
+func TestTelegramLifecycleOverHTTP(t *testing.T) {
+	srv := newTestServer(t)
+
+	resp := postJSON(t, srv.URL+"/telegram", map[string]any{"name": "team", "botToken": "bot-secret", "chatId": "-100", "isDefault": true})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create telegram status = %d, want 201", resp.StatusCode)
+	}
+	var created map[string]any
+	decodeBody(t, resp, &created)
+	if created["id"] == "" || created["id"] == nil {
+		t.Fatal("created telegram target has no id")
+	}
+	// The bot token must never be exposed in the API response.
+	if _, leaked := created["botToken"]; leaked {
+		t.Fatal("telegram response leaked the bot token")
+	}
+	if _, leaked := created["token"]; leaked {
+		t.Fatal("telegram response leaked the token")
+	}
+	if created["isDefault"] != true {
+		t.Fatalf("isDefault = %v, want true", created["isDefault"])
+	}
+
+	listResp, _ := http.Get(srv.URL + "/telegram")
+	var list []map[string]any
+	decodeBody(t, listResp, &list)
+	if len(list) != 1 {
+		t.Fatalf("telegram list len = %d, want 1", len(list))
+	}
+
+	id, _ := created["id"].(string)
+	delResp, err := http.NewRequest(http.MethodDelete, srv.URL+"/telegram/"+id, nil)
+	if err != nil {
+		t.Fatalf("build delete: %v", err)
+	}
+	done, err := http.DefaultClient.Do(delResp)
+	if err != nil {
+		t.Fatalf("DELETE /telegram: %v", err)
+	}
+	if done.StatusCode != http.StatusNoContent {
+		t.Fatalf("delete telegram status = %d, want 204", done.StatusCode)
 	}
 }
 

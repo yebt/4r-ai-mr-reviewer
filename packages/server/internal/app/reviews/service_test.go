@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/webcloster-dev/ai-reviewer/internal/adapters/crypto"
 	"github.com/webcloster-dev/ai-reviewer/internal/adapters/sqlite"
@@ -434,6 +435,147 @@ func TestRetryPreservesModelOverride(t *testing.T) {
 	runner.Drain(ctx)
 	if usedModel != "override-model" {
 		t.Fatalf("retried run model = %q, want override-model (persisted override must survive retry)", usedModel)
+	}
+}
+
+// fakeNotifier records every Notify call over a buffered channel so tests can
+// observe the async, fire-and-forget notification without racing.
+type fakeNotifier struct{ calls chan string }
+
+func newFakeNotifier() *fakeNotifier { return &fakeNotifier{calls: make(chan string, 8)} }
+
+func (f *fakeNotifier) Notify(_ context.Context, text string) error {
+	f.calls <- text
+	return nil
+}
+
+// recvNotification waits up to timeout for one notification. It returns ("",
+// false) if none arrives — notifyFinished spawns a goroutine, so callers must
+// wait rather than read synchronously.
+func recvNotification(t *testing.T, f *fakeNotifier, timeout time.Duration) (string, bool) {
+	t.Helper()
+	select {
+	case msg := <-f.calls:
+		return msg, true
+	case <-time.After(timeout):
+		return "", false
+	}
+}
+
+// TestNotifyFinishedDoneAndError covers the two message shapes directly. The
+// failure text must never carry the raw error, which is sent to an external
+// third party (Telegram).
+func TestNotifyFinishedDoneAndError(t *testing.T) {
+	fake := newFakeNotifier()
+	svc := &Service{}
+	svc.AttachNotifier(fake)
+
+	rv := review.Review{
+		MRIID: 42,
+		Findings: []review.Finding{
+			{Dimension: review.Risk, Severity: review.SeverityHigh},
+			{Dimension: review.Readability, Severity: review.SeverityLow},
+		},
+	}
+
+	svc.notifyFinished(rv, review.StatusDone, "")
+	msg, ok := recvNotification(t, fake, time.Second)
+	if !ok {
+		t.Fatal("done: expected a notification, got none")
+	}
+	if !strings.Contains(msg, "finished") || !strings.Contains(msg, "2 finding(s)") {
+		t.Fatalf("done text = %q, want it to mention 'finished' and '2 finding(s)'", msg)
+	}
+	// Exactly one message for one finished review.
+	if _, extra := recvNotification(t, fake, 100*time.Millisecond); extra {
+		t.Fatal("done: expected exactly one notification, got more")
+	}
+
+	svc.notifyFinished(rv, review.StatusError, "some secret detail")
+	msg, ok = recvNotification(t, fake, time.Second)
+	if !ok {
+		t.Fatal("error: expected a notification, got none")
+	}
+	if msg != "Review !42 failed." {
+		t.Fatalf("error text = %q, want %q", msg, "Review !42 failed.")
+	}
+	if strings.Contains(msg, "some secret detail") {
+		t.Fatalf("error text leaked the raw error: %q", msg)
+	}
+}
+
+// TestNotifyFinishedNilNotifier asserts that with no notifier attached the call
+// is a silent no-op — it must not panic and must send nothing.
+func TestNotifyFinishedNilNotifier(t *testing.T) {
+	svc := &Service{} // notifier is nil
+	// Must not panic.
+	svc.notifyFinished(review.Review{MRIID: 1}, review.StatusDone, "")
+	svc.notifyFinished(review.Review{MRIID: 1}, review.StatusError, "boom")
+}
+
+// TestHandleDoneFiresNotification drives one review to completion through the
+// real runner and asserts exactly one notification fires on the DONE path.
+//
+// The cancel paths intentionally do NOT call notifyFinished (see Handle): that
+// is enforced by code structure and covered by the cancel tests above, not by a
+// racy runtime assertion here.
+func TestHandleDoneFiresNotification(t *testing.T) {
+	ctx := context.Background()
+
+	gl := gitlabStub(t)
+	defer gl.Close()
+	aiSrv := aiStub(t, `{"summary":"clean","findings":[]}`)
+	defer aiSrv.Close()
+
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer db.Close()
+
+	salt, _ := crypto.NewSalt()
+	key, _ := crypto.DeriveKey("pw", salt)
+	cipher, _ := crypto.NewCipher(key)
+	secrets := sqlite.NewSecretStore(db, cipher)
+	accountSvc := accounts.NewService(sqlite.NewAccountRepo(db), secrets)
+	providerSvc := providers.NewService(sqlite.NewProviderRepo(db), secrets)
+	repoSvc := appRepos.NewService(sqlite.NewRepoStore(db), sqlite.NewAccountRepo(db), sqlite.NewProviderRepo(db))
+	reviewStore := sqlite.NewReviewStore(db)
+
+	acc, _ := accountSvc.Add(ctx, "acc", gl.URL, "token")
+	prov, _ := providerSvc.Add(ctx, providers.AddInput{Name: "p", Kind: provider.KindOpenAICompat, BaseURL: aiSrv.URL, Model: "m", APIKey: "k"})
+	rp, _ := repoSvc.Add(ctx, appRepos.AddInput{Name: "web", URL: "https://gitlab.test/group/project", AccountID: acc.ID, ProviderID: prov.ID})
+
+	set, _ := skills.Load("")
+	svc := NewService(reviewStore, sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.New(set))
+	runner := jobs.NewRunner(sqlite.NewJobStore(db), svc.Handle, jobs.WithLogger(log.New(io.Discard, "", 0)))
+	svc.AttachRunner(runner)
+	fake := newFakeNotifier()
+	svc.AttachNotifier(fake)
+
+	rv, err := svc.Create(ctx, rp.ID, 7, review.ModeFast, "", "")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	runner.Drain(ctx)
+
+	got, err := reviewStore.Get(ctx, rv.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Status != review.StatusDone {
+		t.Fatalf("status = %s (err=%q), want done", got.Status, got.Error)
+	}
+
+	msg, ok := recvNotification(t, fake, 2*time.Second)
+	if !ok {
+		t.Fatal("expected a notification on the done path, got none")
+	}
+	if !strings.Contains(msg, "finished") {
+		t.Fatalf("notification text = %q, want it to mention 'finished'", msg)
+	}
+	if _, extra := recvNotification(t, fake, 150*time.Millisecond); extra {
+		t.Fatal("expected exactly one notification for one finished review")
 	}
 }
 
