@@ -116,3 +116,51 @@ func TestTelegramStoreSetDefaultUnknown(t *testing.T) {
 		t.Fatalf("SetDefault(unknown): got %v, want ErrNotFound", err)
 	}
 }
+
+func TestTelegramStoreSetBotSwitches(t *testing.T) {
+	ctx := context.Background()
+	s := newTelegramStore(t)
+	first := mustCreateTarget(t, s, "first")
+	second := mustCreateTarget(t, s, "second")
+
+	if err := s.SetBot(ctx, first.ID); err != nil {
+		t.Fatalf("SetBot(first): %v", err)
+	}
+	b, err := s.GetBot(ctx)
+	if err != nil {
+		t.Fatalf("GetBot: %v", err)
+	}
+	if b.ID != first.ID {
+		t.Fatalf("bot id = %s, want %s", b.ID, first.ID)
+	}
+
+	// Switching the bot must clear the previous one so only one is ever the bot.
+	if err := s.SetBot(ctx, second.ID); err != nil {
+		t.Fatalf("SetBot(second): %v", err)
+	}
+	b, _ = s.GetBot(ctx)
+	if b.ID != second.ID {
+		t.Fatalf("bot id = %s, want %s", b.ID, second.ID)
+	}
+	if !b.IsBot {
+		t.Fatal("current bot should report IsBot true")
+	}
+	reloaded, _ := s.Get(ctx, first.ID)
+	if reloaded.IsBot {
+		t.Fatal("former bot should have been cleared")
+	}
+}
+
+func TestTelegramStoreGetBotEmpty(t *testing.T) {
+	s := newTelegramStore(t)
+	if _, err := s.GetBot(context.Background()); !errors.Is(err, telegram.ErrNotFound) {
+		t.Fatalf("GetBot with none set: got %v, want ErrNotFound", err)
+	}
+}
+
+func TestTelegramStoreSetBotUnknown(t *testing.T) {
+	s := newTelegramStore(t)
+	if err := s.SetBot(context.Background(), "nope"); !errors.Is(err, telegram.ErrNotFound) {
+		t.Fatalf("SetBot(unknown): got %v, want ErrNotFound", err)
+	}
+}

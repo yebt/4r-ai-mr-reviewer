@@ -8,11 +8,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/webcloster-dev/ai-reviewer/internal/adapters/crypto"
 	"github.com/webcloster-dev/ai-reviewer/internal/adapters/sqlite"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/accounts"
+	"github.com/webcloster-dev/ai-reviewer/internal/app/bot"
 	apphumanize "github.com/webcloster-dev/ai-reviewer/internal/app/humanize"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/notifications"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/profiles"
@@ -26,6 +28,13 @@ import (
 )
 
 func newTestServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	return newTestServerWithSecret(t, "")
+}
+
+// newTestServerWithSecret wires a full test server, gating the Telegram webhook
+// with the given secret ("" keeps the receiver dormant).
+func newTestServerWithSecret(t *testing.T, webhookSecret string) *httptest.Server {
 	t.Helper()
 	db, err := sqlite.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
@@ -49,8 +58,9 @@ func newTestServer(t *testing.T) *httptest.Server {
 	notificationsSvc := notifications.NewService(sqlite.NewNotificationRuleStore(db), telegramSvc)
 	runner := jobs.NewRunner(sqlite.NewJobStore(db), reviewSvc.Handle, jobs.WithLogger(log.New(io.Discard, "", 0)))
 	reviewSvc.AttachRunner(runner)
+	botSvc := bot.NewService(bot.NewAPIClient(), telegramSvc, reviewSvc, repoSvc)
 
-	srv := httptest.NewServer(NewServer(accountSvc, providerSvc, profileSvc, repoSvc, reviewSvc, humanizeSvc, telegramSvc, notificationsSvc, set).Routes())
+	srv := httptest.NewServer(NewServer(accountSvc, providerSvc, profileSvc, repoSvc, reviewSvc, humanizeSvc, telegramSvc, notificationsSvc, set, botSvc, webhookSecret).Routes())
 	t.Cleanup(srv.Close)
 	return srv
 }
@@ -340,6 +350,90 @@ func TestNotificationRulesLifecycleOverHTTP(t *testing.T) {
 	decodeBody(t, afterResp, &afterRules)
 	if len(afterRules) != 0 {
 		t.Fatalf("rules after target delete = %+v, want none (cascade)", afterRules)
+	}
+}
+
+// postWebhook posts a raw JSON body to the webhook with an optional secret
+// header, so the gate can be exercised with matching and mismatching tokens.
+func postWebhook(t *testing.T, url, secretHeader, body string) *http.Response {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, url, strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("build webhook request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if secretHeader != "" {
+		req.Header.Set("X-Telegram-Bot-Api-Secret-Token", secretHeader)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST webhook: %v", err)
+	}
+	return resp
+}
+
+const validReposUpdate = `{"update_id":1,"message":{"message_id":1,"chat":{"id":100},"from":{"id":5},"text":"/repos"}}`
+
+func TestTelegramWebhook(t *testing.T) {
+	// Dormant: an empty secret makes the receiver inert — any POST is a 200 and
+	// nothing is processed (even without a secret header).
+	dormant := newTestServer(t)
+	resp := postWebhook(t, dormant.URL+"/telegram/webhook", "", validReposUpdate)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("dormant webhook status = %d, want 200", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	// Enabled: a configured secret gates the endpoint.
+	srv := newTestServerWithSecret(t, "s3cret")
+
+	// Wrong header → 401.
+	bad := postWebhook(t, srv.URL+"/telegram/webhook", "nope", validReposUpdate)
+	if bad.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("bad-secret webhook status = %d, want 401", bad.StatusCode)
+	}
+	bad.Body.Close()
+
+	// Correct header + a valid update → 200 (dispatch runs on a goroutine).
+	ok := postWebhook(t, srv.URL+"/telegram/webhook", "s3cret", validReposUpdate)
+	if ok.StatusCode != http.StatusOK {
+		t.Fatalf("valid webhook status = %d, want 200", ok.StatusCode)
+	}
+	ok.Body.Close()
+
+	// Malformed body with the correct secret → 400.
+	bad400 := postWebhook(t, srv.URL+"/telegram/webhook", "s3cret", "{not json")
+	if bad400.StatusCode != http.StatusBadRequest {
+		t.Fatalf("malformed webhook status = %d, want 400", bad400.StatusCode)
+	}
+	bad400.Body.Close()
+}
+
+func TestTelegramSetBot(t *testing.T) {
+	srv := newTestServer(t)
+
+	resp := postJSON(t, srv.URL+"/telegram", map[string]any{"name": "bot", "botToken": "bot-secret", "chatId": "-100"})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create telegram status = %d, want 201", resp.StatusCode)
+	}
+	var created map[string]any
+	decodeBody(t, resp, &created)
+	if created["isBot"] != false {
+		t.Fatalf("new target isBot = %v, want false", created["isBot"])
+	}
+	id, _ := created["id"].(string)
+
+	botResp := postJSON(t, srv.URL+"/telegram/"+id+"/bot", nil)
+	if botResp.StatusCode != http.StatusOK {
+		t.Fatalf("set bot status = %d, want 200", botResp.StatusCode)
+	}
+	botResp.Body.Close()
+
+	listResp, _ := http.Get(srv.URL + "/telegram")
+	var list []map[string]any
+	decodeBody(t, listResp, &list)
+	if len(list) != 1 || list[0]["isBot"] != true {
+		t.Fatalf("telegram list after set bot = %+v, want single target with isBot true", list)
 	}
 }
 

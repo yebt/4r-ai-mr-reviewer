@@ -32,6 +32,12 @@ export const useTelegramStore = defineStore('telegram', () => {
     items.value = items.value.map((t) => ({ ...t, isDefault: t.id === id }))
   }
 
+  // Designate the single interactive bot: its token drives bot commands.
+  async function setBot(id: string) {
+    await api.setBotTelegram(id)
+    items.value = items.value.map((t) => ({ ...t, isBot: t.id === id }))
+  }
+
   async function test(id: string) {
     return await api.testTelegram(id)
   }
@@ -48,5 +54,5 @@ export const useTelegramStore = defineStore('telegram', () => {
     return res.chats
   }
 
-  return { items, loading, error, fetchAll, add, setDefault, test, remove, resolve }
+  return { items, loading, error, fetchAll, add, setDefault, setBot, test, remove, resolve }
 })

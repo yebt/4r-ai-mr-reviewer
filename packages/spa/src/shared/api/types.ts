@@ -29,6 +29,8 @@ export interface TelegramTarget {
   chatId: string
   threadId: string
   isDefault: boolean
+  // The single target whose bot token drives interactive bot commands.
+  isBot: boolean
   createdAt: string
 }
 

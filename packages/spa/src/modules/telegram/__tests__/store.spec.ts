@@ -7,6 +7,7 @@ vi.mock('@shared/api/client', () => ({
     listTelegram: vi.fn(),
     createTelegram: vi.fn(),
     setDefaultTelegram: vi.fn(),
+    setBotTelegram: vi.fn(),
     testTelegram: vi.fn(),
     deleteTelegram: vi.fn(),
     resolveTelegram: vi.fn(),
@@ -20,6 +21,7 @@ const mocked = api as unknown as {
   listTelegram: ReturnType<typeof vi.fn>
   createTelegram: ReturnType<typeof vi.fn>
   setDefaultTelegram: ReturnType<typeof vi.fn>
+  setBotTelegram: ReturnType<typeof vi.fn>
   testTelegram: ReturnType<typeof vi.fn>
   deleteTelegram: ReturnType<typeof vi.fn>
   resolveTelegram: ReturnType<typeof vi.fn>
@@ -31,6 +33,7 @@ const target = (id: string, isDefault = false) => ({
   chatId: `chat-${id}`,
   threadId: '',
   isDefault,
+  isBot: false,
   createdAt: '',
 })
 
@@ -66,6 +69,17 @@ describe('telegram store', () => {
     expect(mocked.setDefaultTelegram).toHaveBeenCalledWith('2')
     expect(store.items.find((t) => t.id === '2')?.isDefault).toBe(true)
     expect(store.items.find((t) => t.id === '1')?.isDefault).toBe(false)
+  })
+
+  it('setBot flips isBot to a single target', async () => {
+    mocked.setBotTelegram.mockResolvedValue({ status: 'ok' })
+    const store = useTelegramStore()
+    store.items = [target('1'), target('2')]
+    store.items[0]!.isBot = true
+    await store.setBot('2')
+    expect(mocked.setBotTelegram).toHaveBeenCalledWith('2')
+    expect(store.items.find((t) => t.id === '2')?.isBot).toBe(true)
+    expect(store.items.find((t) => t.id === '1')?.isBot).toBe(false)
   })
 
   it('test calls the test endpoint and returns its status', async () => {

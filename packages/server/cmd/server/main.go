@@ -15,6 +15,7 @@ import (
 	"github.com/webcloster-dev/ai-reviewer/internal/adapters/crypto"
 	"github.com/webcloster-dev/ai-reviewer/internal/adapters/sqlite"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/accounts"
+	"github.com/webcloster-dev/ai-reviewer/internal/app/bot"
 	apphumanize "github.com/webcloster-dev/ai-reviewer/internal/app/humanize"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/notifications"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/profiles"
@@ -79,6 +80,7 @@ func run() error {
 	humanizeSvc := apphumanize.NewService(reviewStore, profileStore, humanizationStore, providerSvc, nil)
 	telegramSvc := apptelegram.NewService(telegramStore, secrets)
 	notificationsSvc := notifications.NewService(notificationRuleStore, telegramSvc)
+	botSvc := bot.NewService(bot.NewAPIClient(), telegramSvc, reviewSvc, repoSvc)
 
 	runner := jobs.NewRunner(jobStore, reviewSvc.Handle, jobs.WithConcurrency(cfg.ReviewConcurrency))
 	reviewSvc.AttachRunner(runner)
@@ -88,7 +90,7 @@ func run() error {
 	// Re-trigger any style-guide distillations left pending by a prior crash.
 	go profileSvc.RecoverPending(context.Background())
 
-	api := httpapi.NewServer(accountSvc, providerSvc, profileSvc, repoSvc, reviewSvc, humanizeSvc, telegramSvc, notificationsSvc, ruleSet)
+	api := httpapi.NewServer(accountSvc, providerSvc, profileSvc, repoSvc, reviewSvc, humanizeSvc, telegramSvc, notificationsSvc, ruleSet, botSvc, cfg.TelegramWebhookSecret)
 	srv := &http.Server{Addr: cfg.HTTPAddr, Handler: api.Routes()}
 
 	go func() {

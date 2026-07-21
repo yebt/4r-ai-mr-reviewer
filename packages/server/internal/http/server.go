@@ -10,6 +10,7 @@ import (
 	"net/http"
 
 	"github.com/webcloster-dev/ai-reviewer/internal/app/accounts"
+	"github.com/webcloster-dev/ai-reviewer/internal/app/bot"
 	apphumanize "github.com/webcloster-dev/ai-reviewer/internal/app/humanize"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/notifications"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/profiles"
@@ -31,20 +32,25 @@ import (
 
 // Server holds the application services the handlers call.
 type Server struct {
-	accounts  *accounts.Service
-	providers *providers.Service
-	profiles  *profiles.Service
-	repos     *repos.Service
+	accounts      *accounts.Service
+	providers     *providers.Service
+	profiles      *profiles.Service
+	repos         *repos.Service
 	reviews       *reviews.Service
 	humanize      *apphumanize.Service
 	telegram      *apptelegram.Service
 	notifications *notifications.Service
 	skills        skills.Set
+
+	// bot dispatches interactive Telegram webhook updates; nil disables dispatch.
+	bot *bot.Service
+	// telegramWebhookSecret gates the webhook. Empty keeps the receiver dormant.
+	telegramWebhookSecret string
 }
 
 // NewServer wires a Server.
-func NewServer(a *accounts.Service, p *providers.Service, pr *profiles.Service, r *repos.Service, rv *reviews.Service, hz *apphumanize.Service, tg *apptelegram.Service, nt *notifications.Service, sk skills.Set) *Server {
-	return &Server{accounts: a, providers: p, profiles: pr, repos: r, reviews: rv, humanize: hz, telegram: tg, notifications: nt, skills: sk}
+func NewServer(a *accounts.Service, p *providers.Service, pr *profiles.Service, r *repos.Service, rv *reviews.Service, hz *apphumanize.Service, tg *apptelegram.Service, nt *notifications.Service, sk skills.Set, bt *bot.Service, telegramWebhookSecret string) *Server {
+	return &Server{accounts: a, providers: p, profiles: pr, repos: r, reviews: rv, humanize: hz, telegram: tg, notifications: nt, skills: sk, bot: bt, telegramWebhookSecret: telegramWebhookSecret}
 }
 
 // Routes returns the HTTP handler with every endpoint registered.
@@ -72,7 +78,9 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /telegram", s.listTelegram)
 	mux.HandleFunc("DELETE /telegram/{id}", s.deleteTelegram)
 	mux.HandleFunc("POST /telegram/{id}/default", s.setDefaultTelegram)
+	mux.HandleFunc("POST /telegram/{id}/bot", s.setBotTelegram)
 	mux.HandleFunc("POST /telegram/{id}/test", s.testTelegram)
+	mux.HandleFunc("POST /telegram/webhook", s.telegramWebhook)
 
 	mux.HandleFunc("GET /notifications/events", s.listNotificationEvents)
 	mux.HandleFunc("GET /notifications/rules", s.listNotificationRules)

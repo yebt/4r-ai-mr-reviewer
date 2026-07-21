@@ -131,6 +131,7 @@ export const api = {
     request<{ chats: ResolvedChat[] }>('POST', '/telegram/resolve', { botToken }),
   setDefaultTelegram: (id: string) =>
     request<{ status: string }>('POST', `/telegram/${id}/default`),
+  setBotTelegram: (id: string) => request<{ status: string }>('POST', `/telegram/${id}/bot`),
   testTelegram: (id: string) => request<{ status: string }>('POST', `/telegram/${id}/test`),
   deleteTelegram: (id: string) => request<void>('DELETE', `/telegram/${id}`),
 

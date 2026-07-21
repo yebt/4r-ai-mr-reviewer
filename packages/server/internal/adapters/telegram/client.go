@@ -78,6 +78,127 @@ func SendMessage(ctx context.Context, botToken, chatID, threadID, text string) e
 	return nil
 }
 
+// InlineButton is one inline-keyboard button. Data becomes the button's
+// callback_data — the payload Telegram echoes back in a callback query.
+type InlineButton struct {
+	Text string
+	Data string
+}
+
+// SendMessageHTML posts an HTML-formatted message to a chat via the Bot API
+// sendMessage method. threadID targets a forum topic when non-empty. A
+// non-empty keyboard is attached as an inline keyboard (rows of buttons). The
+// bot token is used in the request path but is never logged or returned in an
+// error.
+func SendMessageHTML(ctx context.Context, botToken, chatID, threadID, text string, keyboard [][]InlineButton) error {
+	payload := map[string]any{
+		"chat_id":    chatID,
+		"text":       text,
+		"parse_mode": "HTML",
+	}
+	if threadID != "" {
+		payload["message_thread_id"] = threadID
+	}
+	if len(keyboard) > 0 {
+		rows := make([][]map[string]string, 0, len(keyboard))
+		for _, row := range keyboard {
+			cells := make([]map[string]string, 0, len(row))
+			for _, b := range row {
+				cells = append(cells, map[string]string{"text": b.Text, "callback_data": b.Data})
+			}
+			rows = append(rows, cells)
+		}
+		payload["reply_markup"] = map[string]any{"inline_keyboard": rows}
+	}
+	return postJSON(ctx, botToken, "sendMessage", payload)
+}
+
+// AnswerCallbackQuery acknowledges an inline-button tap so the client stops its
+// loading spinner. text is an optional toast shown to the user. The bot token
+// is used in the request path but is never logged or returned in an error.
+func AnswerCallbackQuery(ctx context.Context, botToken, callbackQueryID, text string) error {
+	payload := map[string]any{"callback_query_id": callbackQueryID}
+	if text != "" {
+		payload["text"] = text
+	}
+	return postJSON(ctx, botToken, "answerCallbackQuery", payload)
+}
+
+// postJSON marshals payload and POSTs it to the given Bot API method, treating a
+// non-2xx status or ok:false as an error. It is the shared request path for the
+// interactive-bot send methods.
+func postJSON(ctx context.Context, botToken, method string, payload map[string]any) error {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("telegram: marshal request: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/bot%s/%s", baseURL, botToken, method)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		// Never wrap the underlying error: it would embed the request URL, which
+		// contains the bot token.
+		return fmt.Errorf("telegram: build request failed")
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("telegram: send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var out struct {
+		OK          bool   `json:"ok"`
+		Description string `json:"description"`
+	}
+	_ = json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&out)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 || !out.OK {
+		if out.Description != "" {
+			return fmt.Errorf("telegram: %s failed (status %d): %s", method, resp.StatusCode, out.Description)
+		}
+		return fmt.Errorf("telegram: %s failed (status %d)", method, resp.StatusCode)
+	}
+	return nil
+}
+
+// --- webhook update wire types ---
+
+// Update is one incoming Telegram update decoded from a webhook POST. Only the
+// fields the interactive bot acts on are modeled.
+type Update struct {
+	UpdateID      int64          `json:"update_id"`
+	Message       *Message       `json:"message"`
+	CallbackQuery *CallbackQuery `json:"callback_query"`
+}
+
+// Message is a chat message (or the message an inline button is attached to).
+type Message struct {
+	MessageID int64  `json:"message_id"`
+	From      *User  `json:"from"`
+	Chat      *Chat  `json:"chat"`
+	Text      string `json:"text"`
+}
+
+// CallbackQuery is the payload of an inline-button tap.
+type CallbackQuery struct {
+	ID      string   `json:"id"`
+	From    *User    `json:"from"`
+	Message *Message `json:"message"`
+	Data    string   `json:"data"`
+}
+
+// Chat identifies the chat an update belongs to.
+type Chat struct {
+	ID int64 `json:"id"`
+}
+
+// User identifies the actor who produced an update.
+type User struct {
+	ID int64 `json:"id"`
+}
+
 // ResolvedThread is a forum topic thread the bot has seen inside a chat.
 type ResolvedThread struct {
 	ThreadID string

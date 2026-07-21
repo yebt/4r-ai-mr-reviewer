@@ -27,6 +27,10 @@ async function setDefault(t: TelegramTarget) {
   if (await run(t.id, () => store.setDefault(t.id))) toast.success(`${t.name} is now the default`)
 }
 
+async function setBot(t: TelegramTarget) {
+  if (await run(t.id, () => store.setBot(t.id))) toast.success(`${t.name} is now the bot`)
+}
+
 async function sendTest(t: TelegramTarget) {
   busyId.value = t.id
   try {
@@ -74,6 +78,7 @@ onMounted(() => {
           <div class="flex items-center gap-2">
             <span class="text-ink truncate text-sm">{{ t.name }}</span>
             <span v-if="t.isDefault" class="chip text-accent">default</span>
+            <span v-if="t.isBot" class="chip text-accent">bot</span>
           </div>
           <div class="text-muted truncate font-mono text-xs">
             {{ t.chatId }}<template v-if="t.threadId"> · thread {{ t.threadId }}</template>
@@ -90,6 +95,15 @@ onMounted(() => {
             @click="setDefault(t)"
           >
             Set default
+          </button>
+          <button
+            v-if="!t.isBot"
+            class="btn-ghost text-xs"
+            :disabled="busyId === t.id"
+            title="Use this target's bot token for interactive bot commands"
+            @click="setBot(t)"
+          >
+            Use as bot
           </button>
           <button
             class="btn-ghost hover:text-danger"

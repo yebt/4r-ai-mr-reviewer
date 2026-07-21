@@ -22,6 +22,9 @@ type Config struct {
 	// ReviewConcurrency is how many reviews run at once. Bounds LLM concurrency
 	// and resource use; keep it modest.
 	ReviewConcurrency int
+	// TelegramWebhookSecret gates the interactive Telegram webhook receiver.
+	// Empty keeps the receiver dormant (it returns 200 without processing).
+	TelegramWebhookSecret string
 }
 
 // Load reads configuration from the environment.
@@ -33,10 +36,11 @@ func Load() Config {
 		// Bind to loopback by default so the API (which acts on stored GitLab
 		// PATs and provider keys, with no auth of its own) is not exposed on all
 		// interfaces. Containerized deploys set AIR_HTTP_ADDR=:8080 explicitly.
-		HTTPAddr:          envOr("AIR_HTTP_ADDR", "127.0.0.1:8080"),
-		SkillsDir:         os.Getenv("AIR_SKILLS_DIR"),
-		Password:          os.Getenv("AIR_PASSWORD"),
-		ReviewConcurrency: envInt("AIR_REVIEW_CONCURRENCY", 2),
+		HTTPAddr:              envOr("AIR_HTTP_ADDR", "127.0.0.1:8080"),
+		SkillsDir:             os.Getenv("AIR_SKILLS_DIR"),
+		Password:              os.Getenv("AIR_PASSWORD"),
+		ReviewConcurrency:     envInt("AIR_REVIEW_CONCURRENCY", 2),
+		TelegramWebhookSecret: os.Getenv("AIR_TELEGRAM_WEBHOOK_SECRET"),
 	}
 }
 

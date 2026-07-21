@@ -104,6 +104,47 @@ func (s *Service) SetDefault(ctx context.Context, id string) error {
 	return s.repo.SetDefault(ctx, id)
 }
 
+// SetBot designates id as the interactive-bot target whose token drives the
+// webhook receiver.
+func (s *Service) SetBot(ctx context.Context, id string) error {
+	return s.repo.SetBot(ctx, id)
+}
+
+// Bot returns the interactive-bot target, or tgdomain.ErrNotFound if none is
+// designated (the bot is dormant).
+func (s *Service) Bot(ctx context.Context) (tgdomain.Target, error) {
+	return s.repo.GetBot(ctx)
+}
+
+// BotToken resolves the decrypted bot token of the designated interactive-bot
+// target, returning the target itself as a convenient chat fallback. It returns
+// tgdomain.ErrNotFound when no bot target is set (the bot is dormant).
+func (s *Service) BotToken(ctx context.Context) (token string, chatFallback tgdomain.Target, err error) {
+	t, err := s.repo.GetBot(ctx)
+	if err != nil {
+		return "", tgdomain.Target{}, err
+	}
+	tok, err := s.token(ctx, t.ID)
+	if err != nil {
+		return "", tgdomain.Target{}, err
+	}
+	return tok, t, nil
+}
+
+// AllowedChatIDs returns the chat IDs of every configured target. It is the
+// allowlist the interactive bot authorizes incoming updates against.
+func (s *Service) AllowedChatIDs(ctx context.Context) ([]string, error) {
+	ts, err := s.repo.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(ts))
+	for _, t := range ts {
+		out = append(out, t.ChatID)
+	}
+	return out, nil
+}
+
 // Remove deletes the target and its bot token.
 func (s *Service) Remove(ctx context.Context, id string) error {
 	t, err := s.repo.Get(ctx, id)

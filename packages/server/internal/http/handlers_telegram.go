@@ -58,6 +58,14 @@ func (s *Server) setDefaultTelegram(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+func (s *Server) setBotTelegram(w http.ResponseWriter, r *http.Request) {
+	if err := s.telegram.SetBot(r.Context(), r.PathValue("id")); err != nil {
+		writeErr(w, err, http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 func (s *Server) deleteTelegram(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if err := s.telegram.Remove(r.Context(), id); err != nil {
@@ -112,13 +120,14 @@ type telegramResp struct {
 	ChatID    string    `json:"chatId"`
 	ThreadID  string    `json:"threadId"`
 	IsDefault bool      `json:"isDefault"`
+	IsBot     bool      `json:"isBot"`
 	CreatedAt time.Time `json:"createdAt"`
 }
 
 func toTelegram(t tgdomain.Target) telegramResp {
 	return telegramResp{
 		ID: t.ID, Name: t.Name, ChatID: t.ChatID, ThreadID: t.ThreadID,
-		IsDefault: t.IsDefault, CreatedAt: t.CreatedAt,
+		IsDefault: t.IsDefault, IsBot: t.IsBot, CreatedAt: t.CreatedAt,
 	}
 }
 

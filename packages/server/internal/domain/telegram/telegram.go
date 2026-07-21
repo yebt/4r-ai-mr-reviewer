@@ -23,6 +23,9 @@ type Target struct {
 	ThreadID  string
 	TokenRef  string
 	IsDefault bool
+	// IsBot marks the single target whose bot token drives the interactive
+	// webhook receiver. At most one target may be the bot.
+	IsBot     bool
 	CreatedAt time.Time
 }
 
@@ -36,4 +39,8 @@ type Repository interface {
 	SetDefault(ctx context.Context, id string) error
 	// GetDefault returns the default target, or ErrNotFound if none is set.
 	GetDefault(ctx context.Context) (Target, error)
+	// SetBot marks id as the sole interactive-bot target.
+	SetBot(ctx context.Context, id string) error
+	// GetBot returns the bot target, or ErrNotFound if none is set.
+	GetBot(ctx context.Context) (Target, error)
 }
