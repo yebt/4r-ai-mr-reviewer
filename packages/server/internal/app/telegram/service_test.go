@@ -228,6 +228,81 @@ func TestNotifySendsToDefault(t *testing.T) {
 	}
 }
 
+// stubGetUpdates spins up an httptest server that answers getUpdates with the
+// given raw JSON payload and redirects the adapter at it. It returns a pointer
+// that receives the path the adapter hit and a cleanup that restores the base URL.
+func stubGetUpdates(t *testing.T, payload string) *capturedRequest {
+	t.Helper()
+	got := &capturedRequest{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got.path = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, payload)
+	}))
+	t.Cleanup(srv.Close)
+	restore := tgapi.SetBaseURL(srv.URL)
+	t.Cleanup(restore)
+	return got
+}
+
+func TestResolveReturnsChatsAndThreads(t *testing.T) {
+	ctx := context.Background()
+	s := newService(t)
+
+	// One plain supergroup message and one topic message in the same chat.
+	payload := `{
+		"ok": true,
+		"result": [
+			{"message": {"chat": {"id": -1001234567890, "type": "supergroup", "title": "Team"}}},
+			{"message": {
+				"message_thread_id": 42,
+				"is_topic_message": true,
+				"reply_to_message": {"forum_topic_created": {"name": "Alerts"}},
+				"chat": {"id": -1001234567890, "type": "supergroup", "title": "Team"}
+			}}
+		]
+	}`
+	got := stubGetUpdates(t, payload)
+
+	chats, err := s.Resolve(ctx, "  bot-tok  ")
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if got.path == "" {
+		t.Fatal("Resolve should have called the Bot API")
+	}
+	if len(chats) != 1 {
+		t.Fatalf("chats len = %d, want 1", len(chats))
+	}
+	c := chats[0]
+	if c.ChatID != "-1001234567890" {
+		t.Fatalf("chatId = %q, want -1001234567890", c.ChatID)
+	}
+	if c.Title != "Team" || c.Type != "supergroup" {
+		t.Fatalf("chat = %+v, want title Team type supergroup", c)
+	}
+	if len(c.Threads) != 1 {
+		t.Fatalf("threads len = %d, want 1", len(c.Threads))
+	}
+	if c.Threads[0].ThreadID != "42" || c.Threads[0].Name != "Alerts" {
+		t.Fatalf("thread = %+v, want {42 Alerts}", c.Threads[0])
+	}
+}
+
+func TestResolveEmptyTokenDoesNotHitNetwork(t *testing.T) {
+	ctx := context.Background()
+	s := newService(t)
+	// Installing a stub proves the empty-token guard short-circuits before any call.
+	got := stubGetUpdates(t, `{"ok": true, "result": []}`)
+
+	if _, err := s.Resolve(ctx, "   "); err == nil {
+		t.Fatal("expected error for empty bot token")
+	}
+	if got.path != "" {
+		t.Fatalf("Resolve with empty token must not call the Bot API, hit %q", got.path)
+	}
+}
+
 func contains(s, sub string) bool {
 	for i := 0; i+len(sub) <= len(s); i++ {
 		if s[i:i+len(sub)] == sub {

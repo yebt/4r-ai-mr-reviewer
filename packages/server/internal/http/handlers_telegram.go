@@ -1,9 +1,11 @@
 package httpapi
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
+	tgapi "github.com/webcloster-dev/ai-reviewer/internal/adapters/telegram"
 	apptelegram "github.com/webcloster-dev/ai-reviewer/internal/app/telegram"
 	tgdomain "github.com/webcloster-dev/ai-reviewer/internal/domain/telegram"
 )
@@ -72,6 +74,28 @@ func (s *Server) testTelegram(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "sent"})
 }
 
+func (s *Server) resolveTelegram(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		BotToken string `json:"botToken"`
+	}
+	if err := decode(r, &in); err != nil {
+		writeErr(w, err, http.StatusBadRequest)
+		return
+	}
+	if in.BotToken == "" {
+		writeErr(w, errors.New("botToken is required"), http.StatusBadRequest)
+		return
+	}
+	chats, err := s.telegram.Resolve(r.Context(), in.BotToken)
+	if err != nil {
+		// The Bot API is an upstream dependency: a failure here (bad token,
+		// network) is a 502. The message never contains the token.
+		writeErr(w, err, http.StatusBadGateway)
+		return
+	}
+	writeJSON(w, http.StatusOK, toTelegramResolve(chats))
+}
+
 // --- response DTO ---
 
 type telegramResp struct {
@@ -88,4 +112,36 @@ func toTelegram(t tgdomain.Target) telegramResp {
 		ID: t.ID, Name: t.Name, ChatID: t.ChatID, ThreadID: t.ThreadID,
 		IsDefault: t.IsDefault, CreatedAt: t.CreatedAt,
 	}
+}
+
+// telegramResolveResp is the resolve endpoint payload. It carries only the
+// discovered chats/threads — never the bot token supplied in the request.
+type telegramResolveResp struct {
+	Chats []telegramChatResp `json:"chats"`
+}
+
+type telegramChatResp struct {
+	ChatID  string               `json:"chatId"`
+	Title   string               `json:"title"`
+	Type    string               `json:"type"`
+	Threads []telegramThreadResp `json:"threads"`
+}
+
+type telegramThreadResp struct {
+	ThreadID string `json:"threadId"`
+	Name     string `json:"name"`
+}
+
+func toTelegramResolve(chats []tgapi.ResolvedChat) telegramResolveResp {
+	out := telegramResolveResp{Chats: make([]telegramChatResp, 0, len(chats))}
+	for _, c := range chats {
+		threads := make([]telegramThreadResp, 0, len(c.Threads))
+		for _, th := range c.Threads {
+			threads = append(threads, telegramThreadResp{ThreadID: th.ThreadID, Name: th.Name})
+		}
+		out.Chats = append(out.Chats, telegramChatResp{
+			ChatID: c.ChatID, Title: c.Title, Type: c.Type, Threads: threads,
+		})
+	}
+	return out
 }

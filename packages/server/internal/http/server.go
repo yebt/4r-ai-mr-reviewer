@@ -65,6 +65,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /providers/{id}", s.deleteProvider)
 
 	mux.HandleFunc("POST /telegram", s.createTelegram)
+	mux.HandleFunc("POST /telegram/resolve", s.resolveTelegram)
 	mux.HandleFunc("GET /telegram", s.listTelegram)
 	mux.HandleFunc("DELETE /telegram/{id}", s.deleteTelegram)
 	mux.HandleFunc("POST /telegram/{id}/default", s.setDefaultTelegram)

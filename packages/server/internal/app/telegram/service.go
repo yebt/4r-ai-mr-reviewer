@@ -131,6 +131,18 @@ func (s *Service) SendTest(ctx context.Context, id string) error {
 	return tgapi.SendMessage(ctx, token, t.ChatID, t.ThreadID, "✅ ai-reviewer test message")
 }
 
+// Resolve calls the Bot API getUpdates method and returns the chats (and forum
+// topic threads) the bot has recently seen, so the UI can offer a pick list
+// instead of asking the user to copy chat/thread IDs by hand. The token is
+// trimmed before use and never persisted; this is a stateless lookup.
+func (s *Service) Resolve(ctx context.Context, botToken string) ([]tgapi.ResolvedChat, error) {
+	token := strings.TrimSpace(botToken)
+	if token == "" {
+		return nil, fmt.Errorf("telegram: bot token is required")
+	}
+	return tgapi.ResolveChats(ctx, token)
+}
+
 // Notify sends text to the default target. It is a no-op returning nil when no
 // default target is configured, so notifications are strictly opt-in.
 func (s *Service) Notify(ctx context.Context, text string) error {
