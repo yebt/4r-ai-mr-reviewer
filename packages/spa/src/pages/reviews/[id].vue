@@ -15,7 +15,7 @@ import { useReposStore } from '@modules/repos/store'
 import { useProfilesStore } from '@modules/profiles/store'
 import { isTerminal } from '@modules/reviews/format'
 import { useReviewNotification } from '@modules/reviews/useReviewNotification'
-import { ORIGINAL, buildFindingBody } from '@modules/reviews/humanize-overrides'
+import { ORIGINAL, buildFindingBody, buildFindingMarkdown } from '@modules/reviews/humanize-overrides'
 import type { HumanizeFindingText } from '@shared/api/types'
 import ReviewStatusChip from '@modules/reviews/components/ReviewStatusChip.vue'
 import SummaryCard from '@modules/reviews/components/SummaryCard.vue'
@@ -133,6 +133,28 @@ function selectAllVisible() {
 
 function clearSelection() {
   selected.value = []
+}
+
+// Copy every selected finding to the clipboard as one Markdown block, respecting
+// each card's active tab (Original or a humanize run) — so you can carry several
+// findings at once. Findings are emitted in their natural index order.
+async function copySelected() {
+  const rv = review.value
+  if (!rv || selected.value.length === 0) return
+  const blocks: string[] = []
+  for (const finding of rv.findings) {
+    if (!selected.value.includes(finding.index)) continue
+    const tab = store.selectedFindingTab(rv.id, finding.index)
+    const original = { issue: finding.issue, why: finding.why, fix: finding.fix }
+    const shown = tab === ORIGINAL ? original : (store.findingTabs(rv.id, finding.index)[tab] ?? original)
+    blocks.push(buildFindingMarkdown(finding, shown))
+  }
+  try {
+    await navigator.clipboard.writeText(blocks.join('\n\n---\n\n'))
+    toast.success(`Copied ${blocks.length} finding${blocks.length === 1 ? '' : 's'} as Markdown`)
+  } catch {
+    toast.error('Copy failed — clipboard needs a secure context (https/localhost)')
+  }
 }
 
 // Multi-pass progress: maps the backend phase to a labelled step (of 4).
@@ -588,7 +610,15 @@ async function remove() {
                 Include summary note
               </label>
               <div class="flex w-full items-center gap-2 sm:w-auto">
-                <!-- Publish selected: desktop only — the phone sticky bar covers it. -->
+                <!-- Copy + Publish selected: desktop only — the phone sticky bar covers them. -->
+                <button
+                  class="btn-ghost hidden flex-1 text-xs sm:inline-flex sm:flex-none"
+                  :disabled="selected.length === 0"
+                  @click="copySelected"
+                >
+                  <span class="i-lucide-copy text-sm" aria-hidden="true" />
+                  Copy selected ({{ selected.length }})
+                </button>
                 <button
                   class="btn-ghost hidden flex-1 text-xs sm:inline-flex sm:flex-none"
                   :disabled="publishing || selected.length === 0"
@@ -788,6 +818,9 @@ async function remove() {
               aria-hidden="true"
             />
             Publish selected ({{ selected.length }})
+          </button>
+          <button class="btn-line text-xs" aria-label="Copy selected as Markdown" @click="copySelected">
+            <span class="i-lucide-copy text-sm" aria-hidden="true" />
           </button>
           <button class="btn-line text-xs" aria-label="Clear selection" @click="clearSelection">
             Clear
