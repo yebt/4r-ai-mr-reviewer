@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Finding, FindingHumanized } from '@shared/api/types'
-import { buildFindingBody } from '@modules/reviews/humanize-overrides'
+import { buildFindingBody, buildFindingMarkdown } from '@modules/reviews/humanize-overrides'
 
 const finding = (over: Partial<Finding> = {}): Finding => ({
   index: 0,
@@ -60,5 +60,31 @@ describe('buildFindingBody', () => {
       humanized({ why: '', fix: '' }),
     )
     expect(body).toBe('**[R3 Reliability · MEDIUM]** kind issue\n\n')
+  })
+})
+
+describe('buildFindingMarkdown', () => {
+  it('includes the header, file:line, why and fix', () => {
+    expect(buildFindingMarkdown(finding(), humanized())).toBe(
+      '**[R1 Risk · HIGH]** kind issue\n\n`a.ts:3`\n\n**Why:** kind why\n\n**Suggested fix:** kind fix\n',
+    )
+  })
+
+  it('omits the location when the finding has no file', () => {
+    expect(buildFindingMarkdown(finding({ file: '' }), humanized({ why: '', fix: '' }))).toBe(
+      '**[R1 Risk · HIGH]** kind issue\n',
+    )
+  })
+
+  it('drops the line suffix when line is 0', () => {
+    expect(buildFindingMarkdown(finding({ line: 0 }), humanized({ why: '', fix: '' }))).toBe(
+      '**[R1 Risk · HIGH]** kind issue\n\n`a.ts`\n',
+    )
+  })
+
+  it('appends the blocking footer', () => {
+    expect(
+      buildFindingMarkdown(finding({ blocking: true }), humanized({ why: '', fix: '' })),
+    ).toBe('**[R1 Risk · HIGH]** kind issue\n\n`a.ts:3`\n\n_Blocking._\n')
   })
 })

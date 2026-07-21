@@ -32,7 +32,7 @@ const borderClass = computed<string>(() => {
 })
 
 // Shared humanize-tab + publish logic (identical to the triage card).
-const { store, tabs, selectedTab, humanizing, publishedTabIdx, shown, publishing, humanize, publish } =
+const { store, tabs, selectedTab, humanizing, publishedTabIdx, shown, publishing, copy, humanize, publish } =
   useFindingCard(props)
 </script>
 
@@ -139,6 +139,10 @@ const { store, tabs, selectedTab, humanizing, publishedTabIdx, shown, publishing
           />
           <span v-else class="i-lucide-send text-sm" aria-hidden="true" />
           {{ finding.published ? 'Publish again' : 'Publish' }}
+        </button>
+        <button class="btn-ghost text-xs" aria-label="Copy finding as Markdown" @click="copy">
+          <span class="i-lucide-copy text-sm" aria-hidden="true" />
+          Copy
         </button>
       </div>
     </div>

@@ -45,7 +45,7 @@ const expanded = ref(false)
 const showDeep = computed(() => expanded.value || !isPhone.value)
 
 // Shared humanize-tab + publish logic (identical to the classic card).
-const { store, tabs, selectedTab, humanizing, publishedTabIdx, shown, publishing, humanize, publish } =
+const { store, tabs, selectedTab, humanizing, publishedTabIdx, shown, publishing, copy, humanize, publish } =
   useFindingCard(props)
 </script>
 
@@ -215,6 +215,14 @@ const { store, tabs, selectedTab, humanizing, publishedTabIdx, shown, publishing
           />
           <span v-else class="i-lucide-send text-sm" aria-hidden="true" />
           {{ finding.published ? 'Publish again' : 'Publish' }}
+        </button>
+        <button
+          class="btn-ghost w-full text-xs sm:w-auto"
+          aria-label="Copy finding as Markdown"
+          @click="copy"
+        >
+          <span class="i-lucide-copy text-sm" aria-hidden="true" />
+          Copy
         </button>
       </div>
     </div>

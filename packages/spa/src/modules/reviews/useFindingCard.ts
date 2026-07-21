@@ -3,7 +3,7 @@ import { errorMessage } from '@shared/api/client'
 import { toast } from '@shared/composables/useToast'
 import type { Finding, FindingHumanized } from '@shared/api/types'
 import { useReviewsStore } from '@modules/reviews/store'
-import { ORIGINAL, buildFindingBody } from '@modules/reviews/humanize-overrides'
+import { ORIGINAL, buildFindingBody, buildFindingMarkdown } from '@modules/reviews/humanize-overrides'
 
 // Shared logic for the classic (FindingCard) and triage (FindingCardTriage)
 // finding cards: humanize tabs, the parts shown for the active tab, and the
@@ -32,6 +32,18 @@ export function useFindingCard(props: { finding: Finding; reviewId: string; prof
   })
 
   const publishing = ref(false)
+
+  // Copy the whole finding (active tab) as Markdown. Clipboard access needs a
+  // secure context (https/localhost), so a failure is surfaced, not swallowed.
+  async function copy() {
+    const md = buildFindingMarkdown(props.finding, shown.value)
+    try {
+      await navigator.clipboard.writeText(md)
+      toast.success('Copied as Markdown')
+    } catch {
+      toast.error('Copy failed — clipboard needs a secure context (https/localhost)')
+    }
+  }
 
   async function humanize() {
     if (!props.profileId || humanizing.value) return
@@ -70,5 +82,5 @@ export function useFindingCard(props: { finding: Finding; reviewId: string; prof
     }
   }
 
-  return { store, tabs, selectedTab, humanizing, publishedTabIdx, shown, publishing, humanize, publish }
+  return { store, tabs, selectedTab, humanizing, publishedTabIdx, shown, publishing, copy, humanize, publish }
 }
