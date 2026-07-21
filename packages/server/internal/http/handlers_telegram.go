@@ -2,11 +2,13 @@ package httpapi
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"time"
 
 	tgapi "github.com/webcloster-dev/ai-reviewer/internal/adapters/telegram"
 	apptelegram "github.com/webcloster-dev/ai-reviewer/internal/app/telegram"
+	"github.com/webcloster-dev/ai-reviewer/internal/domain/notification"
 	tgdomain "github.com/webcloster-dev/ai-reviewer/internal/domain/telegram"
 )
 
@@ -57,9 +59,15 @@ func (s *Server) setDefaultTelegram(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteTelegram(w http.ResponseWriter, r *http.Request) {
-	if err := s.telegram.Remove(r.Context(), r.PathValue("id")); err != nil {
+	id := r.PathValue("id")
+	if err := s.telegram.Remove(r.Context(), id); err != nil {
 		writeErr(w, err, http.StatusBadRequest)
 		return
+	}
+	// Best-effort: drop any notification rules pointing at the deleted target so
+	// no orphaned rules remain. A failure here must not fail the delete.
+	if err := s.notifications.RemoveRulesForNotifier(r.Context(), notification.NotifierTelegram, id); err != nil {
+		log.Printf("notifications: drop rules for telegram target %s: %v", id, err)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

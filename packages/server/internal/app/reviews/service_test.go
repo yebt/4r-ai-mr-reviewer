@@ -19,6 +19,7 @@ import (
 	"github.com/webcloster-dev/ai-reviewer/internal/app/accounts"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/providers"
 	appRepos "github.com/webcloster-dev/ai-reviewer/internal/app/repos"
+	"github.com/webcloster-dev/ai-reviewer/internal/domain/notification"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/provider"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/review"
 	"github.com/webcloster-dev/ai-reviewer/internal/jobs"
@@ -438,27 +439,35 @@ func TestRetryPreservesModelOverride(t *testing.T) {
 	}
 }
 
+// notifiedEvent pairs the event and text of a captured notification.
+type notifiedEvent struct {
+	event string
+	text  string
+}
+
 // fakeNotifier records every Notify call over a buffered channel so tests can
 // observe the async, fire-and-forget notification without racing.
-type fakeNotifier struct{ calls chan string }
+type fakeNotifier struct{ calls chan notifiedEvent }
 
-func newFakeNotifier() *fakeNotifier { return &fakeNotifier{calls: make(chan string, 8)} }
+func newFakeNotifier() *fakeNotifier {
+	return &fakeNotifier{calls: make(chan notifiedEvent, 8)}
+}
 
-func (f *fakeNotifier) Notify(_ context.Context, text string) error {
-	f.calls <- text
+func (f *fakeNotifier) Notify(_ context.Context, event, text string) error {
+	f.calls <- notifiedEvent{event: event, text: text}
 	return nil
 }
 
-// recvNotification waits up to timeout for one notification. It returns ("",
-// false) if none arrives — notifyFinished spawns a goroutine, so callers must
-// wait rather than read synchronously.
-func recvNotification(t *testing.T, f *fakeNotifier, timeout time.Duration) (string, bool) {
+// recvNotification waits up to timeout for one notification. It returns a zero
+// notifiedEvent and false if none arrives — notifyFinished spawns a goroutine,
+// so callers must wait rather than read synchronously.
+func recvNotification(t *testing.T, f *fakeNotifier, timeout time.Duration) (notifiedEvent, bool) {
 	t.Helper()
 	select {
-	case msg := <-f.calls:
-		return msg, true
+	case n := <-f.calls:
+		return n, true
 	case <-time.After(timeout):
-		return "", false
+		return notifiedEvent{}, false
 	}
 }
 
@@ -479,12 +488,15 @@ func TestNotifyFinishedDoneAndError(t *testing.T) {
 	}
 
 	svc.notifyFinished(rv, review.StatusDone, "")
-	msg, ok := recvNotification(t, fake, time.Second)
+	got, ok := recvNotification(t, fake, time.Second)
 	if !ok {
 		t.Fatal("done: expected a notification, got none")
 	}
-	if !strings.Contains(msg, "finished") || !strings.Contains(msg, "2 finding(s)") {
-		t.Fatalf("done text = %q, want it to mention 'finished' and '2 finding(s)'", msg)
+	if got.event != notification.EventReviewFinished {
+		t.Fatalf("done event = %q, want %q", got.event, notification.EventReviewFinished)
+	}
+	if !strings.Contains(got.text, "finished") || !strings.Contains(got.text, "2 finding(s)") {
+		t.Fatalf("done text = %q, want it to mention 'finished' and '2 finding(s)'", got.text)
 	}
 	// Exactly one message for one finished review.
 	if _, extra := recvNotification(t, fake, 100*time.Millisecond); extra {
@@ -492,15 +504,18 @@ func TestNotifyFinishedDoneAndError(t *testing.T) {
 	}
 
 	svc.notifyFinished(rv, review.StatusError, "some secret detail")
-	msg, ok = recvNotification(t, fake, time.Second)
+	got, ok = recvNotification(t, fake, time.Second)
 	if !ok {
 		t.Fatal("error: expected a notification, got none")
 	}
-	if msg != "Review !42 failed." {
-		t.Fatalf("error text = %q, want %q", msg, "Review !42 failed.")
+	if got.event != notification.EventReviewFinished {
+		t.Fatalf("error event = %q, want %q", got.event, notification.EventReviewFinished)
 	}
-	if strings.Contains(msg, "some secret detail") {
-		t.Fatalf("error text leaked the raw error: %q", msg)
+	if got.text != "Review !42 failed." {
+		t.Fatalf("error text = %q, want %q", got.text, "Review !42 failed.")
+	}
+	if strings.Contains(got.text, "some secret detail") {
+		t.Fatalf("error text leaked the raw error: %q", got.text)
 	}
 }
 
@@ -567,12 +582,15 @@ func TestHandleDoneFiresNotification(t *testing.T) {
 		t.Fatalf("status = %s (err=%q), want done", got.Status, got.Error)
 	}
 
-	msg, ok := recvNotification(t, fake, 2*time.Second)
+	got2, ok := recvNotification(t, fake, 2*time.Second)
 	if !ok {
 		t.Fatal("expected a notification on the done path, got none")
 	}
-	if !strings.Contains(msg, "finished") {
-		t.Fatalf("notification text = %q, want it to mention 'finished'", msg)
+	if got2.event != notification.EventReviewFinished {
+		t.Fatalf("event = %q, want %q", got2.event, notification.EventReviewFinished)
+	}
+	if !strings.Contains(got2.text, "finished") {
+		t.Fatalf("notification text = %q, want it to mention 'finished'", got2.text)
 	}
 	if _, extra := recvNotification(t, fake, 150*time.Millisecond); extra {
 		t.Fatal("expected exactly one notification for one finished review")

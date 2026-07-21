@@ -87,6 +87,18 @@ func (s *Service) Get(ctx context.Context, id string) (tgdomain.Target, error) {
 	return s.repo.Get(ctx, id)
 }
 
+// Exists reports whether a telegram target with the given id exists. A missing
+// target is a clean (false, nil); any other lookup error propagates.
+func (s *Service) Exists(ctx context.Context, id string) (bool, error) {
+	if _, err := s.repo.Get(ctx, id); err != nil {
+		if errors.Is(err, tgdomain.ErrNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
 // SetDefault makes id the default target.
 func (s *Service) SetDefault(ctx context.Context, id string) error {
 	return s.repo.SetDefault(ctx, id)
@@ -117,18 +129,25 @@ func (s *Service) token(ctx context.Context, id string) (string, error) {
 	return string(b), nil
 }
 
+// SendTo delivers text to the given target, loading its chat, thread and bot
+// token. It is the single send path used by both notifications fan-out and the
+// test message.
+func (s *Service) SendTo(ctx context.Context, targetID, text string) error {
+	t, err := s.repo.Get(ctx, targetID)
+	if err != nil {
+		return err
+	}
+	token, err := s.token(ctx, targetID)
+	if err != nil {
+		return err
+	}
+	return tgapi.SendMessage(ctx, token, t.ChatID, t.ThreadID, text)
+}
+
 // SendTest sends a fixed test message to the given target so the user can
 // confirm the bot token and chat are configured correctly.
 func (s *Service) SendTest(ctx context.Context, id string) error {
-	t, err := s.repo.Get(ctx, id)
-	if err != nil {
-		return err
-	}
-	token, err := s.token(ctx, id)
-	if err != nil {
-		return err
-	}
-	return tgapi.SendMessage(ctx, token, t.ChatID, t.ThreadID, "✅ ai-reviewer test message")
+	return s.SendTo(ctx, id, "✅ ai-reviewer test message")
 }
 
 // Resolve calls the Bot API getUpdates method and returns the chats (and forum
@@ -141,21 +160,4 @@ func (s *Service) Resolve(ctx context.Context, botToken string) ([]tgapi.Resolve
 		return nil, fmt.Errorf("telegram: bot token is required")
 	}
 	return tgapi.ResolveChats(ctx, token)
-}
-
-// Notify sends text to the default target. It is a no-op returning nil when no
-// default target is configured, so notifications are strictly opt-in.
-func (s *Service) Notify(ctx context.Context, text string) error {
-	t, err := s.repo.GetDefault(ctx)
-	if errors.Is(err, tgdomain.ErrNotFound) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	token, err := s.token(ctx, t.ID)
-	if err != nil {
-		return err
-	}
-	return tgapi.SendMessage(ctx, token, t.ChatID, t.ThreadID, text)
 }

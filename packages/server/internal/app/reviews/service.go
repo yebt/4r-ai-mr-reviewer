@@ -15,6 +15,7 @@ import (
 	"github.com/webcloster-dev/ai-reviewer/internal/adapters/gitlab"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/accounts"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/providers"
+	"github.com/webcloster-dev/ai-reviewer/internal/domain/notification"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/provider"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/repo"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/review"
@@ -33,11 +34,12 @@ var ErrNotCancelable = errors.New("reviews: review is not cancelable")
 // the worker keeps writing to it). The HTTP layer maps it to 409 Conflict.
 var ErrNotArchivable = errors.New("reviews: cannot archive a running review")
 
-// Notifier sends a best-effort notification when a review finishes. It is kept
-// as a minimal interface so the reviews package stays decoupled from any
-// concrete notification backend (e.g. Telegram).
+// Notifier sends a best-effort notification for a fired event when a review
+// finishes. It is kept as a minimal interface so the reviews package stays
+// decoupled from any concrete notification backend (e.g. the notifications
+// fan-out over Telegram).
 type Notifier interface {
-	Notify(ctx context.Context, text string) error
+	Notify(ctx context.Context, event, text string) error
 }
 
 // Service orchestrates reviews.
@@ -166,7 +168,7 @@ func (s *Service) notifyFinished(rv review.Review, status review.Status, _ strin
 		}()
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		_ = s.notifier.Notify(ctx, text)
+		_ = s.notifier.Notify(ctx, notification.EventReviewFinished, text)
 	}()
 }
 

@@ -16,6 +16,7 @@ import (
 	"github.com/webcloster-dev/ai-reviewer/internal/adapters/sqlite"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/accounts"
 	apphumanize "github.com/webcloster-dev/ai-reviewer/internal/app/humanize"
+	"github.com/webcloster-dev/ai-reviewer/internal/app/notifications"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/profiles"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/providers"
 	apprepos "github.com/webcloster-dev/ai-reviewer/internal/app/repos"
@@ -61,6 +62,7 @@ func run() error {
 	reviewStore := sqlite.NewReviewStore(db)
 	humanizationStore := sqlite.NewHumanizationStore(db)
 	telegramStore := sqlite.NewTelegramStore(db)
+	notificationRuleStore := sqlite.NewNotificationRuleStore(db)
 	jobStore := sqlite.NewJobStore(db)
 
 	// Services.
@@ -76,16 +78,17 @@ func run() error {
 	reviewSvc := reviews.NewService(reviewStore, repoStore, accountSvc, providerSvc, engine.NewMultiPass(ruleSet))
 	humanizeSvc := apphumanize.NewService(reviewStore, profileStore, humanizationStore, providerSvc, nil)
 	telegramSvc := apptelegram.NewService(telegramStore, secrets)
+	notificationsSvc := notifications.NewService(notificationRuleStore, telegramSvc)
 
 	runner := jobs.NewRunner(jobStore, reviewSvc.Handle, jobs.WithConcurrency(cfg.ReviewConcurrency))
 	reviewSvc.AttachRunner(runner)
-	reviewSvc.AttachNotifier(telegramSvc)
+	reviewSvc.AttachNotifier(notificationsSvc)
 	go runner.Start(ctx)
 
 	// Re-trigger any style-guide distillations left pending by a prior crash.
 	go profileSvc.RecoverPending(context.Background())
 
-	api := httpapi.NewServer(accountSvc, providerSvc, profileSvc, repoSvc, reviewSvc, humanizeSvc, telegramSvc, ruleSet)
+	api := httpapi.NewServer(accountSvc, providerSvc, profileSvc, repoSvc, reviewSvc, humanizeSvc, telegramSvc, notificationsSvc, ruleSet)
 	srv := &http.Server{Addr: cfg.HTTPAddr, Handler: api.Routes()}
 
 	go func() {

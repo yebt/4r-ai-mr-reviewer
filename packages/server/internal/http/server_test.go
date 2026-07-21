@@ -14,6 +14,7 @@ import (
 	"github.com/webcloster-dev/ai-reviewer/internal/adapters/sqlite"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/accounts"
 	apphumanize "github.com/webcloster-dev/ai-reviewer/internal/app/humanize"
+	"github.com/webcloster-dev/ai-reviewer/internal/app/notifications"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/profiles"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/providers"
 	apprepos "github.com/webcloster-dev/ai-reviewer/internal/app/repos"
@@ -45,10 +46,11 @@ func newTestServer(t *testing.T) *httptest.Server {
 	reviewSvc := reviews.NewService(sqlite.NewReviewStore(db), sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.New(set))
 	humanizeSvc := apphumanize.NewService(sqlite.NewReviewStore(db), sqlite.NewProfileStore(db), sqlite.NewHumanizationStore(db), providerSvc, log.New(io.Discard, "", 0))
 	telegramSvc := apptelegram.NewService(sqlite.NewTelegramStore(db), secrets)
+	notificationsSvc := notifications.NewService(sqlite.NewNotificationRuleStore(db), telegramSvc)
 	runner := jobs.NewRunner(sqlite.NewJobStore(db), reviewSvc.Handle, jobs.WithLogger(log.New(io.Discard, "", 0)))
 	reviewSvc.AttachRunner(runner)
 
-	srv := httptest.NewServer(NewServer(accountSvc, providerSvc, profileSvc, repoSvc, reviewSvc, humanizeSvc, telegramSvc, set).Routes())
+	srv := httptest.NewServer(NewServer(accountSvc, providerSvc, profileSvc, repoSvc, reviewSvc, humanizeSvc, telegramSvc, notificationsSvc, set).Routes())
 	t.Cleanup(srv.Close)
 	return srv
 }
@@ -198,4 +200,154 @@ func TestCreateRepoRejectsUnknownAccount(t *testing.T) {
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404 for unknown account", resp.StatusCode)
 	}
+}
+
+// sendJSON issues a request with a JSON body for verbs Post does not cover
+// (PATCH here) so the notification-rules wire contract can be exercised.
+func sendJSON(t *testing.T, method, url string, body any) *http.Response {
+	t.Helper()
+	b, _ := json.Marshal(body)
+	req, err := http.NewRequest(method, url, bytes.NewReader(b))
+	if err != nil {
+		t.Fatalf("build %s %s: %v", method, url, err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("%s %s: %v", method, url, err)
+	}
+	return resp
+}
+
+func doDelete(t *testing.T, url string) *http.Response {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodDelete, url, nil)
+	if err != nil {
+		t.Fatalf("build delete %s: %v", url, err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("DELETE %s: %v", url, err)
+	}
+	return resp
+}
+
+// TestNotificationRulesLifecycleOverHTTP exercises the /notifications/* wire
+// contract end to end, plus the delete-target -> rules cascade, at the HTTP
+// boundary.
+func TestNotificationRulesLifecycleOverHTTP(t *testing.T) {
+	srv := newTestServer(t)
+
+	// A notifier target to assign rules to.
+	tgResp := postJSON(t, srv.URL+"/telegram", map[string]any{"name": "team", "botToken": "bot-secret", "chatId": "-100"})
+	if tgResp.StatusCode != http.StatusCreated {
+		t.Fatalf("create telegram status = %d, want 201", tgResp.StatusCode)
+	}
+	var target struct {
+		ID string `json:"id"`
+	}
+	decodeBody(t, tgResp, &target)
+	if target.ID == "" {
+		t.Fatal("created telegram target has no id")
+	}
+
+	// Events list must advertise review.finished.
+	evResp, _ := http.Get(srv.URL + "/notifications/events")
+	if evResp.StatusCode != http.StatusOK {
+		t.Fatalf("events status = %d, want 200", evResp.StatusCode)
+	}
+	var events struct {
+		Events []string `json:"events"`
+	}
+	decodeBody(t, evResp, &events)
+	if !containsString(events.Events, "review.finished") {
+		t.Fatalf("events = %v, want it to contain review.finished", events.Events)
+	}
+
+	// Create a rule bound to the target.
+	ruleResp := postJSON(t, srv.URL+"/notifications/rules", map[string]any{"event": "review.finished", "notifierId": target.ID})
+	if ruleResp.StatusCode != http.StatusCreated {
+		t.Fatalf("create rule status = %d, want 201", ruleResp.StatusCode)
+	}
+	var rule struct {
+		ID           string `json:"id"`
+		Event        string `json:"event"`
+		NotifierKind string `json:"notifierKind"`
+		NotifierID   string `json:"notifierId"`
+		Enabled      bool   `json:"enabled"`
+	}
+	decodeBody(t, ruleResp, &rule)
+	if rule.ID == "" || rule.Event != "review.finished" || rule.NotifierKind != "telegram" || rule.NotifierID != target.ID || !rule.Enabled {
+		t.Fatalf("unexpected created rule: %+v", rule)
+	}
+
+	// It shows up in the list, enabled.
+	listResp, _ := http.Get(srv.URL + "/notifications/rules")
+	var rules []map[string]any
+	decodeBody(t, listResp, &rules)
+	if len(rules) != 1 || rules[0]["id"] != rule.ID || rules[0]["enabled"] != true {
+		t.Fatalf("rules list = %+v, want the single enabled rule %s", rules, rule.ID)
+	}
+
+	// A duplicate (same event + target) is a 409 conflict.
+	dupResp := postJSON(t, srv.URL+"/notifications/rules", map[string]any{"event": "review.finished", "notifierId": target.ID})
+	if dupResp.StatusCode != http.StatusConflict {
+		t.Fatalf("duplicate rule status = %d, want 409", dupResp.StatusCode)
+	}
+	dupResp.Body.Close()
+
+	// A rule against a nonexistent target is a 400.
+	missingResp := postJSON(t, srv.URL+"/notifications/rules", map[string]any{"event": "review.finished", "notifierId": "does-not-exist"})
+	if missingResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("missing-target rule status = %d, want 400", missingResp.StatusCode)
+	}
+	missingResp.Body.Close()
+
+	// An unknown event is a 400.
+	bogusResp := postJSON(t, srv.URL+"/notifications/rules", map[string]any{"event": "bogus.event", "notifierId": target.ID})
+	if bogusResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("bogus-event rule status = %d, want 400", bogusResp.StatusCode)
+	}
+	bogusResp.Body.Close()
+
+	// Disable the rule; the response reflects enabled=false.
+	patchResp := sendJSON(t, http.MethodPatch, srv.URL+"/notifications/rules/"+rule.ID, map[string]any{"enabled": false})
+	if patchResp.StatusCode != http.StatusOK {
+		t.Fatalf("patch rule status = %d, want 200", patchResp.StatusCode)
+	}
+	var patched map[string]any
+	decodeBody(t, patchResp, &patched)
+	if patched["enabled"] != false {
+		t.Fatalf("patched enabled = %v, want false", patched["enabled"])
+	}
+
+	// Patching an unknown rule is a 404.
+	unknownResp := sendJSON(t, http.MethodPatch, srv.URL+"/notifications/rules/nope", map[string]any{"enabled": true})
+	if unknownResp.StatusCode != http.StatusNotFound {
+		t.Fatalf("patch unknown rule status = %d, want 404", unknownResp.StatusCode)
+	}
+	unknownResp.Body.Close()
+
+	// Deleting the target cascades: its rules must be gone.
+	delResp := doDelete(t, srv.URL+"/telegram/"+target.ID)
+	if delResp.StatusCode != http.StatusNoContent {
+		t.Fatalf("delete telegram status = %d, want 204", delResp.StatusCode)
+	}
+	delResp.Body.Close()
+
+	afterResp, _ := http.Get(srv.URL + "/notifications/rules")
+	var afterRules []map[string]any
+	decodeBody(t, afterResp, &afterRules)
+	if len(afterRules) != 0 {
+		t.Fatalf("rules after target delete = %+v, want none (cascade)", afterRules)
+	}
+}
+
+func containsString(xs []string, want string) bool {
+	for _, x := range xs {
+		if x == want {
+			return true
+		}
+	}
+	return false
 }

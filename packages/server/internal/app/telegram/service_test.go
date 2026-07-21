@@ -188,33 +188,18 @@ func TestSendTestPropagatesFailure(t *testing.T) {
 	}
 }
 
-func TestNotifyNoDefaultIsNoOp(t *testing.T) {
-	ctx := context.Background()
-	s := newService(t)
-	// A stub is installed but must never be hit when there is no default.
-	got := stubTelegram(t, true)
-
-	// A target exists but is not the default.
-	_, _ = s.Add(ctx, AddInput{Name: "a", BotToken: "t", ChatID: "1"})
-
-	if err := s.Notify(ctx, "hello"); err != nil {
-		t.Fatalf("Notify with no default should be a no-op nil, got %v", err)
-	}
-	if got.path != "" {
-		t.Fatalf("Notify should not call the Bot API when no default is set, hit %q", got.path)
-	}
-}
-
-func TestNotifySendsToDefault(t *testing.T) {
+// TestSendToDeliversToTarget asserts SendTo posts the given text to the target's
+// chat and thread, exercising the shared send path used by notifications
+// fan-out.
+func TestSendToDeliversToTarget(t *testing.T) {
 	ctx := context.Background()
 	s := newService(t)
 	got := stubTelegram(t, true)
 
-	tg, _ := s.Add(ctx, AddInput{Name: "a", BotToken: "t", ChatID: "999", IsDefault: true})
-	_ = tg
+	tg, _ := s.Add(ctx, AddInput{Name: "a", BotToken: "t", ChatID: "999", ThreadID: "7"})
 
-	if err := s.Notify(ctx, "review done"); err != nil {
-		t.Fatalf("Notify: %v", err)
+	if err := s.SendTo(ctx, tg.ID, "review done"); err != nil {
+		t.Fatalf("SendTo: %v", err)
 	}
 	if got.body["chat_id"] != "999" {
 		t.Fatalf("chat_id = %v, want 999", got.body["chat_id"])
@@ -222,9 +207,8 @@ func TestNotifySendsToDefault(t *testing.T) {
 	if got.body["text"] != "review done" {
 		t.Fatalf("text = %v, want 'review done'", got.body["text"])
 	}
-	// No thread configured: the field must be omitted entirely.
-	if _, present := got.body["message_thread_id"]; present {
-		t.Fatalf("message_thread_id should be omitted when no thread is set")
+	if got.body["message_thread_id"] != "7" {
+		t.Fatalf("message_thread_id = %v, want 7", got.body["message_thread_id"])
 	}
 }
 
