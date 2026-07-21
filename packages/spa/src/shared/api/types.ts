@@ -21,6 +21,27 @@ export interface Provider {
   createdAt: string
 }
 
+// Telegram notification target. The bot token is write-only: it is sent on
+// create and never returned by the backend.
+export interface TelegramTarget {
+  id: string
+  name: string
+  chatId: string
+  threadId: string
+  isDefault: boolean
+  createdAt: string
+}
+
+// Create body for a Telegram target. botToken is required and write-only;
+// threadId/isDefault are optional and omitted when empty/false.
+export interface TelegramTargetInput {
+  name: string
+  botToken: string
+  chatId: string
+  threadId?: string
+  isDefault?: boolean
+}
+
 // Style-guide distillation state for a humanization profile. Empty string means
 // no samples were provided (nothing to distill).
 export type ProfileStyleStatus = '' | 'pending' | 'ready' | 'error'

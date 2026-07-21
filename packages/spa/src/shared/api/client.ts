@@ -13,6 +13,8 @@ import type {
   Repo,
   Review,
   SummaryHumanized,
+  TelegramTarget,
+  TelegramTargetInput,
 } from '@shared/api/types'
 
 // Create/update body for a humanization profile. styleGuide* fields are
@@ -95,6 +97,26 @@ export const api = {
   ) => request<Provider>('PATCH', `/providers/${id}`, input),
   setDefaultProvider: (id: string) => request<void>('POST', `/providers/${id}/default`),
   deleteProvider: (id: string) => request<void>('DELETE', `/providers/${id}`),
+
+  // telegram (notification targets)
+  listTelegram: () => request<TelegramTarget[]>('GET', '/telegram'),
+  createTelegram: (input: TelegramTargetInput) => {
+    // Always send name/botToken/chatId; only include the optional threadId and
+    // isDefault when meaningful so empty values aren't persisted as literals.
+    const body: TelegramTargetInput = {
+      name: input.name,
+      botToken: input.botToken,
+      chatId: input.chatId,
+    }
+    const thread = input.threadId?.trim()
+    if (thread) body.threadId = thread
+    if (input.isDefault) body.isDefault = true
+    return request<TelegramTarget>('POST', '/telegram', body)
+  },
+  setDefaultTelegram: (id: string) =>
+    request<{ status: string }>('POST', `/telegram/${id}/default`),
+  testTelegram: (id: string) => request<{ status: string }>('POST', `/telegram/${id}/test`),
+  deleteTelegram: (id: string) => request<void>('DELETE', `/telegram/${id}`),
 
   // profiles (humanization)
   listProfiles: () => request<Profile[]>('GET', '/profiles'),

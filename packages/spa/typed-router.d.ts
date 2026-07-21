@@ -101,6 +101,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/telegram': RouteRecordInfo<
+      '/telegram',
+      '/telegram',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
   }
 
   /**
@@ -189,6 +196,14 @@ declare module 'vue-router/auto-routes' {
     'src/pages/skills.vue': {
       routes:
         | '/skills'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/telegram.vue': {
+      routes:
+        | '/telegram'
       views:
         | never
       pathParamNames:
