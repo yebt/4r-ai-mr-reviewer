@@ -78,3 +78,61 @@ func TestPublishReturnsAPIError(t *testing.T) {
 		t.Fatalf("expected APIError 400, got %v", err)
 	}
 }
+
+// cannedServer answers every request with a fixed status and body.
+func cannedServer(t *testing.T, status int, body string) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(status)
+		if body != "" {
+			_, _ = w.Write([]byte(body))
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestAwardEmojiAlreadyAwardedIsSuccess: a duplicate award (404 with an "already
+// awarded" body) is swallowed so a routine re-run does not fail on a reaction it
+// set on a previous pass.
+func TestAwardEmojiAlreadyAwardedIsSuccess(t *testing.T) {
+	srv := cannedServer(t, http.StatusNotFound, `{"message":"Emoji has already been awarded"}`)
+	c := NewClient(srv.URL, "tok")
+	if err := c.AwardEmoji(context.Background(), "g/p", 7, "thumbsup"); err != nil {
+		t.Fatalf("already-awarded 404 should be nil, got %v", err)
+	}
+}
+
+// TestAwardEmojiForbiddenIsError: a 403 is a real failure (no token permission)
+// and must NOT be swallowed as if it were a duplicate award.
+func TestAwardEmojiForbiddenIsError(t *testing.T) {
+	srv := cannedServer(t, http.StatusForbidden, `{"message":"403 Forbidden"}`)
+	c := NewClient(srv.URL, "tok")
+	err := c.AwardEmoji(context.Background(), "g/p", 7, "thumbsup")
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.Status != http.StatusForbidden {
+		t.Fatalf("403 must surface as APIError, got %v", err)
+	}
+}
+
+// TestAwardEmojiNotFoundWithoutAlreadyIsError: a 404 that is NOT about a duplicate
+// (e.g. the MR does not exist) must surface, not be mistaken for idempotency.
+func TestAwardEmojiNotFoundWithoutAlreadyIsError(t *testing.T) {
+	srv := cannedServer(t, http.StatusNotFound, `{"message":"404 Merge Request Not Found"}`)
+	c := NewClient(srv.URL, "tok")
+	err := c.AwardEmoji(context.Background(), "g/p", 7, "thumbsup")
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.Status != http.StatusNotFound {
+		t.Fatalf("404 without 'already' must surface as APIError, got %v", err)
+	}
+}
+
+// TestDoFormEmptyBodyWithOutIsSuccess: a 2xx with an empty body is success even
+// when a response object was requested — it must not be a JSON decode error.
+func TestDoFormEmptyBodyWithOutIsSuccess(t *testing.T) {
+	srv := cannedServer(t, http.StatusCreated, "")
+	c := NewClient(srv.URL, "tok")
+	if _, err := c.CreateMergeRequest(context.Background(), "g/p", "feat", "main", "title", "desc"); err != nil {
+		t.Fatalf("201 with empty body should decode as success, got %v", err)
+	}
+}

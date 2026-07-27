@@ -21,6 +21,7 @@ import (
 	"github.com/webcloster-dev/ai-reviewer/internal/app/providers"
 	apprepos "github.com/webcloster-dev/ai-reviewer/internal/app/repos"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/reviews"
+	"github.com/webcloster-dev/ai-reviewer/internal/app/routines"
 	apptelegram "github.com/webcloster-dev/ai-reviewer/internal/app/telegram"
 	"github.com/webcloster-dev/ai-reviewer/internal/jobs"
 	"github.com/webcloster-dev/ai-reviewer/internal/review/engine"
@@ -53,6 +54,7 @@ func newTestServerWithSecret(t *testing.T, webhookSecret string) *httptest.Serve
 	repoSvc := apprepos.NewService(sqlite.NewRepoStore(db), sqlite.NewAccountRepo(db), sqlite.NewProviderRepo(db))
 	set, _ := skills.Load("")
 	reviewSvc := reviews.NewService(sqlite.NewReviewStore(db), sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.New(set))
+	routinesSvc := routines.NewService(sqlite.NewRepoStore(db), accountSvc)
 	humanizeSvc := apphumanize.NewService(sqlite.NewReviewStore(db), sqlite.NewProfileStore(db), sqlite.NewHumanizationStore(db), providerSvc, log.New(io.Discard, "", 0))
 	telegramSvc := apptelegram.NewService(sqlite.NewTelegramStore(db), secrets)
 	notificationsSvc := notifications.NewService(sqlite.NewNotificationRuleStore(db), telegramSvc)
@@ -60,7 +62,7 @@ func newTestServerWithSecret(t *testing.T, webhookSecret string) *httptest.Serve
 	reviewSvc.AttachRunner(runner)
 	botSvc := bot.NewService(bot.NewAPIClient(), telegramSvc, reviewSvc, repoSvc)
 
-	srv := httptest.NewServer(NewServer(accountSvc, providerSvc, profileSvc, repoSvc, reviewSvc, humanizeSvc, telegramSvc, notificationsSvc, set, botSvc, webhookSecret).Routes())
+	srv := httptest.NewServer(NewServer(accountSvc, providerSvc, profileSvc, repoSvc, reviewSvc, routinesSvc, humanizeSvc, telegramSvc, notificationsSvc, set, botSvc, webhookSecret).Routes())
 	t.Cleanup(srv.Close)
 	return srv
 }

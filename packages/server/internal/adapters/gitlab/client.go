@@ -110,6 +110,136 @@ func (c *Client) MergeRequestChanges(ctx context.Context, projectID string, iid 
 	return ch, nil
 }
 
+// Tag is a repository tag.
+type Tag struct {
+	Name    string `json:"name"`
+	Message string `json:"message"`
+	Target  string `json:"target"`
+}
+
+// ListTags returns a project's tags, newest version first.
+func (c *Client) ListTags(ctx context.Context, projectID string) ([]Tag, error) {
+	path := fmt.Sprintf("/projects/%s/repository/tags", url.PathEscape(projectID))
+	q := url.Values{"order_by": {"version"}, "sort": {"desc"}, "per_page": {"100"}}
+
+	var tags []Tag
+	if err := c.getJSON(ctx, path, q, &tags); err != nil {
+		return nil, err
+	}
+	return tags, nil
+}
+
+// Pipeline is a CI pipeline attached to a merge request.
+type Pipeline struct {
+	ID     int    `json:"id"`
+	Status string `json:"status"`
+	Ref    string `json:"ref"`
+	SHA    string `json:"sha"`
+}
+
+// MergeRequestPipelines returns the pipelines run for a merge request.
+func (c *Client) MergeRequestPipelines(ctx context.Context, projectID string, iid int) ([]Pipeline, error) {
+	path := fmt.Sprintf("/projects/%s/merge_requests/%s/pipelines",
+		url.PathEscape(projectID), strconv.Itoa(iid))
+
+	var pipelines []Pipeline
+	if err := c.getJSON(ctx, path, nil, &pipelines); err != nil {
+		return nil, err
+	}
+	return pipelines, nil
+}
+
+// TokenInfo describes the personal access token in use, used to check its scopes.
+type TokenInfo struct {
+	Name    string   `json:"name"`
+	Scopes  []string `json:"scopes"`
+	Active  bool     `json:"active"`
+	Revoked bool     `json:"revoked"`
+}
+
+// TokenSelf returns metadata about the current personal access token. It fails
+// with 401/404 for OAuth, job, or deploy tokens, so callers must tolerate an
+// error here (token scopes are simply unknown).
+func (c *Client) TokenSelf(ctx context.Context) (TokenInfo, error) {
+	var info TokenInfo
+	if err := c.getJSON(ctx, "/personal_access_tokens/self", nil, &info); err != nil {
+		return TokenInfo{}, err
+	}
+	return info, nil
+}
+
+// AccessInfo is a single access-level grant on a project or group.
+type AccessInfo struct {
+	AccessLevel int `json:"access_level"`
+}
+
+// ProjectPermissions carries the caller's effective access on a project, either
+// directly (project_access) or inherited from the group (group_access). Either
+// may be null when the caller has no membership at that level.
+type ProjectPermissions struct {
+	ProjectAccess *AccessInfo `json:"project_access"`
+	GroupAccess   *AccessInfo `json:"group_access"`
+}
+
+// Project is the subset of a GitLab project the preflight needs.
+type Project struct {
+	DefaultBranch string             `json:"default_branch"`
+	Permissions   ProjectPermissions `json:"permissions"`
+}
+
+// Project returns a single project, including the caller's permissions.
+func (c *Client) Project(ctx context.Context, projectID string) (Project, error) {
+	path := fmt.Sprintf("/projects/%s", url.PathEscape(projectID))
+
+	var p Project
+	if err := c.getJSON(ctx, path, nil, &p); err != nil {
+		return Project{}, err
+	}
+	return p, nil
+}
+
+// AccessLevelRule is one access-level entry within a protection rule.
+type AccessLevelRule struct {
+	AccessLevel            int    `json:"access_level"`
+	AccessLevelDescription string `json:"access_level_description"`
+}
+
+// ProtectedBranch is a branch protection rule and the access levels allowed to
+// merge into it.
+type ProtectedBranch struct {
+	Name              string            `json:"name"`
+	MergeAccessLevels []AccessLevelRule `json:"merge_access_levels"`
+}
+
+// ProtectedBranches returns the project's branch protection rules.
+func (c *Client) ProtectedBranches(ctx context.Context, projectID string) ([]ProtectedBranch, error) {
+	path := fmt.Sprintf("/projects/%s/protected_branches", url.PathEscape(projectID))
+
+	var branches []ProtectedBranch
+	if err := c.getJSON(ctx, path, nil, &branches); err != nil {
+		return nil, err
+	}
+	return branches, nil
+}
+
+// ProtectedTag is a tag protection rule and the access levels allowed to create
+// matching tags.
+type ProtectedTag struct {
+	Name               string            `json:"name"`
+	CreateAccessLevels []AccessLevelRule `json:"create_access_levels"`
+}
+
+// ProtectedTags returns the project's tag protection rules.
+func (c *Client) ProtectedTags(ctx context.Context, projectID string) ([]ProtectedTag, error) {
+	path := fmt.Sprintf("/projects/%s/protected_tags", url.PathEscape(projectID))
+
+	var tags []ProtectedTag
+	if err := c.getJSON(ctx, path, nil, &tags); err != nil {
+		return nil, err
+	}
+	return tags, nil
+}
+
 func (c *Client) getJSON(ctx context.Context, path string, query url.Values, out any) error {
 	endpoint := c.baseURL + "/api/v4" + path
 	if len(query) > 0 {

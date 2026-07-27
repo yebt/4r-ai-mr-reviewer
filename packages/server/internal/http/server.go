@@ -17,6 +17,7 @@ import (
 	"github.com/webcloster-dev/ai-reviewer/internal/app/providers"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/repos"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/reviews"
+	"github.com/webcloster-dev/ai-reviewer/internal/app/routines"
 	apptelegram "github.com/webcloster-dev/ai-reviewer/internal/app/telegram"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/account"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/job"
@@ -37,6 +38,7 @@ type Server struct {
 	profiles      *profiles.Service
 	repos         *repos.Service
 	reviews       *reviews.Service
+	routines      *routines.Service
 	humanize      *apphumanize.Service
 	telegram      *apptelegram.Service
 	notifications *notifications.Service
@@ -49,8 +51,8 @@ type Server struct {
 }
 
 // NewServer wires a Server.
-func NewServer(a *accounts.Service, p *providers.Service, pr *profiles.Service, r *repos.Service, rv *reviews.Service, hz *apphumanize.Service, tg *apptelegram.Service, nt *notifications.Service, sk skills.Set, bt *bot.Service, telegramWebhookSecret string) *Server {
-	return &Server{accounts: a, providers: p, profiles: pr, repos: r, reviews: rv, humanize: hz, telegram: tg, notifications: nt, skills: sk, bot: bt, telegramWebhookSecret: telegramWebhookSecret}
+func NewServer(a *accounts.Service, p *providers.Service, pr *profiles.Service, r *repos.Service, rv *reviews.Service, rt *routines.Service, hz *apphumanize.Service, tg *apptelegram.Service, nt *notifications.Service, sk skills.Set, bt *bot.Service, telegramWebhookSecret string) *Server {
+	return &Server{accounts: a, providers: p, profiles: pr, repos: r, reviews: rv, routines: rt, humanize: hz, telegram: tg, notifications: nt, skills: sk, bot: bt, telegramWebhookSecret: telegramWebhookSecret}
 }
 
 // Routes returns the HTTP handler with every endpoint registered.
@@ -100,6 +102,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PATCH /repos/{id}/assign", s.assignRepo)
 	mux.HandleFunc("DELETE /repos/{id}", s.deleteRepo)
 	mux.HandleFunc("GET /repos/{id}/merge-requests", s.listMergeRequests)
+	mux.HandleFunc("GET /repos/{id}/preflight", s.repoPreflight)
 	mux.HandleFunc("GET /repos/{id}/reviews", s.listReviews)
 
 	mux.HandleFunc("POST /reviews", s.createReview)
