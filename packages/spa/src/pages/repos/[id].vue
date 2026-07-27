@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { errorMessage } from '@shared/api/client'
+import { api, errorMessage } from '@shared/api/client'
+import type { Preflight } from '@shared/api/types'
 import { setBreadcrumbs } from '@shared/composables/useBreadcrumbs'
 import { confirm } from '@shared/composables/useConfirm'
 import { toast } from '@shared/composables/useToast'
 import PageHeader from '@shared/components/ui/PageHeader.vue'
+import PreflightReport from '@modules/repos/components/PreflightReport.vue'
 import { useReposStore } from '@modules/repos/store'
 import { useReviewsStore } from '@modules/reviews/store'
 import { useProvidersStore } from '@modules/providers/store'
@@ -45,6 +47,25 @@ const archivedLoading = computed(
 )
 
 const showArchived = ref(false)
+
+// Token-scope + project-permission preflight, run on demand. Kept as local state
+// (like a launched review) since it is a one-off action tied to this view.
+const preflight = ref<Preflight | null>(null)
+const preflightLoading = ref(false)
+const preflightError = ref<string | null>(null)
+
+async function testApiScope() {
+  preflightLoading.value = true
+  preflightError.value = null
+  try {
+    preflight.value = await api.preflightRepo(repoId)
+  } catch (e) {
+    preflightError.value = errorMessage(e)
+    toast.error(errorMessage(e))
+  } finally {
+    preflightLoading.value = false
+  }
+}
 
 function toggleArchived() {
   showArchived.value = !showArchived.value
@@ -122,6 +143,38 @@ async function unarchiveReview(id: string) {
 <template>
   <div>
     <PageHeader :title="repo?.name ?? 'Repository'" />
+
+    <section class="mb-10">
+      <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <h2 class="section-title flex items-center gap-2">
+          <span class="bg-accent inline-block h-3.5 w-0.5" aria-hidden="true" />
+          API scope
+        </h2>
+        <button
+          type="button"
+          class="btn-line text-xs"
+          :disabled="preflightLoading"
+          @click="testApiScope"
+        >
+          <span
+            :class="preflightLoading ? 'i-lucide-loader-circle animate-spin' : 'i-lucide-shield-check'"
+            class="text-sm"
+            aria-hidden="true"
+          />
+          {{ preflightLoading ? 'Testing…' : 'Test API scope' }}
+        </button>
+      </div>
+
+      <p class="text-muted mb-3 text-xs">
+        Check which automated actions your token and project access permit before running a
+        routine.
+      </p>
+
+      <p v-if="preflightError" class="text-danger py-1 text-sm" role="alert">
+        {{ preflightError }}
+      </p>
+      <PreflightReport v-else-if="preflight" :report="preflight" />
+    </section>
 
     <section class="mb-10">
       <h2 class="section-title mb-3 flex items-center gap-2">

@@ -98,6 +98,28 @@ export interface Repo {
   createdAt: string
 }
 
+// One capability probed by the repo preflight: whether the configured token +
+// project access permit a given automated action. status is 'unknown' when the
+// prerequisite (e.g. branch protection) could not be read.
+export interface PreflightCheck {
+  capability: string
+  label: string
+  status: 'ok' | 'fail' | 'unknown'
+  detail: string
+}
+
+// Token-scope + project-permission preflight for a repo. Reports which
+// automated GitLab actions the configured token/access allow before any
+// routine runs. scopesKnown is false when the token's scopes could not be read.
+export interface Preflight {
+  tokenScopes: string[]
+  scopesKnown: boolean
+  accessLevel: number
+  accessLevelName: string
+  defaultBranch: string
+  checks: PreflightCheck[]
+}
+
 export interface MergeRequest {
   iid: number
   title: string

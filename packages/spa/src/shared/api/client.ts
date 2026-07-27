@@ -8,6 +8,7 @@ import type {
   HumanizeFindingText,
   MergeRequest,
   NotificationRule,
+  Preflight,
   Profile,
   Provider,
   ProviderKind,
@@ -166,6 +167,10 @@ export const api = {
   }) => request<Repo>('POST', '/repos', input),
   assignRepo: (id: string, input: { providerId: string; model: string }) =>
     request<Repo>('PATCH', `/repos/${id}/assign`, input),
+  // Preflight the repo's token scopes and project access to learn which
+  // automated actions are permitted before running any routine. Non-2xx (404
+  // unknown repo, 502 upstream GitLab error) throws ApiError.
+  preflightRepo: (id: string) => request<Preflight>('GET', `/repos/${id}/preflight`),
   deleteRepo: (id: string) => request<void>('DELETE', `/repos/${id}`),
   listMergeRequests: (repoId: string) =>
     request<MergeRequest[]>('GET', `/repos/${repoId}/merge-requests`),
