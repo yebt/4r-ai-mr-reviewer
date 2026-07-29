@@ -2,6 +2,7 @@
 // which Vite proxies to the server in dev (see vite.config.ts).
 import type {
   Account,
+  ApproveAndTagInput,
   CreateReviewInput,
   FindingHumanized,
   HumanizationsResponse,
@@ -15,6 +16,7 @@ import type {
   Repo,
   ResolvedChat,
   Review,
+  RoutineRun,
   SummaryHumanized,
   TelegramTarget,
   TelegramTargetInput,
@@ -226,6 +228,14 @@ export const api = {
   // the store can rehydrate its tabs after a page reload.
   getHumanizations: (id: string) =>
     request<HumanizationsResponse>('GET', `/reviews/${id}/humanizations`),
+
+  // routines (automated GitLab actions)
+  createApproveAndTag: (repoId: string, input: ApproveAndTagInput) =>
+    request<RoutineRun>('POST', `/repos/${repoId}/routines/approve-and-tag`, input),
+  getRoutineRun: (id: string) => request<RoutineRun>('GET', `/routines/${id}`),
+  listRepoRoutines: (repoId: string) =>
+    request<RoutineRun[]>('GET', `/repos/${repoId}/routines`),
+  resumeRoutine: (id: string) => request<RoutineRun>('POST', `/routines/${id}/resume`),
 
   // skills
   getSkills: () =>

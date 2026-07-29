@@ -14,6 +14,7 @@ import { useProvidersStore } from '@modules/providers/store'
 import { isTerminal } from '@modules/reviews/format'
 import MergeRequestList from '@modules/reviews/components/MergeRequestList.vue'
 import ReviewList from '@modules/reviews/components/ReviewList.vue'
+import RoutinesSection from '@modules/routines/components/RoutinesSection.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -22,6 +23,10 @@ const repoId = (route.params as { id: string }).id
 const repos = useReposStore()
 const reviews = useReviewsStore()
 const providers = useProvidersStore()
+
+// The routines section owns the approve-and-tag modal; the MR list opens it via
+// this ref so the trigger lives on each merge-request row.
+const routinesRef = ref<InstanceType<typeof RoutinesSection> | null>(null)
 
 const creatingIid = ref<number | null>(null)
 // Ids with an archive/unarchive request in flight. Tracked as a set (not a
@@ -189,7 +194,12 @@ async function unarchiveReview(id: string) {
         :providers="providers.items"
         :default-provider-id="defaultProviderId"
         @review="startReview"
+        @approve-and-tag="(iid) => routinesRef?.open(iid)"
       />
+    </section>
+
+    <section class="mb-10">
+      <RoutinesSection ref="routinesRef" :repo-id="repoId" :merge-requests="mrs" />
     </section>
 
     <section>

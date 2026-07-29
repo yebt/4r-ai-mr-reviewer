@@ -13,6 +13,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
   review: [iid: number, mode: string, providerId: string, model: string]
+  approveAndTag: [iid: number]
 }>()
 
 // Per-MR context mode, chosen at the moment of triggering (default fast).
@@ -117,6 +118,15 @@ function providerModelsFor(iid: number) {
               aria-hidden="true"
             />
             Review
+          </button>
+          <button
+            type="button"
+            class="btn-ghost text-xs"
+            :aria-label="`Approve and tag !${mr.iid}`"
+            @click="emit('approveAndTag', mr.iid)"
+          >
+            <span class="i-lucide-tag text-sm" aria-hidden="true" />
+            Approve &amp; tag
           </button>
         </div>
       </li>

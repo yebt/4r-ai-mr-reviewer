@@ -130,6 +130,50 @@ export interface MergeRequest {
   author: string
 }
 
+// --- Routines (automated GitLab actions driven by a step ledger) ---
+
+// Status of a single step within a routine run.
+export type RoutineStepStatus = 'pending' | 'running' | 'done' | 'failed' | 'skipped'
+
+// Overall status of a routine run. A `blocked` run stopped on a recoverable
+// condition and can be resumed; `done` is terminal.
+export type RoutineRunStatus = 'pending' | 'running' | 'blocked' | 'done'
+
+// The approve_and_tag routine executes these steps, in this fixed order.
+export type RoutineStepName = 'react' | 'comment' | 'tag'
+
+export interface RoutineStep {
+  name: RoutineStepName
+  status: RoutineStepStatus
+  detail: string
+  updatedAt: string
+}
+
+// A routine run. `state` is a decoded object (may be `{}`); `nextTag` is the
+// most useful field for approve_and_tag and is surfaced in the UI.
+export interface RoutineRun {
+  id: string
+  kind: 'approve_and_tag'
+  repoId: string
+  mrIid: number
+  status: RoutineRunStatus
+  steps: RoutineStep[]
+  state: { nextTag?: string; [key: string]: unknown }
+  lastError: string
+  createdAt: string
+  updatedAt: string
+}
+
+// Create body for an approve_and_tag run. Only mrIid is required; the backend
+// fills defaults (emojis: thumbsup/seedling, comment: "LGFM", bump: patch) when
+// the optional fields are omitted.
+export interface ApproveAndTagInput {
+  mrIid: number
+  emojis?: string[]
+  comment?: string
+  bump?: 'major' | 'minor' | 'patch'
+}
+
 export type Dimension = 'risk' | 'readability' | 'reliability' | 'resilience'
 export type Severity = 'high' | 'medium' | 'low'
 
