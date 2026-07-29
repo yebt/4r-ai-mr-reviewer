@@ -106,9 +106,11 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /repos/{id}/preflight", s.repoPreflight)
 	mux.HandleFunc("GET /repos/{id}/reviews", s.listReviews)
 	mux.HandleFunc("POST /repos/{id}/routines/approve-and-tag", s.createApproveAndTagRoutine)
+	mux.HandleFunc("POST /repos/{id}/routines/release", s.createReleaseRoutine)
 	mux.HandleFunc("GET /repos/{id}/routines", s.listRoutines)
 	mux.HandleFunc("GET /routines/{id}", s.getRoutine)
 	mux.HandleFunc("POST /routines/{id}/resume", s.resumeRoutine)
+	mux.HandleFunc("POST /routines/{id}/confirm", s.confirmRoutine)
 
 	mux.HandleFunc("POST /reviews", s.createReview)
 	mux.HandleFunc("GET /reviews/{id}", s.getReview)

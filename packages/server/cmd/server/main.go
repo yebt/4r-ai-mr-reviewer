@@ -79,7 +79,9 @@ func run() error {
 		return err
 	}
 	reviewSvc := reviews.NewService(reviewStore, repoStore, accountSvc, providerSvc, engine.NewMultiPass(ruleSet), cfg.ReasoningBudget)
-	routinesSvc := routines.NewService(repoStore, accountSvc, routineRunStore, nil)
+	// TODO(release-routine main flow slice): pass a real ReleaseNotifier (Telegram
+	// routing) here; nil keeps the release notify step best-effort log-only.
+	routinesSvc := routines.NewService(repoStore, accountSvc, routineRunStore, cfg.MergeWaitTimeout, nil, nil)
 	humanizeSvc := apphumanize.NewService(reviewStore, profileStore, humanizationStore, providerSvc, nil)
 	telegramSvc := apptelegram.NewService(telegramStore, secrets)
 	notificationsSvc := notifications.NewService(notificationRuleStore, telegramSvc)

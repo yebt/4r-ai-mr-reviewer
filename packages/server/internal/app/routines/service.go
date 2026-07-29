@@ -31,6 +31,39 @@ const (
 	stepTag     = "tag"
 )
 
+// Fixed step ledger for the release routine, executed in this order. It reuses
+// stepReact and stepTag (same names) and adds the release-specific steps.
+const (
+	stepVerify     = "verify"
+	stepApprove    = "approve"
+	stepComputeTag = "compute_tag"
+	stepConfirm    = "confirm"
+	stepMerge      = "merge"
+	stepNotify     = "notify"
+)
+
+// devBranch is the only target branch the release routine supports in this slice
+// (the dev flow). Its tags carry a "-dev" prerelease suffix.
+const devBranch = "development"
+
+// defaultMergePollInterval is how long the merge step waits between polls of the
+// MR state while waiting for it to be merged. It is a field on Service so tests
+// can shorten it.
+const defaultMergePollInterval = 10 * time.Second
+
+// errAwaitConfirmation is a control sentinel (not a failure): the confirm step
+// returns it to pause a run on the interactive gate. execute recognizes it and
+// flips the run to awaiting_confirmation WITHOUT blocking or failing the step, so
+// a later Confirm re-enters the same step.
+var errAwaitConfirmation = errors.New("routines: awaiting merge confirmation")
+
+// ReleaseNotifier delivers a best-effort, human-readable summary when a release
+// routine finishes. It is optional: a nil notifier disables notification (the
+// notify step just logs). Real routing (e.g. Telegram) is wired in a later slice.
+type ReleaseNotifier interface {
+	Notify(ctx context.Context, text string) error
+}
+
 // Service computes routine preflights and drives routine runs for tracked repos.
 type Service struct {
 	repos    repo.Repository
@@ -40,20 +73,35 @@ type Service struct {
 	// signal wakes the worker when a run is created or resumed, so it need not
 	// wait for the poll ticker.
 	signal chan struct{}
+	// mergeWaitTimeout bounds how long the release merge step waits for the MR to
+	// be merged before it blocks (and can be resumed to keep waiting).
+	mergeWaitTimeout time.Duration
+	// mergePollInterval is the sleep between merge-state polls. It defaults to
+	// defaultMergePollInterval and is overridable (tests shorten it).
+	mergePollInterval time.Duration
+	// notifier delivers the release summary; nil disables notification.
+	notifier ReleaseNotifier
 }
 
 // NewService wires the routines service. A nil logger defaults to the standard
-// logger.
-func NewService(repos repo.Repository, accounts *accounts.Service, runs routine.RunStore, logger *log.Logger) *Service {
+// logger; a non-positive mergeWaitTimeout defaults to 10 minutes; a nil notifier
+// disables release notification.
+func NewService(repos repo.Repository, accounts *accounts.Service, runs routine.RunStore, mergeWaitTimeout time.Duration, notifier ReleaseNotifier, logger *log.Logger) *Service {
 	if logger == nil {
 		logger = log.Default()
 	}
+	if mergeWaitTimeout <= 0 {
+		mergeWaitTimeout = 10 * time.Minute
+	}
 	return &Service{
-		repos:    repos,
-		accounts: accounts,
-		runs:     runs,
-		logger:   logger,
-		signal:   make(chan struct{}, 1),
+		repos:             repos,
+		accounts:          accounts,
+		runs:              runs,
+		logger:            logger,
+		signal:            make(chan struct{}, 1),
+		mergeWaitTimeout:  mergeWaitTimeout,
+		mergePollInterval: defaultMergePollInterval,
+		notifier:          notifier,
 	}
 }
 
@@ -67,6 +115,45 @@ type approveAndTagParams struct {
 // approveAndTagState is the mutable accumulator persisted in Run.State.
 type approveAndTagState struct {
 	NextTag string `json:"nextTag,omitempty"`
+}
+
+// releaseParams is the immutable input persisted in a release run's Run.Params.
+type releaseParams struct {
+	// TargetBranch is captured at creation from the MR (must be "development" in
+	// this slice). The tag suffix and future main-flow branching key off it.
+	TargetBranch string `json:"targetBranch"`
+	// Bump is the semver bump mode fed to routine.NextRelease.
+	Bump string `json:"bump"`
+	// Emojis are the reactions the react step awards.
+	Emojis []string `json:"emojis"`
+	// RemoveSourceBranch, when true, deletes the source branch on merge. It is a
+	// destructive option and DEFAULTS TO false.
+	RemoveSourceBranch bool `json:"removeSourceBranch"`
+	// MergeWhenPipelineSucceeds, when true, lets GitLab merge as soon as the MR
+	// pipeline goes green rather than requiring it green up front. It DEFAULTS TO
+	// true.
+	MergeWhenPipelineSucceeds bool `json:"mergeWhenPipelineSucceeds"`
+}
+
+// releaseState is the mutable accumulator persisted in a release run's Run.State.
+// Its JSON fields are served to the SPA (nextTag/lastTag/featCount/fixCount/
+// decision) via the run DTO, which emits State as a decoded object.
+type releaseState struct {
+	LastTag   string `json:"lastTag,omitempty"`
+	NextTag   string `json:"nextTag,omitempty"`
+	FeatCount int    `json:"featCount"`
+	FixCount  int    `json:"fixCount"`
+	Decision  string `json:"decision,omitempty"`
+	// HeadSHA is the MR diff head captured at the verify step. The merge step pins
+	// it via gitlab.MergeOptions.SHA so GitLab rejects the merge if the branch head
+	// moved between verification and merge (a TOCTOU guard).
+	HeadSHA string `json:"headSHA,omitempty"`
+	// MergeTriggered is a durable flag set immediately after a SUCCESSFUL merge
+	// call and checkpointed BEFORE the poll loop. It makes the merge idempotent
+	// across resumes: once true, the merge step only polls and never re-issues the
+	// merge (GitLab rejects a second merge on an already merging/scheduled MR).
+	MergeTriggered bool   `json:"mergeTriggered,omitempty"`
+	MergeSHA       string `json:"mergeSHA,omitempty"`
 }
 
 // Preflight probes a repo's GitLab project and reports which routine actions the
@@ -203,6 +290,10 @@ type ApproveAndTagInput struct {
 // validBumps is the set of accepted semver bump levels.
 var validBumps = map[string]bool{"major": true, "minor": true, "patch": true}
 
+// maxEmojis bounds how many reactions a routine will award, so a caller cannot
+// force an unbounded number of outbound GitLab calls from a single request.
+const maxEmojis = 10
+
 // CreateApproveAndTag validates the repo, applies defaults, records a pending
 // run with the fixed react/comment/tag ledger, and wakes the worker. It returns
 // repo.ErrNotFound for an unknown repo and a validation error for a bad bump.
@@ -217,6 +308,9 @@ func (s *Service) CreateApproveAndTag(ctx context.Context, in ApproveAndTagInput
 		return routine.Run{}, fmt.Errorf("routines: invalid merge request iid %d (must be positive)", in.MRIID)
 	}
 
+	if len(in.Emojis) > maxEmojis {
+		return routine.Run{}, fmt.Errorf("routines: too many emojis %d (max %d)", len(in.Emojis), maxEmojis)
+	}
 	emojis := in.Emojis
 	if len(emojis) == 0 {
 		emojis = []string{"thumbsup", "seedling"}
@@ -268,6 +362,160 @@ func (s *Service) CreateApproveAndTag(ctx context.Context, in ApproveAndTagInput
 		UpdatedAt: now,
 	}
 	if err := s.runs.Create(ctx, run); err != nil {
+		return routine.Run{}, err
+	}
+	s.wake()
+	return run, nil
+}
+
+// --- release routine ---
+
+// ReleaseInput is the request to create a release run. Bump and Emojis are
+// optional and fall back to defaults. RemoveSourceBranch and
+// MergeWhenPipelineSucceeds are optional merge options passed as pointers so an
+// omitted field keeps its default (false and true respectively) rather than
+// being forced to the zero value.
+type ReleaseInput struct {
+	RepoID                    string
+	MRIID                     int
+	Bump                      string
+	Emojis                    []string
+	RemoveSourceBranch        *bool
+	MergeWhenPipelineSucceeds *bool
+}
+
+// CreateRelease validates the repo and MR, applies defaults, and records a
+// pending release run with the fixed verify→...→notify ledger, then wakes the
+// worker. This slice supports the DEV flow only: the MR must already exist and
+// target "development"; any other target is rejected (the main flow is a later
+// slice). It returns repo.ErrNotFound for an unknown repo, routine.ErrDuplicateRun
+// for a second active run on the same MR, and a validation error otherwise.
+func (s *Service) CreateRelease(ctx context.Context, in ReleaseInput) (routine.Run, error) {
+	if _, err := s.repos.Get(ctx, in.RepoID); err != nil {
+		return routine.Run{}, err
+	}
+	if in.MRIID <= 0 {
+		return routine.Run{}, fmt.Errorf("routines: invalid merge request iid %d (must be positive)", in.MRIID)
+	}
+
+	bump := in.Bump
+	if bump == "" {
+		bump = "minor"
+	}
+	if !validBumps[bump] {
+		return routine.Run{}, fmt.Errorf("routines: invalid bump %q (want major, minor or patch)", bump)
+	}
+	if len(in.Emojis) > maxEmojis {
+		return routine.Run{}, fmt.Errorf("routines: too many emojis %d (max %d)", len(in.Emojis), maxEmojis)
+	}
+	emojis := in.Emojis
+	if len(emojis) == 0 {
+		emojis = []string{"thumbsup", "seedling"}
+	}
+
+	// Merge-option defaults: RemoveSourceBranch is destructive and defaults to
+	// false; MergeWhenPipelineSucceeds defaults to true. A nil pointer means the
+	// caller omitted the field, so the default stands.
+	removeSourceBranch := false
+	if in.RemoveSourceBranch != nil {
+		removeSourceBranch = *in.RemoveSourceBranch
+	}
+	mergeWhenPipelineSucceeds := true
+	if in.MergeWhenPipelineSucceeds != nil {
+		mergeWhenPipelineSucceeds = *in.MergeWhenPipelineSucceeds
+	}
+
+	// Reject a duplicate active run (pending/running/blocked/awaiting) so a second
+	// release does not re-drive the same MR.
+	runs, err := s.runs.ListByRepo(ctx, in.RepoID)
+	if err != nil {
+		return routine.Run{}, err
+	}
+	for _, r := range runs {
+		if r.Kind == routine.KindRelease && r.MRIID == in.MRIID && isActiveRun(r.Status) {
+			return routine.Run{}, routine.ErrDuplicateRun
+		}
+	}
+
+	// Read the MR up front to capture (and gate on) its target branch.
+	gl, projectID, err := s.gitlabFor(ctx, in.RepoID)
+	if err != nil {
+		return routine.Run{}, err
+	}
+	mr, err := gl.GetMergeRequest(ctx, projectID, in.MRIID)
+	if err != nil {
+		return routine.Run{}, fmt.Errorf("get merge request: %w", err)
+	}
+	if mr.TargetBranch != devBranch {
+		return routine.Run{}, fmt.Errorf("routine: release for target %q is not supported yet (dev flow only)", mr.TargetBranch)
+	}
+
+	params, err := json.Marshal(releaseParams{
+		TargetBranch:              mr.TargetBranch,
+		Bump:                      bump,
+		Emojis:                    emojis,
+		RemoveSourceBranch:        removeSourceBranch,
+		MergeWhenPipelineSucceeds: mergeWhenPipelineSucceeds,
+	})
+	if err != nil {
+		return routine.Run{}, err
+	}
+
+	now := time.Now().UTC()
+	run := routine.Run{
+		ID:     id.New(),
+		Kind:   routine.KindRelease,
+		RepoID: in.RepoID,
+		MRIID:  in.MRIID,
+		Status: routine.RunPending,
+		Params: params,
+		State:  json.RawMessage("{}"),
+		Steps: []routine.Step{
+			{Name: stepVerify, Status: routine.StepPending},
+			{Name: stepReact, Status: routine.StepPending},
+			{Name: stepApprove, Status: routine.StepPending},
+			{Name: stepComputeTag, Status: routine.StepPending},
+			{Name: stepConfirm, Status: routine.StepPending},
+			{Name: stepMerge, Status: routine.StepPending},
+			{Name: stepTag, Status: routine.StepPending},
+			{Name: stepNotify, Status: routine.StepPending},
+		},
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := s.runs.Create(ctx, run); err != nil {
+		return routine.Run{}, err
+	}
+	s.wake()
+	return run, nil
+}
+
+// Confirm resolves the release confirmation gate: it records the merge decision
+// ("merge" or "wait") on the run's state and flips it back to pending so the
+// worker re-enters the confirm step. The run must be awaiting_confirmation
+// (otherwise routine.ErrNotAwaitingConfirmation); an unknown decision is a
+// validation error.
+func (s *Service) Confirm(ctx context.Context, runID, decision string) (routine.Run, error) {
+	if decision != "merge" && decision != "wait" {
+		return routine.Run{}, fmt.Errorf("%w: got %q", routine.ErrInvalidConfirmationDecision, decision)
+	}
+	run, err := s.runs.Get(ctx, runID)
+	if err != nil {
+		return routine.Run{}, err
+	}
+	if run.Status != routine.RunAwaitingConfirmation {
+		return routine.Run{}, routine.ErrNotAwaitingConfirmation
+	}
+
+	var state releaseState
+	if len(run.State) > 0 {
+		_ = json.Unmarshal(run.State, &state)
+	}
+	state.Decision = decision
+	run.State = marshalReleaseState(state)
+	run.Status = routine.RunPending
+	run.LastError = ""
+	if err := s.runs.Save(ctx, run); err != nil {
 		return routine.Run{}, err
 	}
 	s.wake()
@@ -366,10 +614,21 @@ func (s *Service) safeExecute(ctx context.Context, run routine.Run) {
 	}
 }
 
-// execute drives a run's steps to completion, checkpointing after each. A failed
-// step blocks the run (an expected pause, returned as nil so the worker keeps
-// going); a genuine persistence failure is returned as an error.
+// execute dispatches a run to the driver for its kind.
 func (s *Service) execute(ctx context.Context, run routine.Run) error {
+	switch run.Kind {
+	case routine.KindRelease:
+		return s.executeRelease(ctx, run)
+	default:
+		return s.executeApproveAndTag(ctx, run)
+	}
+}
+
+// executeApproveAndTag drives an approve_and_tag run's steps to completion,
+// checkpointing after each. A failed step blocks the run (an expected pause,
+// returned as nil so the worker keeps going); a genuine persistence failure is
+// returned as an error.
+func (s *Service) executeApproveAndTag(ctx context.Context, run routine.Run) error {
 	// A client-build failure is not the run's fault — pause it so a fixed token
 	// or account lets a resume retry.
 	gl, projectID, err := s.gitlabFor(ctx, run.RepoID)
@@ -482,8 +741,6 @@ func (s *Service) runStep(ctx context.Context, gl *gitlab.Client, projectID stri
 		//     is "development".
 		// The next tag is computed Go-side via routine.NextTag rather than trusting
 		// the ListTags API ordering.
-		const devBranch = "development"
-
 		if mr.State != "merged" {
 			return "", fmt.Errorf("merge request !%d is not merged yet (state %q); merge it and resume", mrIID, mr.State)
 		}
@@ -545,6 +802,341 @@ func (s *Service) runStep(ctx context.Context, gl *gitlab.Client, projectID stri
 	}
 }
 
+// executeRelease drives a release run's steps to completion, checkpointing after
+// each. It mirrors executeApproveAndTag but adds the confirmation gate: when the
+// confirm step returns errAwaitConfirmation the run pauses in
+// awaiting_confirmation (not blocked, not failed) so a later Confirm re-enters
+// the same step. A failed step blocks the run; a persistence failure is returned.
+func (s *Service) executeRelease(ctx context.Context, run routine.Run) error {
+	gl, projectID, err := s.gitlabFor(ctx, run.RepoID)
+	if err != nil {
+		return s.block(ctx, run, fmt.Errorf("gitlab client: %w", err))
+	}
+
+	var params releaseParams
+	if err := json.Unmarshal(run.Params, &params); err != nil {
+		return s.block(ctx, run, fmt.Errorf("decode params: %w", err))
+	}
+
+	var state releaseState
+	if len(run.State) > 0 {
+		_ = json.Unmarshal(run.State, &state)
+	}
+
+	// checkpoint persists a mid-step decision (the computed tag, the merge SHA)
+	// while the step is still running, so a crash cannot recompute it on resume.
+	checkpoint := func(st *releaseState) error {
+		run.State = marshalReleaseState(*st)
+		return s.runs.Save(ctx, run)
+	}
+
+	run.Status = routine.RunRunning
+	for i := range run.Steps {
+		step := &run.Steps[i]
+		if step.Status == routine.StepDone || step.Status == routine.StepSkipped {
+			continue
+		}
+
+		step.Status = routine.StepRunning
+		step.UpdatedAt = time.Now().UTC()
+		run.State = marshalReleaseState(state)
+		if err := s.runs.Save(ctx, run); err != nil {
+			return fmt.Errorf("routines: save run %s: %w", run.ID, err)
+		}
+
+		detail, herr := s.runReleaseStep(ctx, gl, projectID, run.MRIID, step.Name, params, &state, checkpoint)
+		step.UpdatedAt = time.Now().UTC()
+		run.State = marshalReleaseState(state)
+
+		// The confirmation gate is a pause, not a failure: leave the confirm step
+		// non-terminal (StepRunning) so the resume that Confirm triggers re-enters
+		// it, and flip the run to awaiting_confirmation.
+		if errors.Is(herr, errAwaitConfirmation) {
+			run.Status = routine.RunAwaitingConfirmation
+			if err := s.runs.Save(ctx, run); err != nil {
+				return fmt.Errorf("routines: save run %s: %w", run.ID, err)
+			}
+			s.logger.Printf("routines: run %s awaiting confirmation at step %q", run.ID, step.Name)
+			return nil
+		}
+
+		if herr != nil {
+			safe := s.clientSafeError(herr)
+			step.Status = routine.StepFailed
+			step.Detail = safe
+			run.Status = routine.RunBlocked
+			run.LastError = safe
+			if err := s.runs.Save(ctx, run); err != nil {
+				return fmt.Errorf("routines: save run %s: %w", run.ID, err)
+			}
+			s.logger.Printf("routines: run %s blocked at step %q: %v", run.ID, step.Name, herr)
+			return nil
+		}
+
+		step.Status = routine.StepDone
+		step.Detail = detail
+		if err := s.runs.Save(ctx, run); err != nil {
+			return fmt.Errorf("routines: save run %s: %w", run.ID, err)
+		}
+	}
+
+	run.Status = routine.RunDone
+	run.LastError = ""
+	run.State = marshalReleaseState(state)
+	if err := s.runs.Save(ctx, run); err != nil {
+		return fmt.Errorf("routines: save run %s: %w", run.ID, err)
+	}
+	return nil
+}
+
+// runReleaseStep executes one release step (check-then-act / idempotent) and
+// returns a short human-readable detail on success. It may mutate state.
+func (s *Service) runReleaseStep(ctx context.Context, gl *gitlab.Client, projectID string, mrIID int, name string, params releaseParams, state *releaseState, checkpoint func(*releaseState) error) (string, error) {
+	switch name {
+	case stepVerify:
+		// The MR must be mergeable: no conflicts, and any latest pipeline must be
+		// green. A not-yet-finished or failed pipeline blocks (an expected pause):
+		// the user pushes a fix / waits for green, then resumes.
+		//
+		// Asymmetry with the merge step (intentional): verify GATES ENTRY — it
+		// requires the pipeline to already be green and, if not, blocks and demands
+		// a manual Resume. The merge step, by contrast, OWNS THE LONG WAIT — it
+		// auto-polls the MR to the "merged" state. So verify does not poll (it fails
+		// fast and hands control back to a human), while merge does (it waits for
+		// GitLab to complete the merge without human involvement).
+		mr, err := gl.GetMergeRequest(ctx, projectID, mrIID)
+		if err != nil {
+			return "", fmt.Errorf("get merge request: %w", err)
+		}
+		if mr.HasConflicts || mr.MergeStatus == "cannot_be_merged" {
+			return "", fmt.Errorf("merge request !%d has conflicts; resolve and resume", mrIID)
+		}
+		pipelines, err := gl.MergeRequestPipelines(ctx, projectID, mrIID)
+		if err != nil {
+			return "", fmt.Errorf("list merge request pipelines: %w", err)
+		}
+		if latest, ok := latestPipeline(pipelines); ok {
+			switch latest.Status {
+			case "success":
+				// green — proceed
+			case "running", "pending", "created", "preparing", "scheduled", "waiting_for_resource", "manual":
+				return "", fmt.Errorf("pipeline not finished (status %q); resume when green", latest.Status)
+			case "failed", "canceled", "skipped":
+				return "", fmt.Errorf("pipeline failed (status %q); fix it and resume", latest.Status)
+			default:
+				return "", fmt.Errorf("pipeline not finished (status %q); resume when green", latest.Status)
+			}
+		}
+		// Pin the verified head so the merge step can reject a merge if the branch
+		// moved between here and there (the confirmation gate can sit indefinitely).
+		state.HeadSHA = mr.SHA
+		if err := checkpoint(state); err != nil {
+			return "", fmt.Errorf("checkpoint verified head: %w", err)
+		}
+		return "verified", nil
+
+	case stepReact:
+		for _, emoji := range params.Emojis {
+			// AwardEmoji is idempotent: a duplicate award is swallowed.
+			if err := gl.AwardEmoji(ctx, projectID, mrIID, emoji); err != nil {
+				return "", fmt.Errorf("award emoji %q: %w", emoji, err)
+			}
+		}
+		return "reacted", nil
+
+	case stepApprove:
+		// ApproveMergeRequest is idempotent (already-approved is swallowed).
+		if err := gl.ApproveMergeRequest(ctx, projectID, mrIID); err != nil {
+			return "", fmt.Errorf("approve merge request: %w", err)
+		}
+		return "approved", nil
+
+	case stepComputeTag:
+		// The next version is a durable decision: compute it once and persist it
+		// before any side effect, so a resume reuses it rather than recomputing a
+		// different (wrongly bumped) value.
+		if state.NextTag == "" {
+			tags, err := gl.ListTags(ctx, projectID)
+			if err != nil {
+				return "", fmt.Errorf("list tags: %w", err)
+			}
+			existing := make([]string, 0, len(tags))
+			for _, t := range tags {
+				existing = append(existing, t.Name)
+			}
+			lastTag := routine.HighestSemver(existing)
+
+			commits, err := gl.MergeRequestCommits(ctx, projectID, mrIID)
+			if err != nil {
+				return "", fmt.Errorf("get merge request commits: %w", err)
+			}
+			// GitLab returns commits newest first; NextRelease wants oldest first.
+			subjects := make([]string, len(commits))
+			for i, c := range commits {
+				subjects[len(commits)-1-i] = c.Title
+			}
+
+			next, counts, err := routine.NextRelease(lastTag, subjects, routine.BumpMode(params.Bump))
+			if err != nil {
+				return "", fmt.Errorf("compute next release: %w", err)
+			}
+			state.LastTag = lastTag
+			state.NextTag = next
+			state.FeatCount = counts.Feat
+			state.FixCount = counts.Fix
+			if err := checkpoint(state); err != nil {
+				return "", fmt.Errorf("checkpoint computed tag: %w", err)
+			}
+		}
+		return fmt.Sprintf("next release %s (feat %d, fix %d)", state.NextTag, state.FeatCount, state.FixCount), nil
+
+	case stepConfirm:
+		// Interactive gate: pause until Confirm records a decision.
+		if state.Decision == "" {
+			return "", errAwaitConfirmation
+		}
+		return "decision: " + state.Decision, nil
+
+	case stepMerge:
+		return s.runMergeStep(ctx, gl, projectID, mrIID, params, state, checkpoint)
+
+	case stepTag:
+		if state.MergeSHA == "" {
+			return "", fmt.Errorf("merge request !%d has no merge commit SHA to tag", mrIID)
+		}
+		// Dev flow: the tag name is the computed next version with a "-dev" suffix.
+		finalName := state.NextTag + "-dev"
+
+		tags, err := gl.ListTags(ctx, projectID)
+		if err != nil {
+			return "", fmt.Errorf("list tags: %w", err)
+		}
+		existing := make([]string, 0, len(tags))
+		for _, t := range tags {
+			existing = append(existing, t.Name)
+		}
+		if tagExists(existing, finalName) {
+			return fmt.Sprintf("tag %s already exists", finalName), nil
+		}
+		if err := gl.CreateTag(ctx, projectID, finalName, state.MergeSHA, ""); err != nil {
+			return "", fmt.Errorf("create tag %s: %w", finalName, err)
+		}
+		return fmt.Sprintf("created tag %s", finalName), nil
+
+	case stepNotify:
+		// Best-effort: a notify failure must NEVER fail the run.
+		summary := fmt.Sprintf("release %s-dev created for MR !%d", state.NextTag, mrIID)
+		if s.notifier == nil {
+			s.logger.Printf("routines: %s (no notifier configured)", summary)
+			return "notify skipped (no notifier)", nil
+		}
+		if err := s.notifier.Notify(ctx, summary); err != nil {
+			s.logger.Printf("routines: notify failed for MR !%d: %v", mrIID, err)
+			return "notify failed (ignored)", nil
+		}
+		return "notified", nil
+
+	default:
+		return "", fmt.Errorf("unknown step %q", name)
+	}
+}
+
+// runMergeStep triggers the merge exactly once (only for the "merge" decision)
+// and then polls until the MR reaches the "merged" state, capturing the merge
+// commit SHA. It honors ctx and is bounded by s.mergeWaitTimeout; on timeout it
+// returns an error so the run blocks and a resume re-polls. A single worker means
+// a long merge-wait serializes other runs — acceptable for now.
+//
+// Idempotency across resumes is durable, not state-derived: a poll timeout blocks
+// the run, and on resume this step re-enters. Re-issuing MergeMergeRequest on an
+// MR that is already merging/scheduled makes GitLab reject it (405/406), which
+// would wrongly re-block a merge that was about to succeed. The MergeTriggered
+// flag — set and checkpointed immediately after the successful merge call, BEFORE
+// the poll loop — guarantees the merge is issued at most once: after a resume the
+// flag is already true, so the step only polls and never re-merges.
+func (s *Service) runMergeStep(ctx context.Context, gl *gitlab.Client, projectID string, mrIID int, params releaseParams, state *releaseState, checkpoint func(*releaseState) error) (string, error) {
+	// Trigger the merge at most once, and only for the "merge" decision (a "wait"
+	// decision never merges — it only polls for an out-of-band merge below).
+	if state.Decision == "merge" && !state.MergeTriggered {
+		// TOCTOU guard: the confirmation gate can sit indefinitely between verify
+		// and merge. Re-fetch the MR right before merging and refuse to merge one
+		// that became unmergeable since verification.
+		mr, err := gl.GetMergeRequest(ctx, projectID, mrIID)
+		if err != nil {
+			return "", fmt.Errorf("get merge request: %w", err)
+		}
+		if mr.State != "merged" {
+			if mr.HasConflicts || mr.MergeStatus == "cannot_be_merged" {
+				return "", fmt.Errorf("merge request !%d became unmergeable since verification; resolve and resume", mrIID)
+			}
+			// Pin the head captured at verify (state.HeadSHA): GitLab rejects the
+			// merge if the branch head moved since (a stale-head 409), which blocks
+			// the run with a clear "changed since verification; re-run" message.
+			if _, err := gl.MergeMergeRequest(ctx, projectID, mrIID, gitlab.MergeOptions{
+				MergeWhenPipelineSucceeds: params.MergeWhenPipelineSucceeds,
+				RemoveSourceBranch:        params.RemoveSourceBranch,
+				SHA:                       state.HeadSHA,
+			}); err != nil {
+				return "", fmt.Errorf("merge merge request (MR changed since verification; re-run if the branch head moved): %w", err)
+			}
+		}
+		// Record the trigger durably BEFORE polling so any resume only polls and
+		// never re-issues the merge.
+		state.MergeTriggered = true
+		if err := checkpoint(state); err != nil {
+			return "", fmt.Errorf("checkpoint merge triggered: %w", err)
+		}
+	}
+
+	deadline := time.Now().Add(s.mergeWaitTimeout)
+	for {
+		mr, err := gl.GetMergeRequest(ctx, projectID, mrIID)
+		if err != nil {
+			return "", fmt.Errorf("get merge request: %w", err)
+		}
+		if mr.State == "merged" {
+			sha := mr.MergeCommitSHA
+			if sha == "" {
+				sha = mr.SquashCommitSHA
+			}
+			if sha == "" {
+				sha = mr.SHA
+			}
+			if sha == "" {
+				return "", fmt.Errorf("merge request !%d is merged but exposes no commit SHA to tag", mrIID)
+			}
+			state.MergeSHA = sha
+			if err := checkpoint(state); err != nil {
+				return "", fmt.Errorf("checkpoint merge sha: %w", err)
+			}
+			return "merged " + sha, nil
+		}
+		if time.Now().After(deadline) {
+			return "", fmt.Errorf("merge request !%d still waiting for merge; resume to keep waiting", mrIID)
+		}
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(s.mergePollInterval):
+		}
+	}
+}
+
+// latestPipeline returns the most recent pipeline (highest ID) among the ones
+// attached to an MR, reporting false when there are none.
+func latestPipeline(pipelines []gitlab.Pipeline) (gitlab.Pipeline, bool) {
+	if len(pipelines) == 0 {
+		return gitlab.Pipeline{}, false
+	}
+	latest := pipelines[0]
+	for _, p := range pipelines[1:] {
+		if p.ID > latest.ID {
+			latest = p
+		}
+	}
+	return latest, true
+}
+
 // block records a run as blocked with a reason and persists it. A blocked run is
 // an expected pause, so the worker treats the returned (nil-or-persist) error
 // accordingly.
@@ -568,11 +1160,21 @@ func marshalState(state approveAndTagState) json.RawMessage {
 	return b
 }
 
+// marshalReleaseState encodes the release accumulator, falling back to an empty
+// object so Run.State is always valid JSON.
+func marshalReleaseState(state releaseState) json.RawMessage {
+	b, err := json.Marshal(state)
+	if err != nil {
+		return json.RawMessage("{}")
+	}
+	return b
+}
+
 // isActiveRun reports whether a run is still in flight (not done) and therefore
 // blocks creating another run for the same merge request.
 func isActiveRun(status routine.RunStatus) bool {
 	switch status {
-	case routine.RunPending, routine.RunRunning, routine.RunBlocked:
+	case routine.RunPending, routine.RunRunning, routine.RunBlocked, routine.RunAwaitingConfirmation:
 		return true
 	default:
 		return false

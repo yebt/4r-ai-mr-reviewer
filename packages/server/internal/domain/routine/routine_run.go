@@ -18,6 +18,10 @@ type Kind string
 // version tag.
 const KindApproveAndTag Kind = "approve_and_tag"
 
+// KindRelease verifies an MR, reacts, approves, computes the next version, pauses
+// for a merge-confirmation decision, then merges (or waits) and tags.
+const KindRelease Kind = "release"
+
 // RunStatus is the lifecycle state of a routine run.
 type RunStatus string
 
@@ -29,6 +33,10 @@ const (
 	// RunBlocked paused on a failed step and can be resumed once the cause is
 	// fixed; already-completed steps are skipped on resume.
 	RunBlocked RunStatus = "blocked"
+	// RunAwaitingConfirmation paused on an interactive gate, waiting for an
+	// out-of-band decision (Confirm) to flip it back to pending. Unlike blocked,
+	// this is not an error state and is resolved by Confirm, not Resume.
+	RunAwaitingConfirmation RunStatus = "awaiting_confirmation"
 	// RunDone completed every step.
 	RunDone RunStatus = "done"
 )
@@ -77,6 +85,16 @@ var ErrRunNotFound = errors.New("routine: run not found")
 
 // ErrNotResumable is returned when a run cannot be resumed (it is not blocked).
 var ErrNotResumable = errors.New("routine: run is not resumable")
+
+// ErrNotAwaitingConfirmation is returned when Confirm targets a run that is not
+// paused on the confirmation gate.
+var ErrNotAwaitingConfirmation = errors.New("routine: run is not awaiting confirmation")
+
+// ErrInvalidConfirmationDecision is returned when Confirm is given a decision
+// other than "merge" or "wait". It lets the HTTP layer map an invalid decision
+// to 400 while routing unknown-run and unexpected errors through the normal
+// not-found/500 fallback.
+var ErrInvalidConfirmationDecision = errors.New("routine: invalid confirmation decision (want merge or wait)")
 
 // ErrDuplicateRun is returned when an active run (pending, running, or blocked)
 // already exists for the same repo, merge request, and kind.

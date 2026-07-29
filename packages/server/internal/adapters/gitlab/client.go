@@ -187,6 +187,20 @@ type Commit struct {
 	Message string `json:"message"`
 }
 
+// MergeRequestCommits returns the commits that belong to a merge request. GitLab
+// returns them newest first; callers that need conventional-commit ordering
+// (oldest first, e.g. for NextRelease) must reverse the slice.
+func (c *Client) MergeRequestCommits(ctx context.Context, projectID string, iid int) ([]Commit, error) {
+	path := fmt.Sprintf("/projects/%s/merge_requests/%s/commits",
+		url.PathEscape(projectID), strconv.Itoa(iid))
+
+	var commits []Commit
+	if err := c.getJSON(ctx, path, nil, &commits); err != nil {
+		return nil, err
+	}
+	return commits, nil
+}
+
 // CompareRefs returns the commits between two refs (branches, tags, or SHAs):
 // those reachable from `to` but not from `from`. Routines use it to read the
 // conventional-commit subjects since the last release tag.

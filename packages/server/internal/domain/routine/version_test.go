@@ -165,3 +165,72 @@ func TestNextReleaseInvalidMode(t *testing.T) {
 		t.Fatal("expected error for invalid mode, got nil")
 	}
 }
+
+func TestHighestSemver(t *testing.T) {
+	cases := []struct {
+		name     string
+		existing []string
+		want     string
+	}{
+		{
+			// Highest by numeric core, not lexical order (1.10.0 > 1.9.0 > 1.2.3).
+			name:     "multiple semver picks the highest",
+			existing: []string{"1.2.3", "1.9.0", "1.10.0"},
+			want:     "1.10.0",
+		},
+		{
+			// On an equal core, the release outranks the prerelease (tie-break).
+			name:     "release outranks prerelease on equal core",
+			existing: []string{"2.0.0-dev", "2.0.0"},
+			want:     "2.0.0",
+		},
+		{
+			// Non-semver entries are ignored; the highest valid tag wins.
+			name:     "garbage tags are ignored",
+			existing: []string{"not-a-version", "latest", "1.4.2", "release-candidate", "1.5.0"},
+			want:     "1.5.0",
+		},
+		{
+			name:     "empty input returns empty",
+			existing: nil,
+			want:     "",
+		},
+		{
+			// The original string form (including a "v" prefix) is preserved.
+			name:     "v prefix preserved on the highest",
+			existing: []string{"1.2.2", "v1.2.3"},
+			want:     "v1.2.3",
+		},
+		{
+			// -dev prerelease cores are compared numerically, not lexically, so a
+			// higher core wins even when both are prereleases (1.2.10 > 1.2.9).
+			name:     "dev prereleases ranked by numeric core",
+			existing: []string{"1.2.9-dev", "1.2.10-dev"},
+			want:     "1.2.10-dev",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := HighestSemver(tc.existing); got != tc.want {
+				t.Errorf("HighestSemver(%v) = %q, want %q", tc.existing, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestHighestSemverEmptyFeedsZeroBase confirms the contract HighestSemver shares
+// with NextRelease: an empty highest tag ("") is treated as a 0.0.0 base.
+func TestHighestSemverEmptyFeedsZeroBase(t *testing.T) {
+	lastTag := HighestSemver(nil)
+	if lastTag != "" {
+		t.Fatalf("HighestSemver(nil) = %q, want empty", lastTag)
+	}
+	next, _, err := NextRelease(lastTag, []string{"feat: a"}, BumpMinor)
+	if err != nil {
+		t.Fatalf("NextRelease: %v", err)
+	}
+	if next != "0.1.0" {
+		t.Errorf("next = %q, want 0.1.0 (empty base treated as 0.0.0)", next)
+	}
+}

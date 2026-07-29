@@ -5,12 +5,21 @@ package config
 import (
 	"os"
 	"strconv"
+	"time"
 )
 
 // maxReasoningBudget caps AIR_REASONING_BUDGET defensively (mirroring the ai
 // package's retryAfterCap / maxResponseBytes bounds), so a mistyped value cannot
 // request an unbounded thinking budget.
 const maxReasoningBudget = 32768
+
+// Merge-wait bounds for the release routine. The default is 10 minutes; the
+// ceiling caps AIR_ROUTINE_MERGE_TIMEOUT so a mistyped value cannot pin the
+// single worker on one run indefinitely.
+const (
+	defaultMergeWaitSeconds = 600
+	maxMergeWaitSeconds     = 3600
+)
 
 // Config holds process-wide runtime settings.
 type Config struct {
@@ -34,6 +43,9 @@ type Config struct {
 	// TelegramWebhookSecret gates the interactive Telegram webhook receiver.
 	// Empty keeps the receiver dormant (it returns 200 without processing).
 	TelegramWebhookSecret string
+	// MergeWaitTimeout bounds how long a release routine waits for its MR to be
+	// merged before it blocks (and can be resumed to keep waiting).
+	MergeWaitTimeout time.Duration
 }
 
 // Load reads configuration from the environment.
@@ -51,7 +63,17 @@ func Load() Config {
 		ReviewConcurrency:     envInt("AIR_REVIEW_CONCURRENCY", 2),
 		ReasoningBudget:       clampReasoningBudget(envInt("AIR_REASONING_BUDGET", 0)),
 		TelegramWebhookSecret: os.Getenv("AIR_TELEGRAM_WEBHOOK_SECRET"),
+		MergeWaitTimeout:      mergeWaitTimeout(envInt("AIR_ROUTINE_MERGE_TIMEOUT", defaultMergeWaitSeconds)),
 	}
+}
+
+// mergeWaitTimeout converts a seconds value into a duration, clamping it to
+// maxMergeWaitSeconds so a mistyped env value cannot stall the worker.
+func mergeWaitTimeout(secs int) time.Duration {
+	if secs > maxMergeWaitSeconds {
+		secs = maxMergeWaitSeconds
+	}
+	return time.Duration(secs) * time.Second
 }
 
 func envOr(key, fallback string) string {

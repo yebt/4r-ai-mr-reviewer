@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/webcloster-dev/ai-reviewer/internal/adapters/crypto"
 	"github.com/webcloster-dev/ai-reviewer/internal/adapters/sqlite"
@@ -112,7 +113,7 @@ func setupRoutinesTest(t *testing.T, baseURL string) (context.Context, *Service,
 		t.Fatalf("repo Add: %v", err)
 	}
 
-	svc := NewService(sqlite.NewRepoStore(db), accountSvc, sqlite.NewRoutineRunStore(db), log.New(io.Discard, "", 0))
+	svc := NewService(sqlite.NewRepoStore(db), accountSvc, sqlite.NewRoutineRunStore(db), 10*time.Minute, nil, log.New(io.Discard, "", 0))
 	return ctx, svc, rp.ID
 }
 
@@ -669,6 +670,522 @@ func TestCreateApproveAndTagRejectsDuplicateActiveRun(t *testing.T) {
 	// A different MR is unaffected.
 	if _, err := svc.CreateApproveAndTag(ctx, ApproveAndTagInput{RepoID: repoID, MRIID: 8}); err != nil {
 		t.Fatalf("CreateApproveAndTag for a different MR: %v", err)
+	}
+}
+
+// --- release ---
+
+// fakeReleaseState carries the mutable, thread-safe state a fake GitLab uses to
+// serve the release routine's endpoints and record what a run did.
+type fakeReleaseState struct {
+	mu sync.Mutex
+
+	mrState      string // "opened" until (optionally) flipped to "merged"
+	targetBranch string
+	hasConflicts bool
+	mergeStatus  string
+
+	mergeCommitSHA  string
+	squashCommitSHA string
+	sha             string
+
+	// mergedAfterGets flips mrState to "merged" once the base MR GET count reaches
+	// this value (0 disables the flip; the state stays as mrState). It models an
+	// MR that becomes merged after N polls.
+	mergedAfterGets int
+	getMRCount      int
+
+	pipelines []map[string]any // latest-relevant pipeline list
+	commits   []map[string]any // MR commits (newest first, GitLab order)
+	tags      []string
+
+	awardCount     int
+	approveCount   int
+	mergeCount     int
+	createTagCount int
+	lastTagName    string
+	lastCreateRef  string
+}
+
+// newFakeReleaseGitLab serves the endpoints a release run exercises: MR fetch,
+// pipelines, commits, award_emoji, approve, merge, and tag list/create.
+func newFakeReleaseGitLab(t *testing.T, st *fakeReleaseState) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		st.mu.Lock()
+		defer st.mu.Unlock()
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/award_emoji") && r.Method == http.MethodPost:
+			st.awardCount++
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": st.awardCount})
+		case strings.HasSuffix(r.URL.Path, "/approve") && r.Method == http.MethodPost:
+			st.approveCount++
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": st.approveCount})
+		case strings.HasSuffix(r.URL.Path, "/merge") && r.Method == http.MethodPut:
+			st.mergeCount++
+			_ = json.NewEncoder(w).Encode(map[string]any{"iid": 7, "state": "merged"})
+		case strings.HasSuffix(r.URL.Path, "/pipelines") && r.Method == http.MethodGet:
+			out := st.pipelines
+			if out == nil {
+				out = []map[string]any{}
+			}
+			_ = json.NewEncoder(w).Encode(out)
+		case strings.HasSuffix(r.URL.Path, "/commits") && r.Method == http.MethodGet:
+			out := st.commits
+			if out == nil {
+				out = []map[string]any{}
+			}
+			_ = json.NewEncoder(w).Encode(out)
+		case strings.HasSuffix(r.URL.Path, "/repository/tags") && r.Method == http.MethodPost:
+			st.createTagCount++
+			name := r.FormValue("tag_name")
+			st.lastTagName = name
+			st.lastCreateRef = r.FormValue("ref")
+			st.tags = append(st.tags, name)
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{"name": name})
+		case strings.HasSuffix(r.URL.Path, "/repository/tags") && r.Method == http.MethodGet:
+			out := make([]map[string]any, 0, len(st.tags))
+			for _, name := range st.tags {
+				out = append(out, map[string]any{"name": name})
+			}
+			_ = json.NewEncoder(w).Encode(out)
+		case strings.Contains(r.URL.Path, "/merge_requests/") && r.Method == http.MethodGet:
+			// Base MR fetch: count it and apply the deferred merge flip.
+			st.getMRCount++
+			if st.mergedAfterGets > 0 && st.getMRCount >= st.mergedAfterGets {
+				st.mrState = "merged"
+			}
+			state := st.mrState
+			if state == "" {
+				state = "opened"
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"iid": 7, "state": state,
+				"source_branch": "feature", "target_branch": st.targetBranch,
+				"has_conflicts": st.hasConflicts, "merge_status": st.mergeStatus,
+				"merge_commit_sha": st.mergeCommitSHA, "squash_commit_sha": st.squashCommitSHA,
+				"sha": st.sha,
+			})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// devReleaseState returns a fake state for a mergeable dev-flow MR with two
+// conventional commits (one feat, one fix), no pipelines, and a base 1.2.3 tag.
+func devReleaseState() *fakeReleaseState {
+	return &fakeReleaseState{
+		mrState:      "opened",
+		targetBranch: "development",
+		tags:         []string{"1.2.3"},
+		// GitLab returns commits newest first: fix (newer), feat (older).
+		commits: []map[string]any{
+			{"id": "c2", "title": "fix: bug"},
+			{"id": "c1", "title": "feat: thing"},
+		},
+	}
+}
+
+// driveToGate runs a release to the confirmation gate and returns the paused run.
+func driveToGate(t *testing.T, ctx context.Context, svc *Service, repoID string) routine.Run {
+	t.Helper()
+	run, err := svc.CreateRelease(ctx, ReleaseInput{RepoID: repoID, MRIID: 7})
+	if err != nil {
+		t.Fatalf("CreateRelease: %v", err)
+	}
+	if err := svc.execute(ctx, run); err != nil {
+		t.Fatalf("execute (to gate): %v", err)
+	}
+	got, _ := svc.Get(ctx, run.ID)
+	if got.Status != routine.RunAwaitingConfirmation {
+		t.Fatalf("status = %q, want awaiting_confirmation (lastError %q)", got.Status, got.LastError)
+	}
+	return got
+}
+
+func TestReleaseReachesConfirmationGate(t *testing.T) {
+	st := devReleaseState()
+	srv := newFakeReleaseGitLab(t, st)
+	ctx, svc, repoID := setupRoutinesTest(t, srv.URL)
+
+	got := driveToGate(t, ctx, svc, repoID)
+
+	// Steps up to and including compute_tag are done; confirm is not terminal.
+	for _, name := range []string{"verify", "react", "approve", "compute_tag"} {
+		if s := stepByName(t, got, name).Status; s != routine.StepDone {
+			t.Errorf("step %q = %q, want done", name, s)
+		}
+	}
+	if s := stepByName(t, got, "confirm").Status; s == routine.StepDone || s == routine.StepFailed {
+		t.Errorf("confirm step = %q, want non-terminal", s)
+	}
+	if stepByName(t, got, "merge").Status != routine.StepPending || stepByName(t, got, "tag").Status != routine.StepPending {
+		t.Errorf("merge/tag should stay pending at the gate: %+v", got.Steps)
+	}
+
+	var state releaseState
+	if err := json.Unmarshal(got.State, &state); err != nil {
+		t.Fatalf("decode state: %v", err)
+	}
+	// 1.2.3 base, minor bump: one feat raises the minor, one trailing fix raises
+	// the patch → 1.3.1; counts feat=1 fix=1.
+	if state.NextTag != "1.3.1" {
+		t.Errorf("state.nextTag = %q, want 1.3.1", state.NextTag)
+	}
+	if state.LastTag != "1.2.3" {
+		t.Errorf("state.lastTag = %q, want 1.2.3", state.LastTag)
+	}
+	if state.FeatCount != 1 || state.FixCount != 1 {
+		t.Errorf("counts = feat %d/fix %d, want 1/1", state.FeatCount, state.FixCount)
+	}
+	if st.awardCount != 2 || st.approveCount != 1 {
+		t.Errorf("awardCount=%d approveCount=%d, want 2/1", st.awardCount, st.approveCount)
+	}
+	if st.mergeCount != 0 || st.createTagCount != 0 {
+		t.Errorf("no merge/tag before confirmation: mergeCount=%d createTagCount=%d", st.mergeCount, st.createTagCount)
+	}
+}
+
+func TestReleaseConfirmMergeMergesPollsAndTags(t *testing.T) {
+	st := devReleaseState()
+	// Base MR GETs: CreateRelease (#1), verify (#2), and the merge-trigger check
+	// (#3) must all see "opened" so the merge is actually triggered; the first
+	// poll GET (#4) flips the MR to "merged".
+	st.mergedAfterGets = 4
+	st.mergeCommitSHA = "mergesha123"
+	srv := newFakeReleaseGitLab(t, st)
+	ctx, svc, repoID := setupRoutinesTest(t, srv.URL)
+	svc.mergePollInterval = time.Millisecond
+
+	gate := driveToGate(t, ctx, svc, repoID)
+
+	confirmed, err := svc.Confirm(ctx, gate.ID, "merge")
+	if err != nil {
+		t.Fatalf("Confirm(merge): %v", err)
+	}
+	if confirmed.Status != routine.RunPending {
+		t.Fatalf("confirmed status = %q, want pending", confirmed.Status)
+	}
+	if err := svc.execute(ctx, confirmed); err != nil {
+		t.Fatalf("execute (after confirm): %v", err)
+	}
+
+	done, _ := svc.Get(ctx, gate.ID)
+	if done.Status != routine.RunDone {
+		t.Fatalf("status = %q, want done (lastError %q)", done.Status, done.LastError)
+	}
+	if st.mergeCount != 1 {
+		t.Errorf("mergeCount = %d, want 1", st.mergeCount)
+	}
+	if st.createTagCount != 1 || st.lastTagName != "1.3.1-dev" {
+		t.Errorf("tag = %q (count %d), want 1.3.1-dev", st.lastTagName, st.createTagCount)
+	}
+	if st.lastCreateRef != "mergesha123" {
+		t.Errorf("tag ref = %q, want mergesha123", st.lastCreateRef)
+	}
+}
+
+func TestReleaseConfirmWaitDoesNotMergeThenTags(t *testing.T) {
+	st := devReleaseState()
+	// The MR stays "opened" through CreateRelease (#1), verify (#2), and the merge
+	// step's trigger check (#3); a poll GET (#4) then flips it, as if a human
+	// merged it out of band.
+	st.mergedAfterGets = 4
+	st.mergeCommitSHA = "waitsha456"
+	srv := newFakeReleaseGitLab(t, st)
+	ctx, svc, repoID := setupRoutinesTest(t, srv.URL)
+	svc.mergePollInterval = time.Millisecond
+
+	gate := driveToGate(t, ctx, svc, repoID)
+
+	confirmed, err := svc.Confirm(ctx, gate.ID, "wait")
+	if err != nil {
+		t.Fatalf("Confirm(wait): %v", err)
+	}
+	if err := svc.execute(ctx, confirmed); err != nil {
+		t.Fatalf("execute (after confirm): %v", err)
+	}
+
+	done, _ := svc.Get(ctx, gate.ID)
+	if done.Status != routine.RunDone {
+		t.Fatalf("status = %q, want done (lastError %q)", done.Status, done.LastError)
+	}
+	if st.mergeCount != 0 {
+		t.Errorf("mergeCount = %d, want 0 (wait must not trigger merge)", st.mergeCount)
+	}
+	if st.createTagCount != 1 || st.lastTagName != "1.3.1-dev" || st.lastCreateRef != "waitsha456" {
+		t.Errorf("tag = %q ref %q (count %d), want 1.3.1-dev @ waitsha456", st.lastTagName, st.lastCreateRef, st.createTagCount)
+	}
+}
+
+func TestReleaseVerifyBlocksOnConflicts(t *testing.T) {
+	st := devReleaseState()
+	st.hasConflicts = true
+	srv := newFakeReleaseGitLab(t, st)
+	ctx, svc, repoID := setupRoutinesTest(t, srv.URL)
+
+	run, err := svc.CreateRelease(ctx, ReleaseInput{RepoID: repoID, MRIID: 7})
+	if err != nil {
+		t.Fatalf("CreateRelease: %v", err)
+	}
+	if err := svc.execute(ctx, run); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	got, _ := svc.Get(ctx, run.ID)
+	if got.Status != routine.RunBlocked {
+		t.Fatalf("status = %q, want blocked", got.Status)
+	}
+	if stepByName(t, got, "verify").Status != routine.StepFailed {
+		t.Fatalf("verify = %q, want failed", stepByName(t, got, "verify").Status)
+	}
+	if !strings.Contains(got.LastError, "conflicts") {
+		t.Errorf("lastError = %q, want it to mention conflicts", got.LastError)
+	}
+}
+
+func TestReleaseVerifyBlocksOnFailedPipeline(t *testing.T) {
+	st := devReleaseState()
+	st.pipelines = []map[string]any{{"id": 10, "status": "failed"}}
+	srv := newFakeReleaseGitLab(t, st)
+	ctx, svc, repoID := setupRoutinesTest(t, srv.URL)
+
+	run, _ := svc.CreateRelease(ctx, ReleaseInput{RepoID: repoID, MRIID: 7})
+	if err := svc.execute(ctx, run); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	got, _ := svc.Get(ctx, run.ID)
+	if got.Status != routine.RunBlocked {
+		t.Fatalf("status = %q, want blocked", got.Status)
+	}
+	if !strings.Contains(got.LastError, "pipeline failed") {
+		t.Errorf("lastError = %q, want it to mention a failed pipeline", got.LastError)
+	}
+}
+
+func TestReleaseVerifyBlocksOnRunningPipeline(t *testing.T) {
+	st := devReleaseState()
+	// The latest pipeline (highest id) is still running; an older one succeeded.
+	st.pipelines = []map[string]any{
+		{"id": 9, "status": "success"},
+		{"id": 12, "status": "running"},
+	}
+	srv := newFakeReleaseGitLab(t, st)
+	ctx, svc, repoID := setupRoutinesTest(t, srv.URL)
+
+	run, _ := svc.CreateRelease(ctx, ReleaseInput{RepoID: repoID, MRIID: 7})
+	if err := svc.execute(ctx, run); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	got, _ := svc.Get(ctx, run.ID)
+	if got.Status != routine.RunBlocked {
+		t.Fatalf("status = %q, want blocked", got.Status)
+	}
+	if !strings.Contains(got.LastError, "not finished") {
+		t.Errorf("lastError = %q, want it to mention the pipeline is not finished", got.LastError)
+	}
+}
+
+func TestReleaseMergeWaitTimeoutBlocks(t *testing.T) {
+	st := devReleaseState()
+	st.mergedAfterGets = 0 // never flips to merged
+	srv := newFakeReleaseGitLab(t, st)
+	ctx, svc, repoID := setupRoutinesTest(t, srv.URL)
+	svc.mergePollInterval = time.Millisecond
+	svc.mergeWaitTimeout = 5 * time.Millisecond
+
+	gate := driveToGate(t, ctx, svc, repoID)
+	confirmed, err := svc.Confirm(ctx, gate.ID, "wait")
+	if err != nil {
+		t.Fatalf("Confirm: %v", err)
+	}
+	if err := svc.execute(ctx, confirmed); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	got, _ := svc.Get(ctx, gate.ID)
+	if got.Status != routine.RunBlocked {
+		t.Fatalf("status = %q, want blocked on timeout", got.Status)
+	}
+	if stepByName(t, got, "merge").Status != routine.StepFailed {
+		t.Fatalf("merge step = %q, want failed", stepByName(t, got, "merge").Status)
+	}
+	if !strings.Contains(got.LastError, "waiting for merge") {
+		t.Errorf("lastError = %q, want a resumable merge-wait message", got.LastError)
+	}
+	if st.createTagCount != 0 {
+		t.Errorf("createTagCount = %d, want 0 (must not tag before merge)", st.createTagCount)
+	}
+}
+
+// Fix 1: after the merge is triggered and the poll times out (the run blocks), a
+// resume must NOT re-issue the merge — GitLab rejects a second merge on an MR
+// that is already merging/scheduled. The MergeTriggered flag makes the merge
+// idempotent: the resumed step only keeps polling.
+func TestReleaseMergeIsIdempotentAcrossResume(t *testing.T) {
+	st := devReleaseState()
+	st.mergedAfterGets = 0 // never flips to "merged": the merge keeps polling
+	srv := newFakeReleaseGitLab(t, st)
+	ctx, svc, repoID := setupRoutinesTest(t, srv.URL)
+	svc.mergePollInterval = time.Millisecond
+	svc.mergeWaitTimeout = 5 * time.Millisecond
+
+	gate := driveToGate(t, ctx, svc, repoID)
+	confirmed, err := svc.Confirm(ctx, gate.ID, "merge")
+	if err != nil {
+		t.Fatalf("Confirm(merge): %v", err)
+	}
+
+	// First pass: the merge is triggered once, then the poll times out and blocks.
+	if err := svc.execute(ctx, confirmed); err != nil {
+		t.Fatalf("execute (first pass): %v", err)
+	}
+	blocked, _ := svc.Get(ctx, gate.ID)
+	if blocked.Status != routine.RunBlocked {
+		t.Fatalf("status = %q, want blocked on merge-wait timeout", blocked.Status)
+	}
+	if st.mergeCount != 1 {
+		t.Fatalf("mergeCount after first pass = %d, want 1", st.mergeCount)
+	}
+
+	// Resume and run again: the merge must NOT be re-issued; the step only polls.
+	resumed, err := svc.Resume(ctx, gate.ID)
+	if err != nil {
+		t.Fatalf("Resume: %v", err)
+	}
+	if err := svc.execute(ctx, resumed); err != nil {
+		t.Fatalf("execute (resume): %v", err)
+	}
+	after, _ := svc.Get(ctx, gate.ID)
+	if after.Status != routine.RunBlocked {
+		t.Fatalf("status = %q, want blocked again (still waiting)", after.Status)
+	}
+	if st.mergeCount != 1 {
+		t.Errorf("mergeCount after resume = %d, want 1 (merge must not be re-issued)", st.mergeCount)
+	}
+}
+
+// Fix 4: a release request with more than maxEmojis reactions is rejected at
+// creation, bounding the outbound award_emoji calls a single request can force.
+func TestCreateReleaseRejectsTooManyEmojis(t *testing.T) {
+	st := devReleaseState()
+	srv := newFakeReleaseGitLab(t, st)
+	ctx, svc, repoID := setupRoutinesTest(t, srv.URL)
+
+	many := make([]string, maxEmojis+1)
+	for i := range many {
+		many[i] = "thumbsup"
+	}
+	if _, err := svc.CreateRelease(ctx, ReleaseInput{RepoID: repoID, MRIID: 7, Emojis: many}); err == nil {
+		t.Fatal("expected a validation error for too many emojis")
+	}
+}
+
+// errNotifier is a ReleaseNotifier that always fails, used to prove a notify
+// failure never fails the run.
+type errNotifier struct{ called bool }
+
+func (n *errNotifier) Notify(ctx context.Context, text string) error {
+	n.called = true
+	return errors.New("notifier boom")
+}
+
+// Fix 7: the notify step is best-effort — a notifier error is swallowed and the
+// run still reaches RunDone.
+func TestReleaseNotifyFailureDoesNotFailRun(t *testing.T) {
+	st := devReleaseState()
+	// CreateRelease (#1), verify (#2), merge-trigger check (#3) see "opened"; the
+	// first poll GET (#4) flips the MR to "merged".
+	st.mergedAfterGets = 4
+	st.mergeCommitSHA = "notifysha"
+	srv := newFakeReleaseGitLab(t, st)
+	ctx, svc, repoID := setupRoutinesTest(t, srv.URL)
+	svc.mergePollInterval = time.Millisecond
+	n := &errNotifier{}
+	svc.notifier = n
+
+	gate := driveToGate(t, ctx, svc, repoID)
+	confirmed, err := svc.Confirm(ctx, gate.ID, "merge")
+	if err != nil {
+		t.Fatalf("Confirm(merge): %v", err)
+	}
+	if err := svc.execute(ctx, confirmed); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	done, _ := svc.Get(ctx, gate.ID)
+	if done.Status != routine.RunDone {
+		t.Fatalf("status = %q, want done despite notify failure (lastError %q)", done.Status, done.LastError)
+	}
+	if !n.called {
+		t.Error("notifier was not called")
+	}
+	if s := stepByName(t, done, "notify").Status; s != routine.StepDone {
+		t.Errorf("notify step = %q, want done (failure swallowed)", s)
+	}
+}
+
+func TestConfirmRejectsNonAwaitingRun(t *testing.T) {
+	st := devReleaseState()
+	srv := newFakeReleaseGitLab(t, st)
+	ctx, svc, repoID := setupRoutinesTest(t, srv.URL)
+
+	// A freshly created (pending) run is not awaiting confirmation.
+	run, err := svc.CreateRelease(ctx, ReleaseInput{RepoID: repoID, MRIID: 7})
+	if err != nil {
+		t.Fatalf("CreateRelease: %v", err)
+	}
+	if _, err := svc.Confirm(ctx, run.ID, "merge"); !errors.Is(err, routine.ErrNotAwaitingConfirmation) {
+		t.Fatalf("Confirm(pending) = %v, want ErrNotAwaitingConfirmation", err)
+	}
+}
+
+func TestConfirmRejectsInvalidDecision(t *testing.T) {
+	st := devReleaseState()
+	srv := newFakeReleaseGitLab(t, st)
+	ctx, svc, repoID := setupRoutinesTest(t, srv.URL)
+	gate := driveToGate(t, ctx, svc, repoID)
+	if _, err := svc.Confirm(ctx, gate.ID, "nope"); err == nil {
+		t.Fatal("expected a validation error for an invalid decision")
+	}
+}
+
+func TestCreateReleaseRejectsNonDevelopmentTarget(t *testing.T) {
+	st := devReleaseState()
+	st.targetBranch = "main"
+	srv := newFakeReleaseGitLab(t, st)
+	ctx, svc, repoID := setupRoutinesTest(t, srv.URL)
+	_, err := svc.CreateRelease(ctx, ReleaseInput{RepoID: repoID, MRIID: 7})
+	if err == nil || !strings.Contains(err.Error(), "not supported yet") {
+		t.Fatalf("CreateRelease(main target) = %v, want a dev-flow-only error", err)
+	}
+}
+
+func TestCreateReleaseRejectsBadInputs(t *testing.T) {
+	st := devReleaseState()
+	srv := newFakeReleaseGitLab(t, st)
+	ctx, svc, repoID := setupRoutinesTest(t, srv.URL)
+
+	if _, err := svc.CreateRelease(ctx, ReleaseInput{RepoID: repoID, MRIID: 0}); err == nil {
+		t.Error("MRIID=0: expected a validation error")
+	}
+	if _, err := svc.CreateRelease(ctx, ReleaseInput{RepoID: repoID, MRIID: 7, Bump: "nope"}); err == nil {
+		t.Error("bad bump: expected a validation error")
+	}
+	if _, err := svc.CreateRelease(ctx, ReleaseInput{RepoID: "nope", MRIID: 7}); !errors.Is(err, repo.ErrNotFound) {
+		t.Errorf("unknown repo = %v, want repo.ErrNotFound", err)
+	}
+	// First release succeeds; a second active one on the same MR is a duplicate.
+	if _, err := svc.CreateRelease(ctx, ReleaseInput{RepoID: repoID, MRIID: 7}); err != nil {
+		t.Fatalf("first CreateRelease: %v", err)
+	}
+	if _, err := svc.CreateRelease(ctx, ReleaseInput{RepoID: repoID, MRIID: 7}); !errors.Is(err, routine.ErrDuplicateRun) {
+		t.Errorf("duplicate CreateRelease = %v, want ErrDuplicateRun", err)
 	}
 }
 

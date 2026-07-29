@@ -57,6 +57,26 @@ func ClassifyCommit(message string) (isFeat, isFix bool) {
 	}
 }
 
+// HighestSemver returns the highest semver tag among existing, preserving its
+// original string form (so a "v" prefix or a "-suffix" survives), or "" when
+// none parse as MAJOR.MINOR.PATCH. It shares parseTag/higher with NextTag so the
+// selection matches how the approve_and_tag routine picks its base tag.
+func HighestSemver(existing []string) string {
+	var best parsedTag
+	bestRaw := ""
+	found := false
+	for _, tag := range existing {
+		pt, ok := parseTag(tag)
+		if !ok {
+			continue
+		}
+		if !found || pt.higher(best) {
+			best, bestRaw, found = pt, tag, true
+		}
+	}
+	return bestRaw
+}
+
 // NextRelease computes the next version from the last tag and the ordered list of
 // commit subjects (OLDEST first), applying the configured bump mode. It also
 // returns the TOTAL feat/fix counts across all commits (for display).

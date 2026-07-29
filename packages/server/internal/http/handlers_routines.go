@@ -51,6 +51,66 @@ func (s *Server) createApproveAndTagRoutine(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusCreated, toRun(run))
 }
 
+// createReleaseRoutine creates a release run for a repo's MR (dev flow only).
+func (s *Server) createReleaseRoutine(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		MRIID  int      `json:"mrIid"`
+		Bump   string   `json:"bump"`
+		Emojis []string `json:"emojis"`
+		// Optional merge options. When omitted (nil), the service applies its
+		// defaults: RemoveSourceBranch=false, MergeWhenPipelineSucceeds=true.
+		RemoveSourceBranch        *bool `json:"removeSourceBranch"`
+		MergeWhenPipelineSucceeds *bool `json:"mergeWhenPipelineSucceeds"`
+	}
+	if err := decode(r, &in); err != nil {
+		writeErr(w, err, http.StatusBadRequest)
+		return
+	}
+	run, err := s.routines.CreateRelease(r.Context(), routines.ReleaseInput{
+		RepoID:                    r.PathValue("id"),
+		MRIID:                     in.MRIID,
+		Bump:                      in.Bump,
+		Emojis:                    in.Emojis,
+		RemoveSourceBranch:        in.RemoveSourceBranch,
+		MergeWhenPipelineSucceeds: in.MergeWhenPipelineSucceeds,
+	})
+	if err != nil {
+		if errors.Is(err, routine.ErrDuplicateRun) {
+			writeErr(w, err, http.StatusConflict)
+			return
+		}
+		writeErr(w, err, http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, http.StatusCreated, toRun(run))
+}
+
+// confirmRoutine resolves a release run's confirmation gate. An invalid decision
+// → 400; a non-awaiting run → 409; an unknown run → 404 (and any unexpected error
+// → 500) via writeErr, mirroring resumeRoutine's routing.
+func (s *Server) confirmRoutine(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Decision string `json:"decision"`
+	}
+	if err := decode(r, &in); err != nil {
+		writeErr(w, err, http.StatusBadRequest)
+		return
+	}
+	run, err := s.routines.Confirm(r.Context(), r.PathValue("id"), in.Decision)
+	if err != nil {
+		switch {
+		case errors.Is(err, routine.ErrInvalidConfirmationDecision):
+			writeErr(w, err, http.StatusBadRequest)
+		case errors.Is(err, routine.ErrNotAwaitingConfirmation):
+			writeErr(w, err, http.StatusConflict)
+		default:
+			writeErr(w, err, http.StatusInternalServerError)
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, toRun(run))
+}
+
 // getRoutine returns a single routine run. Unknown run → 404.
 func (s *Server) getRoutine(w http.ResponseWriter, r *http.Request) {
 	run, err := s.routines.Get(r.Context(), r.PathValue("id"))

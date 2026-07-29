@@ -199,6 +199,37 @@ func TestRoutineRunClaimOldestFirst(t *testing.T) {
 	}
 }
 
+// An awaiting_confirmation run is paused on the interactive gate, not queued and
+// not running: ClaimPending must not take it and RequeueRunning must not touch
+// it. Only pending runs are claimable and only running runs are requeued.
+func TestRoutineRunAwaitingConfirmationNotClaimedOrRequeued(t *testing.T) {
+	ctx := context.Background()
+	s, repoID := newRoutineRunStore(t)
+
+	run := newRun(repoID)
+	run.Status = routine.RunAwaitingConfirmation
+	if err := s.Create(ctx, run); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	// ClaimPending only claims 'pending' runs, so it must find nothing.
+	if _, ok, err := s.ClaimPending(ctx); err != nil || ok {
+		t.Fatalf("ClaimPending: ok=%v err=%v, want ok=false (awaiting must not be claimed)", ok, err)
+	}
+	// RequeueRunning only resets 'running' runs, so the awaiting run is untouched.
+	if err := s.RequeueRunning(ctx); err != nil {
+		t.Fatalf("RequeueRunning: %v", err)
+	}
+
+	got, err := s.Get(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Status != routine.RunAwaitingConfirmation {
+		t.Fatalf("status = %q, want awaiting_confirmation (untouched)", got.Status)
+	}
+}
+
 func TestRoutineRunRequeueRunning(t *testing.T) {
 	ctx := context.Background()
 	s, repoID := newRoutineRunStore(t)

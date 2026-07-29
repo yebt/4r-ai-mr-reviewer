@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/webcloster-dev/ai-reviewer/internal/adapters/crypto"
 	"github.com/webcloster-dev/ai-reviewer/internal/adapters/sqlite"
@@ -54,7 +55,7 @@ func newTestServerWithSecret(t *testing.T, webhookSecret string) *httptest.Serve
 	repoSvc := apprepos.NewService(sqlite.NewRepoStore(db), sqlite.NewAccountRepo(db), sqlite.NewProviderRepo(db))
 	set, _ := skills.Load("")
 	reviewSvc := reviews.NewService(sqlite.NewReviewStore(db), sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.New(set), 0)
-	routinesSvc := routines.NewService(sqlite.NewRepoStore(db), accountSvc, sqlite.NewRoutineRunStore(db), log.New(io.Discard, "", 0))
+	routinesSvc := routines.NewService(sqlite.NewRepoStore(db), accountSvc, sqlite.NewRoutineRunStore(db), 10*time.Minute, nil, log.New(io.Discard, "", 0))
 	humanizeSvc := apphumanize.NewService(sqlite.NewReviewStore(db), sqlite.NewProfileStore(db), sqlite.NewHumanizationStore(db), providerSvc, log.New(io.Discard, "", 0))
 	telegramSvc := apptelegram.NewService(sqlite.NewTelegramStore(db), secrets)
 	notificationsSvc := notifications.NewService(sqlite.NewNotificationRuleStore(db), telegramSvc)

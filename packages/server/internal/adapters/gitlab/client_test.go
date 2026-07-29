@@ -116,6 +116,33 @@ func TestCompareRefs(t *testing.T) {
 	}
 }
 
+func TestMergeRequestCommits(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/merge_requests/7/commits") {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `[{"id":"c1","title":"feat: newest","message":"feat: newest"},{"id":"c2","title":"fix: older","message":"fix: older"}]`)
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "tok")
+	commits, err := c.MergeRequestCommits(context.Background(), "group/project", 7)
+	if err != nil {
+		t.Fatalf("MergeRequestCommits: %v", err)
+	}
+	if len(commits) != 2 {
+		t.Fatalf("len = %d, want 2", len(commits))
+	}
+	if commits[0].ID != "c1" || commits[0].Title != "feat: newest" {
+		t.Fatalf("commit[0] = %+v", commits[0])
+	}
+	if commits[1].Title != "fix: older" {
+		t.Fatalf("commit[1] = %+v", commits[1])
+	}
+}
+
 func TestMergeRequestMergeStatusFields(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
