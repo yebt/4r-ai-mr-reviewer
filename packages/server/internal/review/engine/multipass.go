@@ -31,7 +31,8 @@ type passSpec struct {
 }
 
 // Run executes one focused call per dimension, in order.
-func (m *MultiPass) Run(ctx context.Context, client llm.Client, model string, temperature *float64, in Input, onPhase func(phase string)) (review.Review, error) {
+func (m *MultiPass) Run(ctx context.Context, client llm.Client, rp RunParams) (review.Review, error) {
+	in := rp.In
 	if in.Diff == "" {
 		return review.Review{}, fmt.Errorf("engine: empty diff")
 	}
@@ -54,16 +55,18 @@ func (m *MultiPass) Run(ctx context.Context, client llm.Client, model string, te
 		if err := ctx.Err(); err != nil {
 			return review.Review{}, err
 		}
-		reportPhase(onPhase, p.phase)
+		reportPhase(rp.OnPhase, p.phase)
 
 		resp, err := client.Complete(ctx, llm.Request{
-			Model:       model,
-			Messages:    buildDimensionMessages(p.dim, p.skill, in),
-			Temperature: temperature,
+			Model:          rp.Model,
+			Messages:       buildDimensionMessages(p.dim, p.skill, in),
+			Temperature:    rp.Temperature,
+			ThinkingBudget: rp.ThinkingBudget,
 		})
 		if err != nil {
 			return review.Review{}, err
 		}
+		reportReasoning(rp.OnReasoning, p.phase, resp.Reasoning)
 		inputTokens += resp.InputTokens
 		outputTokens += resp.OutputTokens
 

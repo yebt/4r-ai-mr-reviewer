@@ -87,6 +87,14 @@ type Finding struct {
 	Published bool
 }
 
+// Reasoning is the model's captured chain-of-thought for one 4R phase of a
+// review, surfaced live as each phase completes.
+type Reasoning struct {
+	Phase     string
+	Content   string
+	UpdatedAt time.Time
+}
+
 // Review is a completed (or in-flight) review of one merge request.
 type Review struct {
 	ID          string
@@ -111,13 +119,16 @@ type Review struct {
 	SummaryPublished bool
 	Summary          string
 	Findings         []Finding
-	Recommendation   Recommendation
-	Score            int
-	Error            string
-	InputTokens      int
-	OutputTokens     int
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	// Reasonings holds the model's captured chain-of-thought per 4R phase, in
+	// stored order. Empty when no reasoning was captured.
+	Reasonings     []Reasoning
+	Recommendation Recommendation
+	Score          int
+	Error          string
+	InputTokens    int
+	OutputTokens   int
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 // Score weights per finding, subtracted from a perfect 100.

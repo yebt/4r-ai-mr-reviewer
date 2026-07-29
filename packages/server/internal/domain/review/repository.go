@@ -26,6 +26,9 @@ type Repository interface {
 	SetStatus(ctx context.Context, id string, status Status, errMsg string) error
 	// SetPhase updates only the progress phase (called frequently while running).
 	SetPhase(ctx context.Context, id string, phase string) error
+	// SetReasoning upserts the captured chain-of-thought for one phase of a
+	// review. Called live during a run as each phase's reasoning arrives.
+	SetReasoning(ctx context.Context, reviewID, phase, content string) error
 	// SetArchived updates only the archived flag. Returns ErrNotFound if the
 	// review does not exist.
 	SetArchived(ctx context.Context, id string, archived bool) error

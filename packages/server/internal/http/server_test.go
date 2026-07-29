@@ -53,7 +53,7 @@ func newTestServerWithSecret(t *testing.T, webhookSecret string) *httptest.Serve
 	profileSvc := profiles.NewService(sqlite.NewProfileStore(db), providerSvc, log.New(io.Discard, "", 0))
 	repoSvc := apprepos.NewService(sqlite.NewRepoStore(db), sqlite.NewAccountRepo(db), sqlite.NewProviderRepo(db))
 	set, _ := skills.Load("")
-	reviewSvc := reviews.NewService(sqlite.NewReviewStore(db), sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.New(set))
+	reviewSvc := reviews.NewService(sqlite.NewReviewStore(db), sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.New(set), 0)
 	routinesSvc := routines.NewService(sqlite.NewRepoStore(db), accountSvc, sqlite.NewRoutineRunStore(db), log.New(io.Discard, "", 0))
 	humanizeSvc := apphumanize.NewService(sqlite.NewReviewStore(db), sqlite.NewProfileStore(db), sqlite.NewHumanizationStore(db), providerSvc, log.New(io.Discard, "", 0))
 	telegramSvc := apptelegram.NewService(sqlite.NewTelegramStore(db), secrets)
@@ -159,6 +159,62 @@ func TestCreateReviewOverHTTP(t *testing.T) {
 	decodeBody(t, listResp, &reviewsList)
 	if len(reviewsList) != 1 {
 		t.Fatalf("repo reviews len = %d, want 1", len(reviewsList))
+	}
+}
+
+// TestGetReviewReasoningsField pins the wire contract for the reasonings DTO
+// field: GET /reviews/{id} must expose it, shaped [{phase, content}], and it
+// must be an empty array (never null) when no reasoning was captured.
+func TestGetReviewReasoningsField(t *testing.T) {
+	srv := newTestServer(t)
+
+	acctResp := postJSON(t, srv.URL+"/accounts", map[string]any{"name": "a", "baseUrl": "https://gitlab.com", "token": "t"})
+	var acct struct{ ID string }
+	decodeBody(t, acctResp, &acct)
+
+	provResp := postJSON(t, srv.URL+"/providers", map[string]any{"name": "p", "kind": "openai-compat", "model": "m", "apiKey": "k"})
+	var prov struct{ ID string }
+	decodeBody(t, provResp, &prov)
+
+	repoResp := postJSON(t, srv.URL+"/repos", map[string]any{"name": "web", "url": "https://gitlab.com/g/p", "accountId": acct.ID, "providerId": prov.ID})
+	var repoObj struct{ ID string }
+	decodeBody(t, repoResp, &repoObj)
+
+	revResp := postJSON(t, srv.URL+"/reviews", map[string]any{"repoId": repoObj.ID, "mrIid": 7, "mode": "fast"})
+	var rev struct {
+		ID string `json:"id"`
+	}
+	decodeBody(t, revResp, &rev)
+
+	getResp, err := http.Get(srv.URL + "/reviews/" + rev.ID)
+	if err != nil {
+		t.Fatalf("GET /reviews/{id}: %v", err)
+	}
+	if getResp.StatusCode != http.StatusOK {
+		t.Fatalf("get review status = %d, want 200", getResp.StatusCode)
+	}
+
+	// Inspect the raw JSON so null and [] are distinguishable.
+	var raw map[string]json.RawMessage
+	decodeBody(t, getResp, &raw)
+	rawReasonings, ok := raw["reasonings"]
+	if !ok {
+		t.Fatal("review response is missing the reasonings field")
+	}
+	if string(rawReasonings) != "[]" {
+		t.Fatalf("reasonings = %s, want [] (empty array, not null) when none captured", rawReasonings)
+	}
+
+	// It must decode into the documented [{phase, content}] shape.
+	var reasonings []struct {
+		Phase   string `json:"phase"`
+		Content string `json:"content"`
+	}
+	if err := json.Unmarshal(rawReasonings, &reasonings); err != nil {
+		t.Fatalf("reasonings not shaped [{phase, content}]: %v", err)
+	}
+	if len(reasonings) != 0 {
+		t.Fatalf("reasonings len = %d, want 0", len(reasonings))
 	}
 }
 

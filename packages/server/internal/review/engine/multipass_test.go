@@ -10,14 +10,18 @@ import (
 	"github.com/webcloster-dev/ai-reviewer/internal/review/skills"
 )
 
-// seqClient returns a queued response per call.
+// seqClient returns a queued response per call, optionally attaching reasoning
+// and recording the thinking budget it was asked for.
 type seqClient struct {
-	responses []string
-	i         int
-	err       error
+	responses  []string
+	reasoning  string
+	i          int
+	err        error
+	gotBudgets []int
 }
 
-func (c *seqClient) Complete(_ context.Context, _ llm.Request) (llm.Response, error) {
+func (c *seqClient) Complete(_ context.Context, req llm.Request) (llm.Response, error) {
+	c.gotBudgets = append(c.gotBudgets, req.ThinkingBudget)
 	if c.err != nil {
 		return llm.Response{}, c.err
 	}
@@ -26,7 +30,7 @@ func (c *seqClient) Complete(_ context.Context, _ llm.Request) (llm.Response, er
 		content = c.responses[c.i]
 	}
 	c.i++
-	return llm.Response{Content: content, InputTokens: 10, OutputTokens: 5}, nil
+	return llm.Response{Content: content, InputTokens: 10, OutputTokens: 5, Reasoning: c.reasoning}, nil
 }
 
 func newMultiPass(t *testing.T) *MultiPass {
@@ -48,8 +52,10 @@ func TestMultiPassRunsEachDimension(t *testing.T) {
 	}}
 
 	var phases []string
-	rv, err := mp.Run(context.Background(), client, "m", nil, sampleInput(), func(p string) {
-		phases = append(phases, p)
+	rv, err := mp.Run(context.Background(), client, RunParams{
+		Model:   "m",
+		In:      sampleInput(),
+		OnPhase: func(p string) { phases = append(phases, p) },
 	})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -78,7 +84,7 @@ func TestMultiPassRunsEachDimension(t *testing.T) {
 func TestMultiPassPropagatesError(t *testing.T) {
 	mp := newMultiPass(t)
 	client := &seqClient{err: errors.New("rate limited")}
-	if _, err := mp.Run(context.Background(), client, "m", nil, sampleInput(), nil); err == nil {
+	if _, err := mp.Run(context.Background(), client, RunParams{Model: "m", In: sampleInput()}); err == nil {
 		t.Fatal("expected client error to propagate")
 	}
 }
@@ -87,8 +93,66 @@ func TestMultiPassEmptyDiff(t *testing.T) {
 	mp := newMultiPass(t)
 	in := sampleInput()
 	in.Diff = ""
-	if _, err := mp.Run(context.Background(), &seqClient{}, "m", nil, in, nil); err == nil {
+	if _, err := mp.Run(context.Background(), &seqClient{}, RunParams{Model: "m", In: in}); err == nil {
 		t.Fatal("expected empty-diff error")
+	}
+}
+
+func TestMultiPassCapturesReasoning(t *testing.T) {
+	mp := newMultiPass(t)
+	client := &seqClient{reasoning: "because X"}
+
+	type rc struct {
+		phase, text string
+	}
+	var got []rc
+	_, err := mp.Run(context.Background(), client, RunParams{
+		Model:          "m",
+		ThinkingBudget: 2048,
+		In:             sampleInput(),
+		OnReasoning:    func(phase, text string) { got = append(got, rc{phase, text}) },
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	// One reasoning callback per 4R lens, in order.
+	want := []rc{
+		{"risk", "because X"},
+		{"readability", "because X"},
+		{"reliability", "because X"},
+		{"resilience", "because X"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("reasoning callbacks = %d, want %d: %+v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("reasoning[%d] = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+	// The thinking budget must be threaded into every request.
+	for i, b := range client.gotBudgets {
+		if b != 2048 {
+			t.Fatalf("request[%d] budget = %d, want 2048", i, b)
+		}
+	}
+}
+
+func TestMultiPassSkipsEmptyReasoning(t *testing.T) {
+	mp := newMultiPass(t)
+	client := &seqClient{} // no reasoning returned
+
+	called := false
+	if _, err := mp.Run(context.Background(), client, RunParams{
+		Model:       "m",
+		In:          sampleInput(),
+		OnReasoning: func(string, string) { called = true },
+	}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if called {
+		t.Fatal("OnReasoning must not be called when reasoning is empty")
 	}
 }
 
@@ -107,9 +171,54 @@ func TestMultiPassCancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel before Run so the first pass check trips.
 
-	_, err := mp.Run(ctx, &failClient{t: t}, "m", nil, sampleInput(), nil)
+	_, err := mp.Run(ctx, &failClient{t: t}, RunParams{Model: "m", In: sampleInput()})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+}
+
+// cancelAfterClient returns a canned response and fires cancel once it has been
+// called `after` times, simulating an adapter that ignores ctx: the run's
+// per-pass cooperative check must then trip on the next pass.
+type cancelAfterClient struct {
+	cancel    context.CancelFunc
+	after     int
+	calls     int
+	reasoning string
+}
+
+func (c *cancelAfterClient) Complete(_ context.Context, _ llm.Request) (llm.Response, error) {
+	c.calls++
+	resp := llm.Response{Content: `{"findings":[]}`, InputTokens: 1, OutputTokens: 1, Reasoning: c.reasoning}
+	if c.calls == c.after {
+		c.cancel()
+	}
+	return resp, nil
+}
+
+// TestMultiPassCancelBetweenPasses cancels the context after the first pass
+// completes (not before the first): the reasoning captured for that completed
+// phase must already have been reported, and the run must then abort cleanly
+// with a context error before any later pass runs.
+func TestMultiPassCancelBetweenPasses(t *testing.T) {
+	mp := newMultiPass(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	client := &cancelAfterClient{cancel: cancel, after: 1, reasoning: "because X"}
+
+	var captured []string
+	_, err := mp.Run(ctx, client, RunParams{
+		Model:          "m",
+		ThinkingBudget: 2048,
+		In:             sampleInput(),
+		OnReasoning:    func(phase, _ string) { captured = append(captured, phase) },
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+	// Only the first (risk) pass completed before cancellation, so exactly its
+	// reasoning was reported; later passes never ran.
+	if len(captured) != 1 || captured[0] != "risk" {
+		t.Fatalf("captured reasoning phases = %v, want [risk]", captured)
 	}
 }
 

@@ -7,6 +7,11 @@ import (
 	"strconv"
 )
 
+// maxReasoningBudget caps AIR_REASONING_BUDGET defensively (mirroring the ai
+// package's retryAfterCap / maxResponseBytes bounds), so a mistyped value cannot
+// request an unbounded thinking budget.
+const maxReasoningBudget = 32768
+
 // Config holds process-wide runtime settings.
 type Config struct {
 	// DBPath is the SQLite database file path.
@@ -22,6 +27,10 @@ type Config struct {
 	// ReviewConcurrency is how many reviews run at once. Bounds LLM concurrency
 	// and resource use; keep it modest.
 	ReviewConcurrency int
+	// ReasoningBudget controls reasoning capture per 4R phase. 0 disables reasoning
+	// capture; a positive value is the Anthropic thinking-token budget and also
+	// enables capture of reasoning fields returned by OpenAI-compatible providers.
+	ReasoningBudget int
 	// TelegramWebhookSecret gates the interactive Telegram webhook receiver.
 	// Empty keeps the receiver dormant (it returns 200 without processing).
 	TelegramWebhookSecret string
@@ -40,6 +49,7 @@ func Load() Config {
 		SkillsDir:             os.Getenv("AIR_SKILLS_DIR"),
 		Password:              os.Getenv("AIR_PASSWORD"),
 		ReviewConcurrency:     envInt("AIR_REVIEW_CONCURRENCY", 2),
+		ReasoningBudget:       clampReasoningBudget(envInt("AIR_REASONING_BUDGET", 0)),
 		TelegramWebhookSecret: os.Getenv("AIR_TELEGRAM_WEBHOOK_SECRET"),
 	}
 }
@@ -49,6 +59,15 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// clampReasoningBudget caps a positive budget at maxReasoningBudget. 0 (disabled)
+// and any already-in-range value pass through unchanged.
+func clampReasoningBudget(v int) int {
+	if v > maxReasoningBudget {
+		return maxReasoningBudget
+	}
+	return v
 }
 
 func envInt(key string, fallback int) int {

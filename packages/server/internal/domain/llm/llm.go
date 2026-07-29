@@ -28,6 +28,10 @@ type Request struct {
 	Messages    []Message
 	Temperature *float64
 	MaxTokens   int
+	// ThinkingBudget requests the model expose its reasoning / chain-of-thought,
+	// budgeting up to this many tokens for it. 0 disables reasoning capture.
+	// Adapters that cannot surface reasoning ignore it.
+	ThinkingBudget int
 }
 
 // Response is the model's reply plus token accounting.
@@ -36,6 +40,9 @@ type Response struct {
 	InputTokens  int
 	OutputTokens int
 	Model        string
+	// Reasoning is the model's exposed chain-of-thought for this call, when the
+	// provider returned any and ThinkingBudget was set. Empty otherwise.
+	Reasoning string
 }
 
 // Client sends a completion request to an AI provider.

@@ -51,6 +51,10 @@ type openaiResponse struct {
 	Choices []struct {
 		Message struct {
 			Content string `json:"content"`
+			// Some OpenAI-compatible providers expose the model's reasoning as a
+			// sibling of content, under one of these two keys.
+			ReasoningContent string `json:"reasoning_content"`
+			Reasoning        string `json:"reasoning"`
 		} `json:"message"`
 	} `json:"choices"`
 	Usage struct {
@@ -79,10 +83,22 @@ func (c *OpenAIClient) Complete(ctx context.Context, req llm.Request) (llm.Respo
 	if len(out.Choices) == 0 {
 		return llm.Response{}, fmt.Errorf("ai: openai-compat returned no choices")
 	}
+	msg := out.Choices[0].Message
 	return llm.Response{
-		Content:      out.Choices[0].Message.Content,
+		Content:      msg.Content,
 		InputTokens:  out.Usage.PromptTokens,
 		OutputTokens: out.Usage.CompletionTokens,
 		Model:        out.Model,
+		Reasoning:    firstNonEmpty(msg.ReasoningContent, msg.Reasoning),
 	}, nil
+}
+
+// firstNonEmpty returns the first non-empty string, or "" if all are empty.
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }

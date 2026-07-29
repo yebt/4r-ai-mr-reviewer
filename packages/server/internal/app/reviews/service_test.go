@@ -62,6 +62,101 @@ func aiStub(t *testing.T, reviewJSON string) *httptest.Server {
 	}))
 }
 
+// aiStubWithReasoning serves a canned OpenAI-compatible completion that also
+// carries a reasoning field, so a test can observe whether the service persists
+// it depending on the reasoning budget.
+func aiStubWithReasoning(t *testing.T, reviewJSON, reasoning string) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/chat/completions") {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"model":   "m",
+			"choices": []map[string]any{{"message": map[string]any{"content": reviewJSON, "reasoning": reasoning}}},
+			"usage":   map[string]any{"prompt_tokens": 50, "completion_tokens": 20},
+		})
+	}))
+}
+
+// runReviewWithBudget drives one multi-pass review to completion with the given
+// reasoning budget against a provider that always returns "because X" reasoning,
+// and returns the persisted review.
+func runReviewWithBudget(t *testing.T, budget int) review.Review {
+	t.Helper()
+	ctx := context.Background()
+
+	gl := gitlabStub(t)
+	t.Cleanup(gl.Close)
+	aiSrv := aiStubWithReasoning(t, `{"findings":[]}`, "because X")
+	t.Cleanup(aiSrv.Close)
+
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+
+	salt, _ := crypto.NewSalt()
+	key, _ := crypto.DeriveKey("pw", salt)
+	cipher, _ := crypto.NewCipher(key)
+	secrets := sqlite.NewSecretStore(db, cipher)
+	accountSvc := accounts.NewService(sqlite.NewAccountRepo(db), secrets)
+	providerSvc := providers.NewService(sqlite.NewProviderRepo(db), secrets)
+	repoSvc := appRepos.NewService(sqlite.NewRepoStore(db), sqlite.NewAccountRepo(db), sqlite.NewProviderRepo(db))
+	reviewStore := sqlite.NewReviewStore(db)
+
+	acc, _ := accountSvc.Add(ctx, "acc", gl.URL, "token")
+	prov, _ := providerSvc.Add(ctx, providers.AddInput{Name: "p", Kind: provider.KindOpenAICompat, BaseURL: aiSrv.URL, Model: "m", APIKey: "k"})
+	rp, _ := repoSvc.Add(ctx, appRepos.AddInput{Name: "web", URL: "https://gitlab.test/group/project", AccountID: acc.ID, ProviderID: prov.ID})
+
+	set, _ := skills.Load("")
+	svc := NewService(reviewStore, sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.NewMultiPass(set), budget)
+	runner := jobs.NewRunner(sqlite.NewJobStore(db), svc.Handle, jobs.WithLogger(log.New(io.Discard, "", 0)))
+	svc.AttachRunner(runner)
+
+	rv, err := svc.Create(ctx, rp.ID, 7, review.ModeFast, "", "")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	runner.Drain(ctx)
+
+	got, err := reviewStore.Get(ctx, rv.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Status != review.StatusDone {
+		t.Fatalf("status = %s (err=%q), want done", got.Status, got.Error)
+	}
+	return got
+}
+
+// TestReasoningBudgetGatesCapture asserts AIR_REASONING_BUDGET=0 fully disables
+// reasoning persistence even when the provider returns reasoning fields, while a
+// positive budget captures and persists reasoning per 4R phase.
+func TestReasoningBudgetGatesCapture(t *testing.T) {
+	t.Run("disabled with budget 0", func(t *testing.T) {
+		got := runReviewWithBudget(t, 0)
+		if len(got.Reasonings) != 0 {
+			t.Fatalf("reasonings = %d, want 0 when the budget disables capture", len(got.Reasonings))
+		}
+	})
+
+	t.Run("captured per phase with budget > 0", func(t *testing.T) {
+		got := runReviewWithBudget(t, 2048)
+		// One reasoning row per 4R lens.
+		if len(got.Reasonings) != 4 {
+			t.Fatalf("reasonings = %d, want 4 (one per 4R phase)", len(got.Reasonings))
+		}
+		for _, r := range got.Reasonings {
+			if r.Content != "because X" {
+				t.Fatalf("reasoning content = %q, want %q", r.Content, "because X")
+			}
+		}
+	})
+}
+
 func TestReviewEndToEnd(t *testing.T) {
 	ctx := context.Background()
 
@@ -105,7 +200,7 @@ func TestReviewEndToEnd(t *testing.T) {
 	}
 
 	set, _ := skills.Load("")
-	svc := NewService(reviewStore, sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.New(set))
+	svc := NewService(reviewStore, sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.New(set), 0)
 	runner := jobs.NewRunner(sqlite.NewJobStore(db), svc.Handle, jobs.WithLogger(log.New(io.Discard, "", 0)))
 	svc.AttachRunner(runner)
 
@@ -166,7 +261,7 @@ func TestCancelPendingBeforeRun(t *testing.T) {
 	rp, _ := repoSvc.Add(ctx, appRepos.AddInput{Name: "web", URL: "https://gitlab.test/group/project", AccountID: acc.ID, ProviderID: prov.ID})
 
 	set, _ := skills.Load("")
-	svc := NewService(reviewStore, sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.NewMultiPass(set))
+	svc := NewService(reviewStore, sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.NewMultiPass(set), 0)
 	runner := jobs.NewRunner(sqlite.NewJobStore(db), svc.Handle, jobs.WithLogger(log.New(io.Discard, "", 0)))
 	svc.AttachRunner(runner)
 
@@ -224,7 +319,7 @@ func TestCancelTerminalRejected(t *testing.T) {
 	rp, _ := repoSvc.Add(ctx, appRepos.AddInput{Name: "web", URL: "https://gitlab.test/group/project", AccountID: acc.ID, ProviderID: prov.ID})
 
 	set, _ := skills.Load("")
-	svc := NewService(reviewStore, sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.NewMultiPass(set))
+	svc := NewService(reviewStore, sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.NewMultiPass(set), 0)
 	runner := jobs.NewRunner(sqlite.NewJobStore(db), svc.Handle, jobs.WithLogger(log.New(io.Discard, "", 0)))
 	svc.AttachRunner(runner)
 
@@ -263,7 +358,7 @@ func TestArchiveRunningRejected(t *testing.T) {
 	repoSvc := appRepos.NewService(sqlite.NewRepoStore(db), sqlite.NewAccountRepo(db), sqlite.NewProviderRepo(db))
 	reviewStore := sqlite.NewReviewStore(db)
 	set, _ := skills.Load("")
-	svc := NewService(reviewStore, sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.NewMultiPass(set))
+	svc := NewService(reviewStore, sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.NewMultiPass(set), 0)
 
 	acc, _ := accountSvc.Add(ctx, "acc", "https://gitlab.test", "token")
 	prov, _ := providerSvc.Add(ctx, providers.AddInput{Name: "p", Kind: provider.KindOpenAICompat, BaseURL: "https://ai.test", Model: "m", APIKey: "k"})
@@ -364,7 +459,7 @@ func TestReviewModelOverride(t *testing.T) {
 	rp, _ := repoSvc.Add(ctx, appRepos.AddInput{Name: "web", URL: "https://gitlab.test/group/project", AccountID: acc.ID, ProviderID: prov.ID})
 
 	set, _ := skills.Load("")
-	svc := NewService(reviewStore, sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.New(set))
+	svc := NewService(reviewStore, sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.New(set), 0)
 	runner := jobs.NewRunner(sqlite.NewJobStore(db), svc.Handle, jobs.WithLogger(log.New(io.Discard, "", 0)))
 	svc.AttachRunner(runner)
 
@@ -412,7 +507,7 @@ func TestRetryPreservesModelOverride(t *testing.T) {
 	rp, _ := repoSvc.Add(ctx, appRepos.AddInput{Name: "web", URL: "https://gitlab.test/group/project", AccountID: acc.ID, ProviderID: prov.ID})
 
 	set, _ := skills.Load("")
-	svc := NewService(reviewStore, sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.New(set))
+	svc := NewService(reviewStore, sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.New(set), 0)
 	runner := jobs.NewRunner(sqlite.NewJobStore(db), svc.Handle, jobs.WithLogger(log.New(io.Discard, "", 0)))
 	svc.AttachRunner(runner)
 
@@ -562,7 +657,7 @@ func TestHandleDoneFiresNotification(t *testing.T) {
 	rp, _ := repoSvc.Add(ctx, appRepos.AddInput{Name: "web", URL: "https://gitlab.test/group/project", AccountID: acc.ID, ProviderID: prov.ID})
 
 	set, _ := skills.Load("")
-	svc := NewService(reviewStore, sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.New(set))
+	svc := NewService(reviewStore, sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.New(set), 0)
 	runner := jobs.NewRunner(sqlite.NewJobStore(db), svc.Handle, jobs.WithLogger(log.New(io.Discard, "", 0)))
 	svc.AttachRunner(runner)
 	fake := newFakeNotifier()
@@ -625,7 +720,7 @@ func TestRetryClonesReview(t *testing.T) {
 	rp, _ := repoSvc.Add(ctx, appRepos.AddInput{Name: "web", URL: "https://gitlab.test/group/project", AccountID: acc.ID, ProviderID: prov.ID})
 
 	set, _ := skills.Load("")
-	svc := NewService(reviewStore, sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.New(set))
+	svc := NewService(reviewStore, sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.New(set), 0)
 	runner := jobs.NewRunner(sqlite.NewJobStore(db), svc.Handle, jobs.WithLogger(log.New(io.Discard, "", 0)))
 	svc.AttachRunner(runner)
 

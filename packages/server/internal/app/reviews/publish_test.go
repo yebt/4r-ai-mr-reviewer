@@ -127,7 +127,7 @@ func TestPublishSelectedFindings(t *testing.T) {
 	rp, _ := repoSvc.Add(ctx, appRepos.AddInput{Name: "web", URL: "https://gitlab.test/group/project", AccountID: acc.ID, ProviderID: prov.ID})
 
 	set, _ := skills.Load("")
-	svc := NewService(reviewStore, sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.New(set))
+	svc := NewService(reviewStore, sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.New(set), 0)
 	runner := jobs.NewRunner(sqlite.NewJobStore(db), svc.Handle, jobs.WithLogger(log.New(io.Discard, "", 0)))
 	svc.AttachRunner(runner)
 
@@ -200,7 +200,7 @@ func setupPublishTestJSON(t *testing.T, reviewJSON string) (context.Context, *Se
 	rp, _ := repoSvc.Add(ctx, appRepos.AddInput{Name: "web", URL: "https://gitlab.test/group/project", AccountID: acc.ID, ProviderID: prov.ID})
 
 	set, _ := skills.Load("")
-	svc := NewService(reviewStore, sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.New(set))
+	svc := NewService(reviewStore, sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.New(set), 0)
 	runner := jobs.NewRunner(sqlite.NewJobStore(db), svc.Handle, jobs.WithLogger(log.New(io.Discard, "", 0)))
 	svc.AttachRunner(runner)
 
@@ -492,7 +492,7 @@ func TestPublishRejectsUnfinishedReview(t *testing.T) {
 	}
 
 	set, _ := skills.Load("")
-	svc := NewService(reviewStore, sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.New(set))
+	svc := NewService(reviewStore, sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.New(set), 0)
 	if err := svc.Publish(ctx, "rv1", Selection{All: true}); err == nil {
 		t.Fatal("expected error publishing a non-done review")
 	}

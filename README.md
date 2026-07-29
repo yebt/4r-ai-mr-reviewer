@@ -106,6 +106,7 @@ backend, so no CORS setup is needed.
 | `AIR_KEYFILE_PATH` | `<db>.key` | Master key file (key-file mode) |
 | `AIR_SKILLS_DIR` | _(empty)_ | Override dir for the 4R rule files |
 | `AIR_REVIEW_CONCURRENCY` | `2` | Max reviews running in parallel (min 1) |
+| `AIR_REASONING_BUDGET` | `0` | Reasoning capture per 4R phase: `0` = off; a positive value is the Anthropic thinking-token budget and also enables capture of reasoning returned by OpenAI-compatible providers (clamped to 32768) |
 
 ## Make targets
 

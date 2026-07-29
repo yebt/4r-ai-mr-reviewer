@@ -155,6 +155,67 @@ func TestReviewSetPhase(t *testing.T) {
 	}
 }
 
+func TestReviewSetReasoningUpsert(t *testing.T) {
+	ctx := context.Background()
+	s, repoID := newReviewStore(t)
+	rv := review.Review{ID: id.New(), RepoID: repoID, MRIID: 1, Status: review.StatusRunning}
+	if err := s.Create(ctx, rv); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	if err := s.SetReasoning(ctx, rv.ID, "risk", "first thoughts"); err != nil {
+		t.Fatalf("SetReasoning insert: %v", err)
+	}
+	if err := s.SetReasoning(ctx, rv.ID, "risk", "revised thoughts"); err != nil {
+		t.Fatalf("SetReasoning update: %v", err)
+	}
+	if err := s.SetReasoning(ctx, rv.ID, "readability", "naming notes"); err != nil {
+		t.Fatalf("SetReasoning second phase: %v", err)
+	}
+
+	got, err := s.Get(ctx, rv.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	// Upsert: one row per phase; the re-run replaces content, so two phases total.
+	if len(got.Reasonings) != 2 {
+		t.Fatalf("reasonings = %d, want 2: %+v", len(got.Reasonings), got.Reasonings)
+	}
+	byPhase := map[string]string{}
+	for _, r := range got.Reasonings {
+		byPhase[r.Phase] = r.Content
+	}
+	if byPhase["risk"] != "revised thoughts" {
+		t.Fatalf("risk reasoning = %q, want revised thoughts", byPhase["risk"])
+	}
+	if byPhase["readability"] != "naming notes" {
+		t.Fatalf("readability reasoning = %q, want naming notes", byPhase["readability"])
+	}
+}
+
+func TestReviewDeleteCascadesReasonings(t *testing.T) {
+	ctx := context.Background()
+	s, repoID := newReviewStore(t)
+	rv := review.Review{ID: id.New(), RepoID: repoID, MRIID: 1, Status: review.StatusDone}
+	if err := s.Create(ctx, rv); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := s.SetReasoning(ctx, rv.ID, "risk", "thoughts"); err != nil {
+		t.Fatalf("SetReasoning: %v", err)
+	}
+
+	if err := s.Delete(ctx, rv.ID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	var n int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM review_reasonings WHERE review_id = ?`, rv.ID).Scan(&n); err != nil {
+		t.Fatalf("count reasonings: %v", err)
+	}
+	if n != 0 {
+		t.Fatalf("reasonings after delete = %d, want 0", n)
+	}
+}
+
 func TestReviewSetArchived(t *testing.T) {
 	ctx := context.Background()
 	s, repoID := newReviewStore(t)

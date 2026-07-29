@@ -111,7 +111,33 @@ func (r *ReviewStore) Get(ctx context.Context, id string) (review.Review, error)
 		f.Published = published != 0
 		rv.Findings = append(rv.Findings, f)
 	}
-	return rv, rows.Err()
+	if err := rows.Err(); err != nil {
+		return review.Review{}, err
+	}
+
+	rrows, err := r.db.QueryContext(ctx, `
+		SELECT phase, content, updated_at
+		FROM review_reasonings WHERE review_id = ? ORDER BY updated_at`, id)
+	if err != nil {
+		return review.Review{}, fmt.Errorf("review store: get reasonings: %w", err)
+	}
+	defer rrows.Close()
+	for rrows.Next() {
+		var (
+			rs      review.Reasoning
+			updated string
+		)
+		if err := rrows.Scan(&rs.Phase, &rs.Content, &updated); err != nil {
+			return review.Review{}, fmt.Errorf("review store: scan reasoning: %w", err)
+		}
+		ut, err := parseTime(updated)
+		if err != nil {
+			return review.Review{}, err
+		}
+		rs.UpdatedAt = ut
+		rv.Reasonings = append(rv.Reasonings, rs)
+	}
+	return rv, rrows.Err()
 }
 
 // ListByRepo returns a repo's active (non-archived) reviews without findings,
@@ -190,6 +216,21 @@ func (r *ReviewStore) SetPhase(ctx context.Context, id string, phase string) err
 	return nil
 }
 
+// SetReasoning upserts the captured chain-of-thought for one phase, keyed by
+// (review_id, phase), so a phase's reasoning can be written live and replaced if
+// the phase is re-run.
+func (r *ReviewStore) SetReasoning(ctx context.Context, reviewID, phase, content string) error {
+	if _, err := r.db.ExecContext(ctx, `
+		INSERT INTO review_reasonings(review_id, phase, content, updated_at)
+		VALUES(?,?,?,?)
+		ON CONFLICT(review_id, phase) DO UPDATE SET
+			content = excluded.content, updated_at = excluded.updated_at`,
+		reviewID, phase, content, formatTime(time.Now().UTC())); err != nil {
+		return fmt.Errorf("review store: set reasoning: %w", err)
+	}
+	return nil
+}
+
 // SetArchived updates only the archived flag.
 func (r *ReviewStore) SetArchived(ctx context.Context, id string, archived bool) error {
 	res, err := r.db.ExecContext(ctx,
@@ -231,6 +272,9 @@ func (r *ReviewStore) Delete(ctx context.Context, id string) error {
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM review_humanizations WHERE review_id = ?`, id); err != nil {
 		return fmt.Errorf("review store: delete: clear humanizations: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM review_reasonings WHERE review_id = ?`, id); err != nil {
+		return fmt.Errorf("review store: delete: clear reasonings: %w", err)
 	}
 	res, err := tx.ExecContext(ctx, `DELETE FROM reviews WHERE id = ?`, id)
 	if err != nil {

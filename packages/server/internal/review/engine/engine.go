@@ -26,16 +26,38 @@ type Input struct {
 	Diff        string
 }
 
-// Strategy runs a review, reporting fine-grained progress through onPhase
-// (which may be nil). Single-pass and multi-pass both implement it.
+// RunParams carries everything a Strategy needs for one review run. It bundles
+// the model settings with the progress callbacks so the interface stays stable
+// as more knobs (thinking budget, reasoning capture) are added.
+type RunParams struct {
+	Model          string
+	Temperature    *float64
+	ThinkingBudget int
+	In             Input
+	// OnPhase reports the current phase as it changes (may be nil).
+	OnPhase func(phase string)
+	// OnReasoning is called once per phase with the model's captured reasoning,
+	// only when that reasoning is non-empty (may be nil).
+	OnReasoning func(phase, reasoning string)
+}
+
+// Strategy runs a review, reporting fine-grained progress through the callbacks
+// on RunParams. Single-pass and multi-pass both implement it.
 type Strategy interface {
-	Run(ctx context.Context, client llm.Client, model string, temperature *float64, in Input, onPhase func(phase string)) (review.Review, error)
+	Run(ctx context.Context, client llm.Client, p RunParams) (review.Review, error)
 }
 
 // reportPhase calls onPhase if it is set.
 func reportPhase(onPhase func(string), phase string) {
 	if onPhase != nil {
 		onPhase(phase)
+	}
+}
+
+// reportReasoning calls onReasoning if it is set and reasoning is non-empty.
+func reportReasoning(onReasoning func(string, string), phase, reasoning string) {
+	if onReasoning != nil && reasoning != "" {
+		onReasoning(phase, reasoning)
 	}
 }
 
@@ -52,10 +74,11 @@ func New(set skills.Set) *Engine {
 
 var _ Strategy = (*Engine)(nil)
 
-// Run executes one review against client using model, returning a completed
-// Review. temperature is optional (nil = let the model use its default).
+// Run executes one review against client using p.Model, returning a completed
+// Review. p.Temperature is optional (nil = let the model use its default).
 // Persistence and job orchestration are the caller's concern.
-func (e *Engine) Run(ctx context.Context, client llm.Client, model string, temperature *float64, in Input, onPhase func(phase string)) (review.Review, error) {
+func (e *Engine) Run(ctx context.Context, client llm.Client, p RunParams) (review.Review, error) {
+	in := p.In
 	if in.Diff == "" {
 		return review.Review{}, fmt.Errorf("engine: empty diff")
 	}
@@ -63,17 +86,19 @@ func (e *Engine) Run(ctx context.Context, client llm.Client, model string, tempe
 	if err := ctx.Err(); err != nil {
 		return review.Review{}, err
 	}
-	reportPhase(onPhase, "reviewing")
+	reportPhase(p.OnPhase, "reviewing")
 
 	resp, err := client.Complete(ctx, llm.Request{
-		Model:       model,
-		Messages:    buildMessages(e.skills, in),
-		Temperature: temperature,
-		MaxTokens:   e.maxTokens,
+		Model:          p.Model,
+		Messages:       buildMessages(e.skills, in),
+		Temperature:    p.Temperature,
+		MaxTokens:      e.maxTokens,
+		ThinkingBudget: p.ThinkingBudget,
 	})
 	if err != nil {
 		return review.Review{}, err
 	}
+	reportReasoning(p.OnReasoning, "reviewing", resp.Reasoning)
 
 	summary, findings, err := parseResponse(resp.Content)
 	if err != nil {

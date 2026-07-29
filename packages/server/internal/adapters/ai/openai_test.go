@@ -68,6 +68,48 @@ func TestOpenAISendsTemperatureWhenSet(t *testing.T) {
 	}
 }
 
+func TestOpenAIReasoning(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "reasoning_content wins",
+			body: `{"choices":[{"message":{"content":"ok","reasoning_content":"deep thought","reasoning":"other"}}]}`,
+			want: "deep thought",
+		},
+		{
+			name: "reasoning fallback",
+			body: `{"choices":[{"message":{"content":"ok","reasoning":"a thought"}}]}`,
+			want: "a thought",
+		},
+		{
+			name: "none",
+			body: `{"choices":[{"message":{"content":"ok"}}]}`,
+			want: "",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprint(w, tc.body)
+			}))
+			defer srv.Close()
+
+			c := NewOpenAIClient(srv.URL, "k")
+			resp, err := c.Complete(context.Background(), llm.Request{Model: "m"})
+			if err != nil {
+				t.Fatalf("Complete: %v", err)
+			}
+			if resp.Reasoning != tc.want {
+				t.Fatalf("reasoning = %q, want %q", resp.Reasoning, tc.want)
+			}
+		})
+	}
+}
+
 func TestOpenAINoChoicesIsError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, `{"model":"x","choices":[]}`)

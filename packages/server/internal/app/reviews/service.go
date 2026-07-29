@@ -52,6 +52,10 @@ type Service struct {
 	runner    *jobs.Runner
 	notifier  Notifier
 
+	// reasoningBudget is the per-call thinking-token budget passed to the engine
+	// so it can capture the model's reasoning. 0 disables reasoning capture.
+	reasoningBudget int
+
 	// Cancellation state. Jobs run sequentially on the runner's shared context,
 	// so each running review gets its own cancelable context registered here;
 	// an HTTP-triggered Cancel (on another goroutine) fires it by id.
@@ -67,15 +71,17 @@ func NewService(
 	accounts *accounts.Service,
 	providers *providers.Service,
 	strategy engine.Strategy,
+	reasoningBudget int,
 ) *Service {
 	return &Service{
-		reviews:   reviews,
-		repos:     repos,
-		accounts:  accounts,
-		providers: providers,
-		strategy:  strategy,
-		cancels:   make(map[string]context.CancelFunc),
-		requested: make(map[string]bool),
+		reviews:         reviews,
+		repos:           repos,
+		accounts:        accounts,
+		providers:       providers,
+		strategy:        strategy,
+		reasoningBudget: reasoningBudget,
+		cancels:         make(map[string]context.CancelFunc),
+		requested:       make(map[string]bool),
 	}
 }
 
@@ -368,8 +374,22 @@ func (s *Service) execute(ctx context.Context, rv review.Review) (review.Review,
 	}
 	in.RepoID = rv.RepoID
 
-	onPhase := func(phase string) { _ = s.reviews.SetPhase(ctx, rv.ID, phase) }
-	return s.strategy.Run(ctx, aiClient, model, prov.Temperature, in, onPhase)
+	params := engine.RunParams{
+		Model:          model,
+		Temperature:    prov.Temperature,
+		ThinkingBudget: s.reasoningBudget,
+		In:             in,
+		OnPhase:        func(phase string) { _ = s.reviews.SetPhase(ctx, rv.ID, phase) },
+	}
+	// Reasoning capture is gated on the budget toggle: a positive budget both
+	// requests Anthropic thinking and persists whatever reasoning any provider
+	// returns; 0 leaves the callback nil so nothing is captured or persisted for
+	// ANY provider (including OpenAI-compatible reasoning fields), matching the
+	// AIR_REASONING_BUDGET contract.
+	if s.reasoningBudget > 0 {
+		params.OnReasoning = func(phase, text string) { _ = s.reviews.SetReasoning(ctx, rv.ID, phase, text) }
+	}
+	return s.strategy.Run(ctx, aiClient, params)
 }
 
 func (s *Service) resolveProvider(ctx context.Context, providerID string) (provider.Provider, error) {

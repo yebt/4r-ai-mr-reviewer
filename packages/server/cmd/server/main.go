@@ -78,7 +78,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	reviewSvc := reviews.NewService(reviewStore, repoStore, accountSvc, providerSvc, engine.NewMultiPass(ruleSet))
+	reviewSvc := reviews.NewService(reviewStore, repoStore, accountSvc, providerSvc, engine.NewMultiPass(ruleSet), cfg.ReasoningBudget)
 	routinesSvc := routines.NewService(repoStore, accountSvc, routineRunStore, nil)
 	humanizeSvc := apphumanize.NewService(reviewStore, profileStore, humanizationStore, providerSvc, nil)
 	telegramSvc := apptelegram.NewService(telegramStore, secrets)

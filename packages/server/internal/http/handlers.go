@@ -636,24 +636,30 @@ type findingResp struct {
 	Published bool   `json:"published"`
 }
 
+type reasoningResp struct {
+	Phase   string `json:"phase"`
+	Content string `json:"content"`
+}
+
 type reviewResp struct {
-	ID               string        `json:"id"`
-	RepoID           string        `json:"repoId"`
-	MRIID            int           `json:"mrIid"`
-	ContextMode      string        `json:"contextMode"`
-	Status           string        `json:"status"`
-	Phase            string        `json:"phase"`
-	Archived         bool          `json:"archived"`
-	SummaryPublished bool          `json:"summaryPublished"`
-	Summary          string        `json:"summary"`
-	Recommendation   string        `json:"recommendation"`
-	Score            int           `json:"score"`
-	Error            string        `json:"error,omitempty"`
-	InputTokens      int           `json:"inputTokens"`
-	OutputTokens     int           `json:"outputTokens"`
-	Findings         []findingResp `json:"findings"`
-	CreatedAt        time.Time     `json:"createdAt"`
-	UpdatedAt        time.Time     `json:"updatedAt"`
+	ID               string          `json:"id"`
+	RepoID           string          `json:"repoId"`
+	MRIID            int             `json:"mrIid"`
+	ContextMode      string          `json:"contextMode"`
+	Status           string          `json:"status"`
+	Phase            string          `json:"phase"`
+	Archived         bool            `json:"archived"`
+	SummaryPublished bool            `json:"summaryPublished"`
+	Summary          string          `json:"summary"`
+	Recommendation   string          `json:"recommendation"`
+	Score            int             `json:"score"`
+	Error            string          `json:"error,omitempty"`
+	InputTokens      int             `json:"inputTokens"`
+	OutputTokens     int             `json:"outputTokens"`
+	Findings         []findingResp   `json:"findings"`
+	Reasonings       []reasoningResp `json:"reasonings"`
+	CreatedAt        time.Time       `json:"createdAt"`
+	UpdatedAt        time.Time       `json:"updatedAt"`
 }
 
 func toReview(rv review.Review) reviewResp {
@@ -665,11 +671,15 @@ func toReview(rv review.Review) reviewResp {
 			Blocking: f.Blocking, Published: f.Published,
 		})
 	}
+	reasonings := make([]reasoningResp, 0, len(rv.Reasonings))
+	for _, r := range rv.Reasonings {
+		reasonings = append(reasonings, reasoningResp{Phase: r.Phase, Content: r.Content})
+	}
 	return reviewResp{
 		ID: rv.ID, RepoID: rv.RepoID, MRIID: rv.MRIID, ContextMode: string(rv.ContextMode),
 		Status: string(rv.Status), Phase: rv.Phase, Archived: rv.Archived, SummaryPublished: rv.SummaryPublished, Summary: rv.Summary, Recommendation: string(rv.Recommendation),
 		Score: rv.Score, Error: rv.Error, InputTokens: rv.InputTokens, OutputTokens: rv.OutputTokens,
-		Findings: findings, CreatedAt: rv.CreatedAt, UpdatedAt: rv.UpdatedAt,
+		Findings: findings, Reasonings: reasonings, CreatedAt: rv.CreatedAt, UpdatedAt: rv.UpdatedAt,
 	}
 }
 
