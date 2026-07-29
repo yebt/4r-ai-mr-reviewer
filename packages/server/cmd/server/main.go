@@ -66,6 +66,7 @@ func run() error {
 	telegramStore := sqlite.NewTelegramStore(db)
 	notificationRuleStore := sqlite.NewNotificationRuleStore(db)
 	jobStore := sqlite.NewJobStore(db)
+	routineRunStore := sqlite.NewRoutineRunStore(db)
 
 	// Services.
 	accountSvc := accounts.NewService(accountRepo, secrets)
@@ -78,7 +79,7 @@ func run() error {
 		return err
 	}
 	reviewSvc := reviews.NewService(reviewStore, repoStore, accountSvc, providerSvc, engine.NewMultiPass(ruleSet))
-	routinesSvc := routines.NewService(repoStore, accountSvc)
+	routinesSvc := routines.NewService(repoStore, accountSvc, routineRunStore, nil)
 	humanizeSvc := apphumanize.NewService(reviewStore, profileStore, humanizationStore, providerSvc, nil)
 	telegramSvc := apptelegram.NewService(telegramStore, secrets)
 	notificationsSvc := notifications.NewService(notificationRuleStore, telegramSvc)
@@ -88,6 +89,7 @@ func run() error {
 	reviewSvc.AttachRunner(runner)
 	reviewSvc.AttachNotifier(notificationsSvc)
 	go runner.Start(ctx)
+	go routinesSvc.Start(ctx)
 
 	// Re-trigger any style-guide distillations left pending by a prior crash.
 	go profileSvc.RecoverPending(context.Background())

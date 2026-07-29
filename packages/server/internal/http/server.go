@@ -26,6 +26,7 @@ import (
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/provider"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/repo"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/review"
+	"github.com/webcloster-dev/ai-reviewer/internal/domain/routine"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/secret"
 	tgdomain "github.com/webcloster-dev/ai-reviewer/internal/domain/telegram"
 	"github.com/webcloster-dev/ai-reviewer/internal/review/skills"
@@ -104,6 +105,10 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /repos/{id}/merge-requests", s.listMergeRequests)
 	mux.HandleFunc("GET /repos/{id}/preflight", s.repoPreflight)
 	mux.HandleFunc("GET /repos/{id}/reviews", s.listReviews)
+	mux.HandleFunc("POST /repos/{id}/routines/approve-and-tag", s.createApproveAndTagRoutine)
+	mux.HandleFunc("GET /repos/{id}/routines", s.listRoutines)
+	mux.HandleFunc("GET /routines/{id}", s.getRoutine)
+	mux.HandleFunc("POST /routines/{id}/resume", s.resumeRoutine)
 
 	mux.HandleFunc("POST /reviews", s.createReview)
 	mux.HandleFunc("GET /reviews/{id}", s.getReview)
@@ -153,6 +158,7 @@ func isNotFound(err error) bool {
 		errors.Is(err, profile.ErrNotFound) ||
 		errors.Is(err, repo.ErrNotFound) ||
 		errors.Is(err, review.ErrNotFound) ||
+		errors.Is(err, routine.ErrRunNotFound) ||
 		errors.Is(err, job.ErrNotFound) ||
 		errors.Is(err, secret.ErrNotFound) ||
 		errors.Is(err, tgdomain.ErrNotFound) ||

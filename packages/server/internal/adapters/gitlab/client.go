@@ -24,8 +24,12 @@ type MergeRequest struct {
 	SourceBranch string `json:"source_branch"`
 	TargetBranch string `json:"target_branch"`
 	SHA          string `json:"sha"`
-	WebURL       string `json:"web_url"`
-	Author       Author `json:"author"`
+	// MergeCommitSHA / SquashCommitSHA are the commit(s) produced when the MR is
+	// merged; routines tag the merge commit rather than a moving branch head.
+	MergeCommitSHA  string `json:"merge_commit_sha"`
+	SquashCommitSHA string `json:"squash_commit_sha"`
+	WebURL          string `json:"web_url"`
+	Author          Author `json:"author"`
 }
 
 // Author is the MR author.
@@ -96,6 +100,19 @@ func (c *Client) ListOpenMergeRequests(ctx context.Context, projectID string) ([
 		return nil, err
 	}
 	return mrs, nil
+}
+
+// GetMergeRequest returns a single merge request by IID. Routines need its
+// target/source branches and state to decide the tag ref and prerelease suffix.
+func (c *Client) GetMergeRequest(ctx context.Context, projectID string, iid int) (MergeRequest, error) {
+	path := fmt.Sprintf("/projects/%s/merge_requests/%s",
+		url.PathEscape(projectID), strconv.Itoa(iid))
+
+	var mr MergeRequest
+	if err := c.getJSON(ctx, path, nil, &mr); err != nil {
+		return MergeRequest{}, err
+	}
+	return mr, nil
 }
 
 // MergeRequestChanges returns an MR with its per-file diffs.
