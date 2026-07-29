@@ -30,6 +30,13 @@ type MergeRequest struct {
 	SquashCommitSHA string `json:"squash_commit_sha"`
 	WebURL          string `json:"web_url"`
 	Author          Author `json:"author"`
+	// HasConflicts / MergeStatus / DetailedMergeStatus tell a routine whether the
+	// MR can be merged before it attempts to. DetailedMergeStatus is the modern,
+	// granular signal ("mergeable", "ci_still_running", ...); MergeStatus is the
+	// legacy coarse field kept for older GitLab instances.
+	HasConflicts        bool   `json:"has_conflicts"`
+	MergeStatus         string `json:"merge_status"`
+	DetailedMergeStatus string `json:"detailed_merge_status"`
 }
 
 // Author is the MR author.
@@ -164,6 +171,34 @@ func (c *Client) MergeRequestPipelines(ctx context.Context, projectID string, ii
 		return nil, err
 	}
 	return pipelines, nil
+}
+
+// Compare is the result of comparing two refs: the commits reachable from `to`
+// but not from `from`.
+type Compare struct {
+	Commits []Commit `json:"commits"`
+}
+
+// Commit is a single commit in a comparison. Title is the subject line; Message
+// is the full commit message.
+type Commit struct {
+	ID      string `json:"id"`
+	Title   string `json:"title"`
+	Message string `json:"message"`
+}
+
+// CompareRefs returns the commits between two refs (branches, tags, or SHAs):
+// those reachable from `to` but not from `from`. Routines use it to read the
+// conventional-commit subjects since the last release tag.
+func (c *Client) CompareRefs(ctx context.Context, projectID, from, to string) (Compare, error) {
+	path := fmt.Sprintf("/projects/%s/repository/compare", url.PathEscape(projectID))
+	q := url.Values{"from": {from}, "to": {to}}
+
+	var cmp Compare
+	if err := c.getJSON(ctx, path, q, &cmp); err != nil {
+		return Compare{}, err
+	}
+	return cmp, nil
 }
 
 // TokenInfo describes the personal access token in use, used to check its scopes.

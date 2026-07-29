@@ -79,6 +79,55 @@ func TestPublishReturnsAPIError(t *testing.T) {
 	}
 }
 
+func TestApproveMergeRequest(t *testing.T) {
+	var gotPath, gotMethod, gotToken string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath, gotMethod, gotToken = r.URL.Path, r.Method, r.Header.Get("PRIVATE-TOKEN")
+		if !strings.HasSuffix(r.URL.Path, "/approve") {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "tok")
+	if err := c.ApproveMergeRequest(context.Background(), "g/p", 7); err != nil {
+		t.Fatalf("ApproveMergeRequest: %v", err)
+	}
+	if gotMethod != http.MethodPost {
+		t.Errorf("method = %q, want POST", gotMethod)
+	}
+	if !strings.HasSuffix(gotPath, "/merge_requests/7/approve") {
+		t.Errorf("path = %q, want .../merge_requests/7/approve", gotPath)
+	}
+	if gotToken != "tok" {
+		t.Errorf("token = %q, want tok", gotToken)
+	}
+}
+
+// TestApproveMergeRequestForbiddenIsError: a 403 is a real permission failure and
+// must surface, not be swallowed as idempotency.
+func TestApproveMergeRequestForbiddenIsError(t *testing.T) {
+	srv := cannedServer(t, http.StatusForbidden, `{"message":"403 Forbidden"}`)
+	c := NewClient(srv.URL, "tok")
+	err := c.ApproveMergeRequest(context.Background(), "g/p", 7)
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.Status != http.StatusForbidden {
+		t.Fatalf("403 must surface as APIError, got %v", err)
+	}
+}
+
+// TestApproveMergeRequestAlreadyApprovedIsSuccess: an already-approved MR (401
+// with an "already approved" body) is swallowed so a routine re-run does not fail.
+func TestApproveMergeRequestAlreadyApprovedIsSuccess(t *testing.T) {
+	srv := cannedServer(t, http.StatusUnauthorized, `{"message":"You have already approved this merge request"}`)
+	c := NewClient(srv.URL, "tok")
+	if err := c.ApproveMergeRequest(context.Background(), "g/p", 7); err != nil {
+		t.Fatalf("already-approved 401 should be nil, got %v", err)
+	}
+}
+
 // cannedServer answers every request with a fixed status and body.
 func cannedServer(t *testing.T, status int, body string) *httptest.Server {
 	t.Helper()

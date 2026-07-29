@@ -74,6 +74,34 @@ func alreadyAwarded(err error) bool {
 	return strings.Contains(strings.ToLower(apiErr.Body), "already")
 }
 
+// ApproveMergeRequest records the caller's approval on a merge request. It is
+// IDEMPOTENT: GitLab answers an already-approved MR with 401 or 409 and a body
+// mentioning it is "already" approved, which is treated as success so a routine
+// re-run does not fail on an approval it recorded on a previous pass.
+func (c *Client) ApproveMergeRequest(ctx context.Context, projectID string, iid int) error {
+	path := fmt.Sprintf("/projects/%s/merge_requests/%s/approve",
+		url.PathEscape(projectID), strconv.Itoa(iid))
+	err := c.doForm(ctx, http.MethodPost, path, url.Values{}, nil)
+	if err != nil && alreadyApproved(err) {
+		return nil
+	}
+	return err
+}
+
+// alreadyApproved reports whether an approve APIError means the MR was already
+// approved by the caller. GitLab answers with 401 or 409 and a body mentioning
+// it is "already" approved.
+func alreadyApproved(err error) bool {
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	if apiErr.Status != http.StatusUnauthorized && apiErr.Status != http.StatusConflict {
+		return false
+	}
+	return strings.Contains(strings.ToLower(apiErr.Body), "already")
+}
+
 // CreateTag creates a tag pointing at ref (a branch, tag, or commit SHA). The
 // annotation message is omitted when empty, producing a lightweight tag.
 func (c *Client) CreateTag(ctx context.Context, projectID, tagName, ref, message string) error {
