@@ -228,7 +228,7 @@ async function submit() {
               {{ m }}
               <button
                 type="button"
-                class="text-muted hover:text-danger"
+                class="text-muted hover:text-danger flex"
                 :aria-label="`Remove ${m}`"
                 @click="removeModel(m)"
               >
