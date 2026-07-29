@@ -233,6 +233,15 @@ export type ReviewStatus = 'pending' | 'running' | 'done' | 'error' | 'cancelled
 export type ContextMode = 'fast' | 'deep'
 export type Recommendation = 'approve' | 'request_changes' | 'comment'
 
+// Model reasoning (chain-of-thought) captured per 4R phase during the run. The
+// backend emits one entry as each lens completes (non-streaming, so per-phase
+// granularity), ordered by capture time. `reasonings` is always an array —
+// empty when nothing was captured (reasoning budget off or model exposes none).
+export interface ReviewReasoning {
+  phase: string
+  content: string
+}
+
 export interface Review {
   id: string
   repoId: string
@@ -249,6 +258,7 @@ export interface Review {
   inputTokens: number
   outputTokens: number
   findings: Finding[]
+  reasonings: ReviewReasoning[]
   createdAt: string
   updatedAt: string
 }

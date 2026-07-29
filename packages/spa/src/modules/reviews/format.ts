@@ -29,6 +29,24 @@ export const dimensionLabel: Record<Dimension, string> = {
   resilience: 'R4 Resilience',
 }
 
+// Short display label for a captured-reasoning phase. Mirrors the 4R lens names
+// used by the progress indicator; unknown phases fall back to a capitalized form
+// so nothing renders as a raw lowercase key.
+export function phaseLabel(phase: string): string {
+  switch (phase) {
+    case 'risk':
+      return 'Risk'
+    case 'readability':
+      return 'Readability'
+    case 'reliability':
+      return 'Reliability'
+    case 'resilience':
+      return 'Resilience'
+    default:
+      return phase ? phase.charAt(0).toUpperCase() + phase.slice(1) : ''
+  }
+}
+
 export const recommendationClass: Record<Recommendation, string> = {
   approve: 'text-ok',
   request_changes: 'text-danger',

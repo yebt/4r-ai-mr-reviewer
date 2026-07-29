@@ -18,6 +18,7 @@ import { useReviewNotification } from '@modules/reviews/useReviewNotification'
 import { ORIGINAL, buildFindingBody, buildFindingMarkdown } from '@modules/reviews/humanize-overrides'
 import type { HumanizeFindingText } from '@shared/api/types'
 import ReviewStatusChip from '@modules/reviews/components/ReviewStatusChip.vue'
+import ReasoningPanel from '@modules/reviews/components/ReasoningPanel.vue'
 import SummaryCard from '@modules/reviews/components/SummaryCard.vue'
 import FindingCard from '@modules/reviews/components/FindingCard.vue'
 import FindingCardTriage from '@modules/reviews/components/FindingCardTriage.vue'
@@ -482,6 +483,10 @@ async function remove() {
             Will notify when done
           </span>
         </div>
+
+        <!-- Live per-phase model reasoning: grows as each 4R lens completes; the
+             most recent entry auto-expands so the wait is filled. -->
+        <ReasoningPanel :review="review" class="mt-6" />
       </div>
 
       <div v-else-if="review.status === 'cancelled'" class="flex flex-col items-start gap-3">
@@ -571,6 +576,9 @@ async function remove() {
             </p>
           </template>
         </div>
+
+        <!-- Reasoning stays viewable after completion; collapsed by default. -->
+        <ReasoningPanel :review="review" />
 
         <SummaryCard :review="review" :profile-id="profileId" />
 

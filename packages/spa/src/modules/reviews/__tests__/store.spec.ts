@@ -55,6 +55,7 @@ const review = (id: string, status: ReviewStatus = 'pending'): Review => ({
   inputTokens: 0,
   outputTokens: 0,
   findings: [],
+  reasonings: [],
   createdAt: '',
   updatedAt: '',
 })
