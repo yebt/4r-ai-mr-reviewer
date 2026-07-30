@@ -30,6 +30,19 @@ const mergeWhenPipelineSucceeds = ref(true)
 // Main flow only. Empty means "use the backend default" (development → main).
 const sourceBranch = ref('')
 const targetBranch = ref('')
+// GitLab emoji NAMES (not unicode), comma-separated. Parsed on submit into a
+// string[]; left/parsed empty means "use the backend default".
+const DEFAULT_EMOJIS = 'thumbsup, seedling'
+const emojiInput = ref(DEFAULT_EMOJIS)
+
+// Split the comma-separated field into GitLab emoji names, trimming each and
+// dropping empties.
+function parseEmojis(raw: string): string[] {
+  return raw
+    .split(',')
+    .map((name) => name.trim())
+    .filter((name) => name.length > 0)
+}
 
 // Reset to per-flow defaults every time the modal opens so a previous edit never
 // leaks into the next run. The main flow defaults mergeWhenPipelineSucceeds off.
@@ -42,11 +55,13 @@ watch(
     mergeWhenPipelineSucceeds.value = props.flow === 'dev'
     sourceBranch.value = ''
     targetBranch.value = ''
+    emojiInput.value = DEFAULT_EMOJIS
   },
   { immediate: true },
 )
 
 function onSubmit() {
+  const emojis = parseEmojis(emojiInput.value)
   if (props.flow === 'main') {
     emit('submit', {
       flow: 'main',
@@ -54,6 +69,8 @@ function onSubmit() {
         bump: bump.value,
         sourceBranch: sourceBranch.value.trim(),
         targetBranch: targetBranch.value.trim(),
+        // Omit when empty so the backend default applies.
+        ...(emojis.length > 0 ? { emojis } : {}),
         removeSourceBranch: removeSourceBranch.value,
         mergeWhenPipelineSucceeds: mergeWhenPipelineSucceeds.value,
       },
@@ -67,6 +84,8 @@ function onSubmit() {
     input: {
       mrIid: iid,
       bump: bump.value,
+      // Omit when empty so the backend default applies.
+      ...(emojis.length > 0 ? { emojis } : {}),
       removeSourceBranch: removeSourceBranch.value,
       mergeWhenPipelineSucceeds: mergeWhenPipelineSucceeds.value,
     },
@@ -100,6 +119,17 @@ function onSubmit() {
           <option value="minor">minor</option>
           <option value="patch">patch</option>
         </select>
+      </label>
+
+      <label class="block">
+        <span class="field-label">Reaction emojis</span>
+        <input
+          v-model="emojiInput"
+          type="text"
+          class="field-underline"
+          placeholder="thumbsup, seedling"
+        />
+        <span class="text-muted mt-1 block text-xs">GitLab emoji names, comma-separated</span>
       </label>
 
       <template v-if="flow === 'main'">

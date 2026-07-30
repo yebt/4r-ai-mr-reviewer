@@ -7,11 +7,7 @@ defineProps<{
   items: RoutineRun[]
   loading?: boolean
   error?: string | null
-  // Currently expanded run, so its row reads as selected.
-  selectedId?: string | null
 }>()
-
-const emit = defineEmits<{ select: [id: string] }>()
 </script>
 
 <template>
@@ -22,21 +18,14 @@ const emit = defineEmits<{ select: [id: string] }>()
 
     <ul v-else class="border-line/50 border-t">
       <li v-for="run in items" :key="run.id" class="row justify-between">
-        <button
-          type="button"
-          class="flex min-w-0 flex-1 items-center gap-3 text-left"
-          :aria-expanded="selectedId === run.id"
-          @click="emit('select', run.id)"
+        <RouterLink
+          :to="`/actions/${run.id}`"
+          class="group flex min-w-0 flex-1 items-center gap-3"
         >
-          <span
-            class="text-ink font-mono text-sm"
-            :class="selectedId === run.id ? 'text-accent' : ''"
-          >
-            !{{ run.mrIid }}
-          </span>
+          <span class="text-ink group-hover:text-accent font-mono text-sm">!{{ run.mrIid }}</span>
           <RoutineStatusChip :status="run.status" />
           <span class="label-mono truncate">{{ routineKindLabel[run.kind] }}</span>
-        </button>
+        </RouterLink>
         <div class="label-mono shrink-0">
           <span v-if="run.updatedAt">{{ formatDateTime(run.updatedAt) }}</span>
         </div>

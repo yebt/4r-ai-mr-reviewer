@@ -1,19 +1,20 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { useIntervalFn } from '@vueuse/core'
 import { errorMessage } from '@shared/api/client'
 import { toast } from '@shared/composables/useToast'
-import type { ConfirmDecision, MergeRequest } from '@shared/api/types'
+import type { MergeRequest } from '@shared/api/types'
 import { useRoutinesStore } from '@modules/routines/store'
 import { isRunActive } from '@modules/routines/format'
 import ReleaseModal, {
   type ReleaseSubmit,
 } from '@modules/routines/components/ReleaseModal.vue'
 import RoutineRunList from '@modules/routines/components/RoutineRunList.vue'
-import RoutineRunDetail from '@modules/routines/components/RoutineRunDetail.vue'
 
 const props = defineProps<{ repoId: string; mergeRequests: MergeRequest[] }>()
 
+const router = useRouter()
 const store = useRoutinesStore()
 
 const runs = computed(() => store.runsFor(props.repoId))
@@ -25,17 +26,6 @@ const loading = computed(() => store.listLoading && runs.value.length === 0)
 const releasableMrs = computed(() =>
   props.mergeRequests.filter((mr) => mr.targetBranch === 'development'),
 )
-
-// Expanded run whose step ledger is shown. Read back through the store so the
-// detail observes the same live object the poller refreshes.
-const selectedRunId = ref<string | null>(null)
-const selectedRun = computed(() =>
-  selectedRunId.value ? store.runById(selectedRunId.value) : null,
-)
-
-function toggleSelect(id: string) {
-  selectedRunId.value = selectedRunId.value === id ? null : id
-}
 
 // --- Release trigger modal (dev + main flows) ---
 const modalOpen = ref(false)
@@ -68,12 +58,12 @@ async function submit(payload: ReleaseSubmit) {
         ? await store.createMainRelease(props.repoId, payload.input)
         : await store.createRelease(props.repoId, payload.input)
     modalOpen.value = false
-    // Open and scroll to the freshly created run, then poll it live.
-    selectedRunId.value = run.id
-    startPolling()
     toast.success(
       payload.flow === 'main' ? 'Release to main started' : `Release started for !${run.mrIid}`,
     )
+    // Land on the run's dedicated detail page to watch it live; the detail,
+    // confirmation gate, and resume all live there now.
+    router.push(`/actions/${run.id}`)
   } catch (e) {
     // 400 (bad target) / 409 (duplicate active run) surface here.
     toast.error(errorMessage(e))
@@ -83,10 +73,10 @@ async function submit(payload: ReleaseSubmit) {
 }
 
 // --- Live polling ---
-// While any run is pending/running, refresh those runs on the same cadence the
-// review view uses (2.5s). awaiting_confirmation is NOT active, so the loop
-// idles once every run is resting or waiting on the user, and resumes after a
-// confirm/resume flips a run back to running.
+// Rows navigate to the dedicated detail page, but the list itself keeps the
+// statuses fresh: while any run is pending/running, refresh those runs on the
+// same 2.5s cadence used elsewhere. awaiting_confirmation is NOT active, so the
+// loop idles once every run is resting or waiting on the user.
 const { pause, resume: resumePoll, isActive } = useIntervalFn(
   async () => {
     const active = runs.value.filter((r) => isRunActive(r.status))
@@ -104,57 +94,14 @@ function startPolling() {
   if (!isActive.value && runs.value.some((r) => isRunActive(r.status))) resumePoll()
 }
 
-// --- Resume a blocked run ---
-const resuming = ref(false)
-async function onResume(id: string) {
-  resuming.value = true
-  try {
-    await store.resume(id)
-    // The run flips back to pending/running — restart the live poll.
-    startPolling()
-  } catch (e) {
-    toast.error(errorMessage(e))
-  } finally {
-    resuming.value = false
-  }
-}
-
-// --- Confirmation gate ---
-// Tracks the run id + decision currently in flight so the run-detail spins the
-// clicked button only.
-const confirmingId = ref<string | null>(null)
-const confirmingDecision = ref<ConfirmDecision | null>(null)
-const detailConfirming = computed(() =>
-  selectedRun.value && confirmingId.value === selectedRun.value.id
-    ? confirmingDecision.value
-    : null,
-)
-
-async function onConfirm(id: string, decision: ConfirmDecision) {
-  confirmingId.value = id
-  confirmingDecision.value = decision
-  try {
-    await store.confirm(id, decision)
-    // 'merge' flips the run back to running; restart the live poll either way.
-    startPolling()
-    toast.success(decision === 'merge' ? 'Merging release…' : 'Left for manual merge')
-  } catch (e) {
-    // 409 when the run is no longer awaiting confirmation.
-    toast.error(errorMessage(e))
-  } finally {
-    confirmingId.value = null
-    confirmingDecision.value = null
-  }
-}
-
 onMounted(async () => {
   await store.list(props.repoId)
   startPolling()
 })
 onUnmounted(pause)
 
-// Any newly-active run (after a fresh list, create, resume, or confirm) starts
-// the poll.
+// Any newly-active run (after a fresh list, create, or poll refresh) starts the
+// poll.
 watch(runs, () => startPolling())
 </script>
 
@@ -171,8 +118,8 @@ watch(runs, () => startPolling())
       </button>
     </div>
     <p class="text-muted mb-4 text-xs">
-      Start a release from a merge request (dev flow) or cut a development → main release, then
-      watch its step ledger update live and answer its confirmation gate.
+      Start a release from a merge request (dev flow) or cut a development → main release, then open
+      its run to watch the step ledger update live and answer its confirmation gate.
     </p>
 
     <!-- Dev-flow triggers: one Release action per development-targeting MR. -->
@@ -211,22 +158,7 @@ watch(runs, () => startPolling())
     </div>
 
     <h3 class="label-mono mb-2">Runs</h3>
-    <RoutineRunList
-      :items="runs"
-      :loading="loading"
-      :error="store.listError"
-      :selected-id="selectedRunId"
-      @select="toggleSelect"
-    />
-
-    <RoutineRunDetail
-      v-if="selectedRun"
-      :run="selectedRun"
-      :resuming="resuming"
-      :confirming="detailConfirming"
-      @resume="onResume"
-      @confirm="onConfirm"
-    />
+    <RoutineRunList :items="runs" :loading="loading" :error="store.listError" />
 
     <ReleaseModal
       :open="modalOpen"
