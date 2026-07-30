@@ -195,6 +195,10 @@ export interface RoutineRunState {
   fixCount?: number
   decision?: ConfirmDecision
   mrIid?: number
+  // Human-readable merge-request title, captured the first time the routine
+  // obtains the MR. Absent for a run that has not reached that step yet and for
+  // legacy runs created before title capture; the UI falls back to `!{mrIid}`.
+  mrTitle?: string
   headSha?: string
   mergeSha?: string
   [key: string]: unknown

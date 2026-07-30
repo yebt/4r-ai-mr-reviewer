@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { ConfirmDecision, RoutineRun } from '@shared/api/types'
-import { stepLabel, stepStatusUi } from '@modules/routines/format'
+import { runTitle, stepLabel, stepStatusUi } from '@modules/routines/format'
 import RoutineStatusChip from '@modules/routines/components/RoutineStatusChip.vue'
 
 const props = defineProps<{
@@ -30,8 +30,13 @@ const awaiting = computed(() => props.run.status === 'awaiting_confirmation')
 <template>
   <div class="border-line/50 mt-3 border-t pt-4">
     <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
-      <div class="flex items-center gap-3">
-        <span class="text-ink font-mono text-sm">!{{ props.run.mrIid }}</span>
+      <div class="flex min-w-0 items-center gap-3">
+        <!-- Primary: the MR title when captured, else the !{mrIid} fallback. -->
+        <span class="text-ink min-w-0 truncate text-sm font-medium">{{ runTitle(props.run) }}</span>
+        <span
+          v-if="props.run.state.mrTitle && props.run.mrIid"
+          class="text-muted shrink-0 font-mono text-xs"
+        >!{{ props.run.mrIid }}</span>
         <RoutineStatusChip :status="props.run.status" />
       </div>
       <span v-if="props.run.state.nextTag" class="chip text-accent">

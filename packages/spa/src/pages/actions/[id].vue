@@ -100,6 +100,14 @@ async function onConfirm(id: string, decision: ConfirmDecision) {
   }
 }
 
+// Prefer the captured MR title in the page header; fall back to the kind + IID
+// label for a run that has not captured a title yet or a legacy run.
+const headerTitle = computed(() => {
+  const r = run.value
+  if (!r) return 'Routine run'
+  return r.state.mrTitle || `${routineKindLabel[r.kind]} !${r.mrIid}`
+})
+
 const crumbs = computed(() => {
   const items: { label: string; to?: string }[] = [{ label: 'Actions', to: '/actions' }]
   const r = run.value
@@ -123,7 +131,7 @@ onUnmounted(pause)
 
 <template>
   <div>
-    <PageHeader :title="run ? `${routineKindLabel[run.kind]} !${run.mrIid}` : 'Routine run'" />
+    <PageHeader :title="headerTitle" />
 
     <p v-if="loading && !run" class="text-muted py-3 text-sm">Loading…</p>
     <template v-else-if="notFound">

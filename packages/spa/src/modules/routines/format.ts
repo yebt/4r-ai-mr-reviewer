@@ -74,6 +74,16 @@ export const stepLabel: Record<RoutineStepName, string> = {
   comment: 'Comment',
 }
 
+// Primary human label for a run in the Actions views: the merge-request title
+// once captured (the row's prominent identifier), otherwise the `!{mrIid}`
+// fallback for a run that just started or a legacy run that predates title
+// capture, and finally a generic label when neither is present.
+export function runTitle(run: RoutineRun): string {
+  if (run.state.mrTitle) return run.state.mrTitle
+  if (run.mrIid) return `!${run.mrIid}`
+  return 'Routine run'
+}
+
 // Compact date/time formatter for run rows. Self-contained so the routines
 // module stays independent of other feature modules.
 export function formatDateTime(iso: string): string {

@@ -733,6 +733,10 @@ type fakeReleaseState struct {
 	mergedAfterGets int
 	getMRCount      int
 
+	// mrTitle is the title the base MR fetch reports; the dev flow captures it
+	// into state.MRTitle at the verify step.
+	mrTitle string
+
 	pipelines []map[string]any // latest-relevant pipeline list
 	commits   []map[string]any // MR commits (newest first, GitLab order)
 	tags      []string
@@ -855,7 +859,7 @@ func newFakeReleaseGitLab(t *testing.T, st *fakeReleaseState) *httptest.Server {
 				state = "opened"
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"iid": 7, "state": state,
+				"iid": 7, "state": state, "title": st.mrTitle,
 				"source_branch": "feature", "target_branch": st.targetBranch,
 				"has_conflicts": st.hasConflicts, "merge_status": st.mergeStatus,
 				"merge_commit_sha": st.mergeCommitSHA, "squash_commit_sha": st.squashCommitSHA,
@@ -875,6 +879,7 @@ func devReleaseState() *fakeReleaseState {
 	return &fakeReleaseState{
 		mrState:      "opened",
 		targetBranch: "development",
+		mrTitle:      "feat: shiny new thing",
 		// sha is the MR diff head verify pins into state.HeadSHA; the merge step must
 		// forward it as the "sha" merge param.
 		sha:  "devheadsha",
@@ -938,6 +943,10 @@ func TestReleaseReachesConfirmationGate(t *testing.T) {
 	}
 	if state.FeatCount != 1 || state.FixCount != 1 {
 		t.Errorf("counts = feat %d/fix %d, want 1/1", state.FeatCount, state.FixCount)
+	}
+	// The MR title is captured from the fetched MR at the verify step.
+	if state.MRTitle != "feat: shiny new thing" {
+		t.Errorf("state.mrTitle = %q, want %q", state.MRTitle, "feat: shiny new thing")
 	}
 	if st.awardCount != 2 || st.approveCount != 1 {
 		t.Errorf("awardCount=%d approveCount=%d, want 2/1", st.awardCount, st.approveCount)
@@ -1438,6 +1447,10 @@ func TestMainReleaseFullRun(t *testing.T) {
 	wantTitle := "Main Release: " + time.Now().Format("02.01.2006") + " TAG: 1.7.1"
 	if st.lastMRTitle != wantTitle {
 		t.Errorf("MR title = %q, want %q", st.lastMRTitle, wantTitle)
+	}
+	// The created MR's title is captured into state.MRTitle at the create_mr step.
+	if state.MRTitle != wantTitle {
+		t.Errorf("state.mrTitle = %q, want %q", state.MRTitle, wantTitle)
 	}
 	// The tag is a PURE release (no -dev suffix) at the merge commit SHA.
 	if st.createTagCount != 1 || st.lastTagName != "1.7.1" {

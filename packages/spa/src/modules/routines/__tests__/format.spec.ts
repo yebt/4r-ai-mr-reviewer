@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import type { RoutineRunStatus, RoutineStepName, RoutineStepStatus } from '@shared/api/types'
-import { isRunActive, runStatusUi, stepLabel, stepStatusUi } from '@modules/routines/format'
+import type {
+  RoutineRun,
+  RoutineRunState,
+  RoutineRunStatus,
+  RoutineStepName,
+  RoutineStepStatus,
+} from '@shared/api/types'
+import { isRunActive, runStatusUi, runTitle, stepLabel, stepStatusUi } from '@modules/routines/format'
+
+// Minimal run factory: runTitle only reads mrIid + state.mrTitle.
+function makeRun(mrIid: number, state: RoutineRunState = {}): RoutineRun {
+  return { mrIid, state } as RoutineRun
+}
 
 describe('isRunActive', () => {
   it('is true only while the run is still progressing', () => {
@@ -87,6 +98,20 @@ describe('stepLabel', () => {
 
   it('still labels the legacy approve_and_tag comment step', () => {
     expect(stepLabel.comment).toBe('Comment')
+  })
+})
+
+describe('runTitle', () => {
+  it('uses the captured MR title as the primary label', () => {
+    expect(runTitle(makeRun(42, { mrTitle: 'feat: add widget' }))).toBe('feat: add widget')
+  })
+
+  it('falls back to the !{mrIid} label when no title is captured', () => {
+    expect(runTitle(makeRun(42))).toBe('!42')
+  })
+
+  it('falls back to a generic label when neither title nor IID is present', () => {
+    expect(runTitle(makeRun(0))).toBe('Routine run')
   })
 })
 

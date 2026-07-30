@@ -193,6 +193,11 @@ type releaseState struct {
 	// (run.MRIID == 0) and fills this in at the create_mr step; effectiveMRIID reads
 	// run.MRIID for the dev flow and this for the main flow.
 	MRIID int `json:"mrIid,omitempty"`
+	// MRTitle is the human-readable merge-request title, captured the FIRST time the
+	// routine obtains the MR (the dev flow's verify step, the main flow's create_mr
+	// step) so the Actions views can identify a run by name rather than by IID alone.
+	// It is a durable capture: once set it is preserved across resumes.
+	MRTitle string `json:"mrTitle,omitempty"`
 }
 
 // effectiveMRIID returns the merge request IID a release step should act on:
@@ -1140,6 +1145,12 @@ func (s *Service) runReleaseStep(ctx context.Context, gl *gitlab.Client, project
 		if err != nil {
 			return "", fmt.Errorf("get merge request: %w", err)
 		}
+		// Capture the MR title the first time we obtain the MR so the Actions views
+		// can identify the run by name. Only set it when empty so a resume that
+		// already recorded it keeps the original (durable capture).
+		if state.MRTitle == "" {
+			state.MRTitle = mr.Title
+		}
 		if mr.HasConflicts || mr.MergeStatus == "cannot_be_merged" {
 			return "", fmt.Errorf("merge request !%d has conflicts; resolve and resume", mrIID)
 		}
@@ -1482,6 +1493,10 @@ func (s *Service) runCreateMRStep(ctx context.Context, gl *gitlab.Client, projec
 				s.logger.Printf("routines: found %d open %s->%s release merge requests; reusing lowest IID !%d", len(marked), params.SourceBranch, params.TargetBranch, lowest.IID)
 			}
 			state.MRIID = lowest.IID
+			// Capture the reused MR's title so the Actions views can name the run.
+			if state.MRTitle == "" {
+				state.MRTitle = lowest.Title
+			}
 		}
 	}
 	if state.MRIID == 0 {
@@ -1492,6 +1507,15 @@ func (s *Service) runCreateMRStep(ctx context.Context, gl *gitlab.Client, projec
 			return "", fmt.Errorf("create merge request: %w", err)
 		}
 		state.MRIID = mr.IID
+		// Capture the created MR's title (fall back to the generated title if the
+		// API response omitted it) so the Actions views can name the run.
+		if state.MRTitle == "" {
+			if mr.Title != "" {
+				state.MRTitle = mr.Title
+			} else {
+				state.MRTitle = title
+			}
+		}
 	}
 	if err := checkpoint(state); err != nil {
 		return "", fmt.Errorf("checkpoint created MR: %w", err)

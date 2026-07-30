@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { RoutineRun } from '@shared/api/types'
-import { formatDateTime, routineKindLabel } from '@modules/routines/format'
+import { formatDateTime, routineKindLabel, runTitle } from '@modules/routines/format'
 import RoutineStatusChip from '@modules/routines/components/RoutineStatusChip.vue'
 
 defineProps<{
@@ -22,7 +22,15 @@ defineProps<{
           :to="`/actions/${run.id}`"
           class="group flex min-w-0 flex-1 items-center gap-3"
         >
-          <span class="text-ink group-hover:text-accent font-mono text-sm">!{{ run.mrIid }}</span>
+          <!-- Primary label: the MR title when captured, else the !{mrIid}
+               fallback. Truncates so a long title never overflows the row. -->
+          <span class="text-ink group-hover:text-accent min-w-0 truncate text-sm">
+            {{ runTitle(run) }}
+          </span>
+          <!-- The IID is a secondary hint only once the title already leads. -->
+          <span v-if="run.state.mrTitle && run.mrIid" class="text-muted shrink-0 font-mono text-xs">
+            !{{ run.mrIid }}
+          </span>
           <RoutineStatusChip :status="run.status" />
           <span class="label-mono truncate">{{ routineKindLabel[run.kind] }}</span>
         </RouterLink>

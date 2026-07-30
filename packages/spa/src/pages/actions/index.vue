@@ -5,7 +5,7 @@ import PageHeader from '@shared/components/ui/PageHeader.vue'
 import EmptyState from '@shared/components/ui/EmptyState.vue'
 import type { RoutineRun } from '@shared/api/types'
 import { useRoutinesStore } from '@modules/routines/store'
-import { formatDateTime, isRunActive, routineKindLabel } from '@modules/routines/format'
+import { formatDateTime, isRunActive, routineKindLabel, runTitle } from '@modules/routines/format'
 import RoutineStatusChip from '@modules/routines/components/RoutineStatusChip.vue'
 
 const store = useRoutinesStore()
@@ -83,8 +83,16 @@ watch(runs, () => startPolling())
           :to="`/actions/${run.id}`"
           class="group flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1"
         >
-          <span class="text-ink group-hover:text-accent text-sm">{{ repoLabel(run) }}</span>
-          <span v-if="run.mrIid" class="text-muted font-mono text-xs">!{{ run.mrIid }}</span>
+          <!-- Primary label: the MR title when captured, else the !{mrIid}
+               fallback. Truncates so a long title never overflows the row. -->
+          <span class="text-ink group-hover:text-accent min-w-0 truncate text-sm">
+            {{ runTitle(run) }}
+          </span>
+          <span class="text-muted text-xs">{{ repoLabel(run) }}</span>
+          <!-- The IID is a secondary hint only once the title already leads. -->
+          <span v-if="run.state.mrTitle && run.mrIid" class="text-muted font-mono text-xs">
+            !{{ run.mrIid }}
+          </span>
           <RoutineStatusChip :status="run.status" />
           <span class="label-mono truncate">{{ routineKindLabel[run.kind] }}</span>
         </RouterLink>
