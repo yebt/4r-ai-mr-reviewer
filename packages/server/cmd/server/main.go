@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/webcloster-dev/ai-reviewer/internal/adapters/crypto"
 	"github.com/webcloster-dev/ai-reviewer/internal/adapters/sqlite"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/accounts"
@@ -41,6 +42,15 @@ func main() {
 }
 
 func run() error {
+	// Load a local .env into the process environment if present. Real environment
+	// variables always win — godotenv.Load never overrides an already-set var — so
+	// production/CI that inject real env vars are unaffected. A missing file is a
+	// silent no-op; the file is read relative to the working directory (the server
+	// runs from packages/server, so packages/server/.env is picked up).
+	if err := godotenv.Load(); err != nil && !os.IsNotExist(err) {
+		log.Printf("ai-reviewer: .env not loaded: %v", err)
+	}
+
 	cfg := config.Load()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
