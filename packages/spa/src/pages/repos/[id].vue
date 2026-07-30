@@ -31,7 +31,11 @@ const tabs: TabItem[] = [
   { id: 'reviews', label: 'Reviews', icon: 'i-lucide-scan-search' },
   { id: 'routines', label: 'Routines', icon: 'i-lucide-workflow' },
 ]
-const activeTab = ref('reviews')
+// Local-only tab selection, but deep-linkable via ?tab= so an Action detail page
+// can jump straight to this repo's Routines tab. Unknown values fall back safely.
+const activeTab = ref(
+  tabs.some((t) => t.id === route.query.tab) ? String(route.query.tab) : 'reviews',
+)
 
 const creatingIid = ref<number | null>(null)
 // Ids with an archive/unarchive request in flight. Tracked as a set (not a

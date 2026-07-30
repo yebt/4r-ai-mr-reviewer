@@ -3,13 +3,10 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useIntervalFn } from '@vueuse/core'
 import PageHeader from '@shared/components/ui/PageHeader.vue'
 import EmptyState from '@shared/components/ui/EmptyState.vue'
-import { errorMessage } from '@shared/api/client'
-import { toast } from '@shared/composables/useToast'
-import type { ConfirmDecision, RoutineRun } from '@shared/api/types'
+import type { RoutineRun } from '@shared/api/types'
 import { useRoutinesStore } from '@modules/routines/store'
 import { formatDateTime, isRunActive, routineKindLabel } from '@modules/routines/format'
 import RoutineStatusChip from '@modules/routines/components/RoutineStatusChip.vue'
-import RoutineRunDetail from '@modules/routines/components/RoutineRunDetail.vue'
 
 const store = useRoutinesStore()
 
@@ -31,21 +28,11 @@ function repoLabel(run: RoutineRun): string {
   return run.repoName || repoNames.value[run.repoId] || 'repo'
 }
 
-// Expanded run whose step ledger is shown. Read back through the store so the
-// detail observes the same live object the poller refreshes.
-const selectedRunId = ref<string | null>(null)
-const selectedRun = computed(() =>
-  selectedRunId.value ? store.runById(selectedRunId.value) : null,
-)
-function toggleSelect(id: string) {
-  selectedRunId.value = selectedRunId.value === id ? null : id
-}
-
 // --- Live polling ---
-// While any run is pending/running, refresh those runs on the same cadence the
-// per-repo routines section uses (2.5s). awaiting_confirmation is NOT active, so
-// the loop idles once every run is resting or waiting on the user, and resumes
-// after a confirm/resume flips a run back to running.
+// Rows navigate to a dedicated detail page now, but the list itself keeps the
+// statuses fresh: while any run is pending/running, refresh those runs on the
+// same 2.5s cadence used elsewhere. awaiting_confirmation is NOT active, so the
+// loop idles once every run is resting or waiting on the user.
 const { pause, resume: resumePoll, isActive } = useIntervalFn(
   async () => {
     const active = runs.value.filter((r) => isRunActive(r.status))
@@ -63,53 +50,13 @@ function startPolling() {
   if (!isActive.value && runs.value.some((r) => isRunActive(r.status))) resumePoll()
 }
 
-// --- Resume a blocked run ---
-const resuming = ref(false)
-async function onResume(id: string) {
-  resuming.value = true
-  try {
-    await store.resume(id)
-    startPolling()
-  } catch (e) {
-    toast.error(errorMessage(e))
-  } finally {
-    resuming.value = false
-  }
-}
-
-// --- Confirmation gate ---
-// Tracks the run id + decision currently in flight so the run-detail spins the
-// clicked button only.
-const confirmingId = ref<string | null>(null)
-const confirmingDecision = ref<ConfirmDecision | null>(null)
-const detailConfirming = computed(() =>
-  selectedRun.value && confirmingId.value === selectedRun.value.id
-    ? confirmingDecision.value
-    : null,
-)
-
-async function onConfirm(id: string, decision: ConfirmDecision) {
-  confirmingId.value = id
-  confirmingDecision.value = decision
-  try {
-    await store.confirm(id, decision)
-    startPolling()
-    toast.success(decision === 'merge' ? 'Merging release…' : 'Left for manual merge')
-  } catch (e) {
-    toast.error(errorMessage(e))
-  } finally {
-    confirmingId.value = null
-    confirmingDecision.value = null
-  }
-}
-
 onMounted(async () => {
   await store.listRecent()
   startPolling()
 })
 onUnmounted(pause)
 
-// Any newly-active run (after a fresh list, resume, or confirm) starts the poll.
+// Any newly-active run (after a fresh list or a poll refresh) starts the poll.
 watch(runs, () => startPolling())
 </script>
 
@@ -132,35 +79,19 @@ watch(runs, () => startPolling())
 
     <ul v-else class="border-line/50 border-t">
       <li v-for="run in runs" :key="run.id" class="row flex-wrap justify-between gap-y-1">
-        <button
-          type="button"
-          class="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-left"
-          :aria-expanded="selectedRunId === run.id"
-          @click="toggleSelect(run.id)"
+        <RouterLink
+          :to="`/actions/${run.id}`"
+          class="group flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1"
         >
-          <span
-            class="text-ink text-sm"
-            :class="selectedRunId === run.id ? 'text-accent' : ''"
-          >
-            {{ repoLabel(run) }}
-          </span>
+          <span class="text-ink group-hover:text-accent text-sm">{{ repoLabel(run) }}</span>
           <span v-if="run.mrIid" class="text-muted font-mono text-xs">!{{ run.mrIid }}</span>
           <RoutineStatusChip :status="run.status" />
           <span class="label-mono truncate">{{ routineKindLabel[run.kind] }}</span>
-        </button>
+        </RouterLink>
         <div class="label-mono shrink-0">
           <span v-if="run.updatedAt">{{ formatDateTime(run.updatedAt) }}</span>
         </div>
       </li>
     </ul>
-
-    <RoutineRunDetail
-      v-if="selectedRun"
-      :run="selectedRun"
-      :resuming="resuming"
-      :confirming="detailConfirming"
-      @resume="onResume"
-      @confirm="onConfirm"
-    />
   </div>
 </template>
