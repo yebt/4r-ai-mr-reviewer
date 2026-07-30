@@ -7,6 +7,7 @@ import { setBreadcrumbs } from '@shared/composables/useBreadcrumbs'
 import { confirm } from '@shared/composables/useConfirm'
 import { toast } from '@shared/composables/useToast'
 import PageHeader from '@shared/components/ui/PageHeader.vue'
+import DependencyAlert from '@shared/components/ui/DependencyAlert.vue'
 import Tabs, { type TabItem } from '@shared/components/ui/Tabs.vue'
 import PreflightReport from '@modules/repos/components/PreflightReport.vue'
 import { useReposStore } from '@modules/repos/store'
@@ -39,6 +40,10 @@ const creatingIid = ref<number | null>(null)
 const archivingIds = ref<string[]>([])
 
 const repo = computed(() => repos.items.find((r) => r.id === repoId) ?? null)
+
+// Reviews depend on an AI provider. Guard only after the store settles
+// (providers.fetchAll flips `loading` synchronously on mount) so it never flashes.
+const noProviders = computed(() => !providers.loading && providers.items.length === 0)
 
 // Preselected provider for launching a review: the repo's assigned provider if
 // set, otherwise the global default provider, otherwise none.
@@ -169,6 +174,13 @@ async function unarchiveReview(id: string) {
           <span class="bg-accent inline-block h-3.5 w-0.5" aria-hidden="true" />
           Open merge requests
         </h2>
+        <DependencyAlert
+          v-if="noProviders"
+          class="mb-3"
+          message="No AI provider configured — add one to run reviews."
+          cta-label="Add a provider"
+          cta-to="/providers"
+        />
         <MergeRequestList
           :items="mrs"
           :loading="mrsLoading"

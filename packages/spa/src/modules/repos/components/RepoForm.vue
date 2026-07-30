@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { errorMessage } from '@shared/api/client'
 import { toast } from '@shared/composables/useToast'
 import type { Repo } from '@shared/api/types'
+import DependencyAlert from '@shared/components/ui/DependencyAlert.vue'
 import { useReposStore } from '@modules/repos/store'
 import { useAccountsStore } from '@modules/accounts/store'
 import { useProvidersStore } from '@modules/providers/store'
@@ -26,6 +27,11 @@ const submitting = ref(false)
 const error = ref<string | null>(null)
 
 const isEdit = computed(() => !!props.editing)
+
+// Prerequisite guards: only after the store has settled (fetchAll flips `loading`
+// synchronously on mount) so the warning never flashes during the initial load.
+const noAccounts = computed(() => !accounts.loading && accounts.items.length === 0)
+const noProviders = computed(() => !providers.loading && providers.items.length === 0)
 const valid = computed(
   () => isEdit.value || (form.name.trim() && form.url.trim() && form.accountId),
 )
@@ -110,6 +116,15 @@ async function submit() {
 <template>
   <form class="flex flex-col gap-5" @submit.prevent="submit">
     <template v-if="!isEdit">
+      <!-- Repositories depend on a GitLab account; without one there is nothing to
+           attach a repo to. -->
+      <DependencyAlert
+        v-if="noAccounts"
+        message="No GitLab account connected — add one to add repositories."
+        cta-label="Connect an account"
+        cta-to="/accounts"
+      />
+
       <div>
         <label class="field-label" for="rp-url">Project URL</label>
         <input
@@ -151,15 +166,21 @@ async function submit() {
             {{ a.name }} — {{ a.baseUrl }}
           </option>
         </select>
-        <p v-if="accounts.items.length === 0" class="text-muted/70 mt-1.5 text-xs">
-          Add an account first.
-        </p>
       </div>
     </template>
 
     <template v-else>
       <div class="text-muted font-mono text-xs">{{ form.name }} · {{ form.url }}</div>
     </template>
+
+    <!-- Reviews depend on an AI provider; a repo with no provider available can't
+         be reviewed. -->
+    <DependencyAlert
+      v-if="noProviders"
+      message="No AI provider configured — add one to run reviews."
+      cta-label="Add a provider"
+      cta-to="/providers"
+    />
 
     <div>
       <label class="field-label" for="rp-provider"

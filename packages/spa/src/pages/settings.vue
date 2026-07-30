@@ -5,9 +5,11 @@ import { confirm } from '@shared/composables/useConfirm'
 import { toast } from '@shared/composables/useToast'
 import PageHeader from '@shared/components/ui/PageHeader.vue'
 import EmptyState from '@shared/components/ui/EmptyState.vue'
+import DependencyAlert from '@shared/components/ui/DependencyAlert.vue'
 import type { NotificationRule } from '@shared/api/types'
 import { useNotificationsStore } from '@modules/notifications/store'
 import { useTelegramStore } from '@modules/telegram/store'
+import { isEventRouted } from '@modules/notifications/events'
 
 const store = useNotificationsStore()
 const telegram = useTelegramStore()
@@ -30,7 +32,19 @@ const newTarget = ref('')
 const busyId = ref<string | null>(null)
 
 const hasTargets = computed(() => telegram.items.length > 0)
+// Notification rules depend on a notifier (Telegram target). Guard only after the
+// store settles so the warning never flashes during the initial load.
+const noTargets = computed(() => !telegram.loading && telegram.items.length === 0)
 const canAdd = computed(() => newEvent.value !== '' && newTarget.value !== '')
+
+// Per available event: whether an enabled rule routes it to a notifier. Unrouted
+// events are surfaced as warnings — their notifications won't be delivered.
+const eventStatuses = computed(() =>
+  store.events.map((event) => ({
+    event,
+    routed: isEventRouted(event, store.rules),
+  })),
+)
 
 async function addRule() {
   if (!canAdd.value) return
@@ -93,12 +107,14 @@ onMounted(() => {
       </p>
 
       <!-- Add rule -->
-      <p v-if="!hasTargets" class="text-muted mb-6 text-sm">
-        <RouterLink to="/telegram" class="text-accent hover:underline">
-          Add a Telegram target first
-        </RouterLink>
-      </p>
-      <div v-else class="mb-6 flex flex-wrap items-end gap-3">
+      <DependencyAlert
+        v-if="noTargets"
+        class="mb-6"
+        message="No notifier configured — add a Telegram target to route notifications."
+        cta-label="Add a Telegram target"
+        cta-to="/telegram"
+      />
+      <div v-else-if="hasTargets" class="mb-6 flex flex-wrap items-end gap-3">
         <div class="min-w-40 flex-1">
           <label class="field-label" for="nt-event">Event</label>
           <select id="nt-event" v-model="newEvent" class="field-underline">
@@ -163,6 +179,38 @@ onMounted(() => {
           </div>
         </li>
       </ul>
+
+      <!-- Events status: every available event, flagged when no enabled rule
+           routes it to a notifier (its notifications won't be delivered). -->
+      <template v-if="!store.loading && !store.error && eventStatuses.length > 0">
+        <h3 class="section-title text-muted mt-8 mb-3 flex items-center gap-2">
+          <span class="bg-line inline-block h-3.5 w-0.5" aria-hidden="true" />
+          Events
+        </h3>
+        <ul class="border-line/50 border-t">
+          <li
+            v-for="status in eventStatuses"
+            :key="status.event"
+            class="row justify-between"
+            :class="status.routed ? '' : 'text-warn'"
+          >
+            <div class="flex min-w-0 items-center gap-2 text-sm">
+              <span
+                :class="status.routed ? 'i-lucide-circle-check text-ok' : 'i-lucide-triangle-alert'"
+                class="shrink-0 text-sm"
+                aria-hidden="true"
+              />
+              <span :class="status.routed ? 'text-ink' : ''" class="truncate">
+                {{ eventLabel(status.event) }}
+              </span>
+            </div>
+            <span v-if="!status.routed" class="shrink-0 text-xs" role="alert">
+              no notifier — notifications for this event won't be delivered
+            </span>
+            <span v-else class="text-muted shrink-0 text-xs">routed</span>
+          </li>
+        </ul>
+      </template>
     </section>
   </div>
 </template>
