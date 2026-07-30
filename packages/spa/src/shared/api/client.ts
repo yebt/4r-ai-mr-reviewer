@@ -2,6 +2,7 @@
 // which Vite proxies to the server in dev (see vite.config.ts).
 import type {
   Account,
+  AuthStatus,
   ConfirmDecision,
   CreateReviewInput,
   FindingHumanized,
@@ -52,12 +53,39 @@ export function errorMessage(e: unknown): string {
   return String(e)
 }
 
+// Listeners notified whenever an authenticated API call comes back 401 (session
+// missing or expired). Lets the auth store clear its state and the router send
+// the user to the login page without every caller having to special-case 401.
+type UnauthorizedHandler = () => void
+const unauthorizedHandlers = new Set<UnauthorizedHandler>()
+
+/**
+ * Register a handler fired on any 401 from an authenticated route. Returns an
+ * unsubscribe function. 401s from the /auth/* endpoints (e.g. a wrong password
+ * on login) are NOT reported here — those are handled inline by the caller.
+ */
+export function onUnauthorized(handler: UnauthorizedHandler): () => void {
+  unauthorizedHandlers.add(handler)
+  return () => unauthorizedHandlers.delete(handler)
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(BASE + path, {
     method,
     headers: body ? { 'Content-Type': 'application/json' } : undefined,
     body: body ? JSON.stringify(body) : undefined,
+    // Send the httpOnly `air_session` cookie so authenticated routes work once
+    // password auth is enabled. Same-origin in prod; the Vite dev proxy keeps
+    // /api same-origin too.
+    credentials: 'same-origin',
   })
+
+  // A 401 from an authenticated route means the session is missing or expired.
+  // Notify listeners (auth store + router) but still throw so the caller sees it.
+  // Skip /auth/* — its 401s (bad password) are expected and handled inline.
+  if (res.status === 401 && !path.startsWith('/auth/')) {
+    for (const handler of unauthorizedHandlers) handler()
+  }
 
   if (res.status === 204) return undefined as T
 
@@ -82,6 +110,12 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 }
 
 export const api = {
+  // auth (optional password auth; /auth/* never requires a session)
+  authStatus: () => request<AuthStatus>('GET', '/auth/status'),
+  login: (password: string) =>
+    request<{ authenticated: boolean }>('POST', '/auth/login', { password }),
+  logout: () => request<void>('POST', '/auth/logout'),
+
   // accounts
   listAccounts: () => request<Account[]>('GET', '/accounts'),
   createAccount: (input: { name: string; baseUrl: string; token: string }) =>

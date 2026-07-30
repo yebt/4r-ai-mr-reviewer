@@ -1,5 +1,26 @@
 <script setup lang="ts">
+import { ref } from 'vue'
+import { useRouter } from 'vue-router'
 import PageHeader from '@shared/components/ui/PageHeader.vue'
+import { errorMessage } from '@shared/api/client'
+import { toast } from '@shared/composables/useToast'
+import { useAuthStore } from '@modules/auth/store'
+
+const auth = useAuthStore()
+const router = useRouter()
+const loggingOut = ref(false)
+
+async function logout() {
+  loggingOut.value = true
+  try {
+    await auth.logout()
+    await router.replace({ path: '/login' })
+  } catch (e) {
+    toast.error(errorMessage(e))
+  } finally {
+    loggingOut.value = false
+  }
+}
 
 const items = [
   {
@@ -69,5 +90,13 @@ const items = [
         </RouterLink>
       </li>
     </ul>
+
+    <!-- Session controls only exist when password auth is enabled server-side. -->
+    <div v-if="auth.enabled" class="mt-8">
+      <button type="button" class="btn-line text-xs" :disabled="loggingOut" @click="logout">
+        <span class="i-lucide-log-out text-sm" aria-hidden="true" />
+        {{ loggingOut ? 'Logging out…' : 'Log out' }}
+      </button>
+    </div>
   </div>
 </template>

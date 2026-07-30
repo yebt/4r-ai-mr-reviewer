@@ -320,3 +320,12 @@ export interface Review {
   createdAt: string
   updatedAt: string
 }
+
+// Optional password auth. When the server has AIR_AUTH_PASSWORD set, `authEnabled`
+// is true and every API route (except /auth/* and the telegram webhook) requires
+// a valid session cookie. `authenticated` reflects whether the current session
+// cookie is valid. Both are reported by GET /auth/status, which never requires auth.
+export interface AuthStatus {
+  authEnabled: boolean
+  authenticated: boolean
+}

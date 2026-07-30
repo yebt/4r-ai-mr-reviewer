@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { useRouter } from 'vue-router'
+import { computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import AppSidebar from '@shared/components/layout/AppSidebar.vue'
 import AppBottomNav from '@shared/components/layout/AppBottomNav.vue'
 import ConfirmDialog from '@shared/components/ui/ConfirmDialog.vue'
@@ -9,6 +10,10 @@ import { setBreadcrumbs, useBreadcrumbs } from '@shared/composables/useBreadcrum
 
 const { state: breadcrumbs, sticky, toggleSticky } = useBreadcrumbs()
 const router = useRouter()
+const route = useRoute()
+
+// Public routes (e.g. /login) render standalone, without the sidebar/nav shell.
+const bare = computed(() => route.meta.public === true)
 
 // Reset the breadcrumb trail before each navigation; pages declare their own.
 router.beforeEach(() => {
@@ -18,7 +23,16 @@ router.beforeEach(() => {
 </script>
 
 <template>
-  <div class="flex h-screen w-screen overflow-hidden">
+  <!-- Bare layout: standalone pages such as the login screen. -->
+  <template v-if="bare">
+    <RouterView />
+    <ConfirmDialog />
+    <ToastHost />
+  </template>
+
+  <!-- App shell: sidebar + bottom nav around the routed page. -->
+  <template v-else>
+    <div class="flex h-screen w-screen overflow-hidden">
     <!-- Desktop: static sidebar -->
     <div class="hidden shrink-0 md:block">
       <AppSidebar class="h-full" />
@@ -58,10 +72,11 @@ router.beforeEach(() => {
       </div>
     </main>
 
-    <!-- Mobile: bottom navigation -->
-    <AppBottomNav />
-  </div>
+      <!-- Mobile: bottom navigation -->
+      <AppBottomNav />
+    </div>
 
-  <ConfirmDialog />
-  <ToastHost />
+    <ConfirmDialog />
+    <ToastHost />
+  </template>
 </template>
