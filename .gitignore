@@ -4,3 +4,4 @@
 *.db-*
 *.db.*
 packages/spa/.env
+packages/server/.env
