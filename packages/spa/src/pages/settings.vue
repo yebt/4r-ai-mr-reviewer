@@ -15,6 +15,7 @@ const telegram = useTelegramStore()
 // Friendly labels for known events; unknown events fall back to their raw key.
 const EVENT_LABELS: Record<string, string> = {
   'review.finished': 'Review finished',
+  'release.finished': 'Release finished',
 }
 function eventLabel(event: string): string {
   return EVENT_LABELS[event] ?? event

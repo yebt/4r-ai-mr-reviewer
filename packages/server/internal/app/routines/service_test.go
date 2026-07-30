@@ -1195,6 +1195,55 @@ func TestReleaseNotifyFailureDoesNotFailRun(t *testing.T) {
 	}
 }
 
+// recordNotifier is a ReleaseNotifier that captures the text it is called with,
+// used to assert the notify step builds an informative release summary.
+type recordNotifier struct {
+	called bool
+	text   string
+}
+
+func (n *recordNotifier) Notify(ctx context.Context, text string) error {
+	n.called = true
+	n.text = text
+	return nil
+}
+
+// The notify step must hand the fan-out an informative plain-text summary built
+// from the run's state: the created tag, the repo, the flow, and the merged MR.
+func TestReleaseNotifyStepSendsInformativeSummary(t *testing.T) {
+	st := devReleaseState()
+	st.mergedAfterGets = 4
+	st.mergeCommitSHA = "notifysha"
+	srv := newFakeReleaseGitLab(t, st)
+	ctx, svc, repoID := setupRoutinesTest(t, srv.URL)
+	svc.mergePollInterval = time.Millisecond
+	n := &recordNotifier{}
+	svc.notifier = n
+
+	gate := driveToGate(t, ctx, svc, repoID)
+	confirmed, err := svc.Confirm(ctx, gate.ID, "merge")
+	if err != nil {
+		t.Fatalf("Confirm(merge): %v", err)
+	}
+	if err := svc.execute(ctx, confirmed); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	if !n.called {
+		t.Fatal("notifier was not called")
+	}
+	// The repo created by setupRoutinesTest is named "web"; the dev flow tags a
+	// "-dev" prerelease and drives MR !7.
+	if !strings.HasPrefix(n.text, "Release ") {
+		t.Errorf("summary %q, want it to start with %q", n.text, "Release ")
+	}
+	for _, want := range []string{"completed for web", "(development flow)", "MR !7 merged", "-dev"} {
+		if !strings.Contains(n.text, want) {
+			t.Errorf("summary %q, want it to contain %q", n.text, want)
+		}
+	}
+}
+
 func TestConfirmRejectsNonAwaitingRun(t *testing.T) {
 	st := devReleaseState()
 	srv := newFakeReleaseGitLab(t, st)

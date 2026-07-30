@@ -1246,7 +1246,20 @@ func (s *Service) runReleaseStep(ctx context.Context, gl *gitlab.Client, project
 
 	case stepNotify:
 		// Best-effort: a notify failure must NEVER fail the run.
-		summary := fmt.Sprintf("release %s created for MR !%d", state.NextTag+tagSuffix(params.Flow), mrIID)
+		//
+		// Build an informative plain-text summary from the run's state: the created
+		// tag, the repo, the flow, and the merged MR. The repo name is best-effort —
+		// fall back to the repo id if the lookup fails, since notification must never
+		// hold up (or fail) a finished release.
+		flow := params.Flow
+		if flow == "" {
+			flow = flowDevelopment
+		}
+		repoName := run.RepoID
+		if rp, err := s.repos.Get(ctx, run.RepoID); err == nil && rp.Name != "" {
+			repoName = rp.Name
+		}
+		summary := fmt.Sprintf("Release %s completed for %s (%s flow), MR !%d merged", state.NextTag+tagSuffix(params.Flow), repoName, flow, mrIID)
 		if s.notifier == nil {
 			s.logger.Printf("routines: %s (no notifier configured)", summary)
 			return "notify skipped (no notifier)", nil

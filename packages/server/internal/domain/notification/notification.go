@@ -16,8 +16,12 @@ var ErrNotFound = errors.New("notification: rule not found")
 // error).
 const EventReviewFinished = "review.finished"
 
+// EventReleaseFinished fires when a release routine finishes: the MR is merged
+// and the release tag is created.
+const EventReleaseFinished = "release.finished"
+
 // Events lists every event a rule may subscribe to.
-var Events = []string{EventReviewFinished}
+var Events = []string{EventReviewFinished, EventReleaseFinished}
 
 // ValidEvent reports whether e is a known event.
 func ValidEvent(e string) bool {

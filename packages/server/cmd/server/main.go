@@ -26,6 +26,7 @@ import (
 	apptelegram "github.com/webcloster-dev/ai-reviewer/internal/app/telegram"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/vault"
 	"github.com/webcloster-dev/ai-reviewer/internal/config"
+	"github.com/webcloster-dev/ai-reviewer/internal/domain/notification"
 	httpapi "github.com/webcloster-dev/ai-reviewer/internal/http"
 	"github.com/webcloster-dev/ai-reviewer/internal/jobs"
 	"github.com/webcloster-dev/ai-reviewer/internal/review/engine"
@@ -79,12 +80,13 @@ func run() error {
 		return err
 	}
 	reviewSvc := reviews.NewService(reviewStore, repoStore, accountSvc, providerSvc, engine.NewMultiPass(ruleSet), cfg.ReasoningBudget)
-	// TODO(release-routine main flow slice): pass a real ReleaseNotifier (Telegram
-	// routing) here; nil keeps the release notify step best-effort log-only.
-	routinesSvc := routines.NewService(repoStore, accountSvc, routineRunStore, cfg.MergeWaitTimeout, nil, nil)
 	humanizeSvc := apphumanize.NewService(reviewStore, profileStore, humanizationStore, providerSvc, nil)
 	telegramSvc := apptelegram.NewService(telegramStore, secrets)
 	notificationsSvc := notifications.NewService(notificationRuleStore, telegramSvc)
+	// The release routine notifies through the shared notifications fan-out via a
+	// thin adapter, so app/routines stays decoupled from app/notifications (the
+	// composition wiring lives here at the root).
+	routinesSvc := routines.NewService(repoStore, accountSvc, routineRunStore, cfg.MergeWaitTimeout, releaseNotifier{notificationsSvc}, nil)
 	botSvc := bot.NewService(bot.NewAPIClient(), telegramSvc, reviewSvc, repoSvc)
 
 	runner := jobs.NewRunner(jobStore, reviewSvc.Handle, jobs.WithConcurrency(cfg.ReviewConcurrency))
@@ -112,6 +114,20 @@ func run() error {
 	}
 	log.Print("ai-reviewer: shut down cleanly")
 	return nil
+}
+
+// releaseNotifier adapts the notifications fan-out service to the
+// routines.ReleaseNotifier interface, delivering a finished-release summary as
+// the release.finished event. It keeps app/routines from importing
+// app/notifications: the composition root owns this wiring.
+type releaseNotifier struct {
+	svc *notifications.Service
+}
+
+// Notify fans the release summary out to every rule subscribed to
+// release.finished.
+func (n releaseNotifier) Notify(ctx context.Context, text string) error {
+	return n.svc.Notify(ctx, notification.EventReleaseFinished, text)
 }
 
 // unlockVault initializes the secret vault on first run, or unlocks it, and
