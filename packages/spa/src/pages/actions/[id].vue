@@ -1,18 +1,20 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch, watchEffect } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useIntervalFn } from '@vueuse/core'
 import { ApiError, errorMessage } from '@shared/api/client'
 import { setBreadcrumbs } from '@shared/composables/useBreadcrumbs'
+import { confirm } from '@shared/composables/useConfirm'
 import { toast } from '@shared/composables/useToast'
 import PageHeader from '@shared/components/ui/PageHeader.vue'
 import type { ConfirmDecision } from '@shared/api/types'
 import { useRoutinesStore } from '@modules/routines/store'
 import { useReposStore } from '@modules/repos/store'
-import { isRunActive, routineKindLabel } from '@modules/routines/format'
+import { isRunActive, routineKindLabel, runTitle } from '@modules/routines/format'
 import RoutineRunDetail from '@modules/routines/components/RoutineRunDetail.vue'
 
 const route = useRoute()
+const router = useRouter()
 const store = useRoutinesStore()
 const repos = useReposStore()
 
@@ -100,6 +102,31 @@ async function onConfirm(id: string, decision: ConfirmDecision) {
   }
 }
 
+// --- Delete this action ---
+// Offered only for a non-running run (RoutineRunDetail hides the button while
+// running); a running run's 409 is a backstop toasted below. On success the run
+// is gone from every cache, so navigate back to the Actions list.
+const deleting = ref(false)
+async function onDelete(id: string) {
+  const r = run.value
+  const ok = await confirm({
+    title: 'Delete action',
+    message: `Delete "${r ? runTitle(r) : 'this action'}"? This removes the routine run.`,
+    danger: true,
+  })
+  if (!ok) return
+  deleting.value = true
+  try {
+    await store.remove(id)
+    toast.success('Action deleted')
+    router.push('/actions')
+  } catch (e) {
+    toast.error(errorMessage(e))
+  } finally {
+    deleting.value = false
+  }
+}
+
 // Prefer the captured MR title in the page header; fall back to the kind + IID
 // label for a run that has not captured a title yet or a legacy run.
 const headerTitle = computed(() => {
@@ -158,8 +185,10 @@ onUnmounted(pause)
         :run="run"
         :resuming="resuming"
         :confirming="confirmingDecision"
+        :deleting="deleting"
         @resume="onResume"
         @confirm="onConfirm"
+        @delete="onDelete"
       />
     </template>
   </div>

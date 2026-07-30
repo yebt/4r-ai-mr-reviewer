@@ -1,12 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useIntervalFn } from '@vueuse/core'
+import { errorMessage } from '@shared/api/client'
+import { confirm } from '@shared/composables/useConfirm'
+import { toast } from '@shared/composables/useToast'
 import PageHeader from '@shared/components/ui/PageHeader.vue'
 import EmptyState from '@shared/components/ui/EmptyState.vue'
 import type { RoutineRun } from '@shared/api/types'
 import { useRoutinesStore } from '@modules/routines/store'
 import { formatDateTime, isRunActive, routineKindLabel, runTitle } from '@modules/routines/format'
 import RoutineStatusChip from '@modules/routines/components/RoutineStatusChip.vue'
+import RoutineBranchChip from '@modules/routines/components/RoutineBranchChip.vue'
 
 const store = useRoutinesStore()
 
@@ -58,6 +62,28 @@ onUnmounted(pause)
 
 // Any newly-active run (after a fresh list or a poll refresh) starts the poll.
 watch(runs, () => startPolling())
+
+// --- Delete an action ---
+// Running actions are never offered a delete button, so the backend 409 is only
+// a backstop; the row disappears via the store cache removal on success.
+const deletingId = ref<string | null>(null)
+async function remove(run: RoutineRun) {
+  const ok = await confirm({
+    title: 'Delete action',
+    message: `Delete "${runTitle(run)}"? This removes the routine run.`,
+    danger: true,
+  })
+  if (!ok) return
+  deletingId.value = run.id
+  try {
+    await store.remove(run.id)
+    toast.success('Action deleted')
+  } catch (e) {
+    toast.error(errorMessage(e))
+  } finally {
+    deletingId.value = null
+  }
+}
 </script>
 
 <template>
@@ -95,9 +121,21 @@ watch(runs, () => startPolling())
           </span>
           <RoutineStatusChip :status="run.status" />
           <span class="label-mono truncate">{{ routineKindLabel[run.kind] }}</span>
+          <!-- Secondary branch/flow indicator; renders only when known. -->
+          <RoutineBranchChip :run="run" />
         </RouterLink>
-        <div class="label-mono shrink-0">
-          <span v-if="run.updatedAt">{{ formatDateTime(run.updatedAt) }}</span>
+        <div class="flex shrink-0 items-center gap-1">
+          <span v-if="run.updatedAt" class="label-mono">{{ formatDateTime(run.updatedAt) }}</span>
+          <button
+            v-if="run.status !== 'running'"
+            type="button"
+            class="btn-ghost hover:text-danger"
+            :disabled="deletingId === run.id"
+            :aria-label="`Delete ${runTitle(run)}`"
+            @click="remove(run)"
+          >
+            <span class="i-lucide-trash-2 text-sm" aria-hidden="true" />
+          </button>
         </div>
       </li>
     </ul>

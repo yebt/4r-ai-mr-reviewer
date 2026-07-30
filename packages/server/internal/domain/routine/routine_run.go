@@ -86,6 +86,10 @@ var ErrRunNotFound = errors.New("routine: run not found")
 // ErrNotResumable is returned when a run cannot be resumed (it is not blocked).
 var ErrNotResumable = errors.New("routine: run is not resumable")
 
+// ErrRunActive is returned when a run cannot be deleted because it is actively
+// executing (running); deleting it mid-flight would orphan in-progress work.
+var ErrRunActive = errors.New("routine: run is active")
+
 // ErrNotAwaitingConfirmation is returned when Confirm targets a run that is not
 // paused on the confirmation gate.
 var ErrNotAwaitingConfirmation = errors.New("routine: run is not awaiting confirmation")
@@ -106,6 +110,8 @@ type RunStore interface {
 	Create(ctx context.Context, run Run) error
 	// Get returns a run by id, or ErrRunNotFound if missing.
 	Get(ctx context.Context, id string) (Run, error)
+	// Delete removes a run by id, or ErrRunNotFound if missing.
+	Delete(ctx context.Context, id string) error
 	// ListByRepo returns a repo's runs, newest first.
 	ListByRepo(ctx context.Context, repoID string) ([]Run, error)
 	// ListRecent returns the most recent runs across all repos, newest first,

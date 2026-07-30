@@ -487,6 +487,60 @@ func TestApproveAndTagBlocksThenResumes(t *testing.T) {
 	}
 }
 
+func TestDeleteRun(t *testing.T) {
+	// Delete never calls GitLab, so the base URL is a placeholder that is never hit.
+	ctx, svc, repoID := setupRoutinesTest(t, "https://gitlab.test")
+
+	seed := func(status routine.RunStatus) string {
+		runID := string(status) + "-run"
+		run := routine.Run{
+			ID:        runID,
+			Kind:      routine.KindRelease,
+			RepoID:    repoID,
+			MRIID:     7,
+			Status:    status,
+			Params:    json.RawMessage("{}"),
+			State:     json.RawMessage("{}"),
+			Steps:     []routine.Step{{Name: stepVerify, Status: routine.StepPending}},
+			CreatedAt: time.Now().UTC(),
+			UpdatedAt: time.Now().UTC(),
+		}
+		if err := svc.runs.Create(ctx, run); err != nil {
+			t.Fatalf("seed %s run: %v", status, err)
+		}
+		return runID
+	}
+
+	// A done run is deletable and is actually removed.
+	doneID := seed(routine.RunDone)
+	if err := svc.Delete(ctx, doneID); err != nil {
+		t.Fatalf("Delete(done) = %v, want nil", err)
+	}
+	if _, err := svc.Get(ctx, doneID); !errors.Is(err, routine.ErrRunNotFound) {
+		t.Fatalf("Get after delete = %v, want ErrRunNotFound", err)
+	}
+
+	// A blocked run is deletable too.
+	blockedID := seed(routine.RunBlocked)
+	if err := svc.Delete(ctx, blockedID); err != nil {
+		t.Fatalf("Delete(blocked) = %v, want nil", err)
+	}
+
+	// A running run cannot be deleted mid-flight.
+	runningID := seed(routine.RunRunning)
+	if err := svc.Delete(ctx, runningID); !errors.Is(err, routine.ErrRunActive) {
+		t.Fatalf("Delete(running) = %v, want ErrRunActive", err)
+	}
+	if _, err := svc.Get(ctx, runningID); err != nil {
+		t.Fatalf("running run should still exist after refused delete: %v", err)
+	}
+
+	// An unknown run surfaces ErrRunNotFound.
+	if err := svc.Delete(ctx, "does-not-exist"); !errors.Is(err, routine.ErrRunNotFound) {
+		t.Fatalf("Delete(unknown) = %v, want ErrRunNotFound", err)
+	}
+}
+
 func TestResumeRejectsNonBlockedRun(t *testing.T) {
 	st := &fakeGitLabState{targetBranch: "main"}
 	srv := newFakeApproveGitLab(t, st)

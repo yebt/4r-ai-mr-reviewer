@@ -11,6 +11,7 @@ vi.mock('@shared/api/client', () => ({
     getRoutineRun: vi.fn(),
     resumeRoutine: vi.fn(),
     confirmRoutine: vi.fn(),
+    deleteRoutine: vi.fn(),
   },
 }))
 
@@ -26,6 +27,7 @@ const mocked = api as unknown as {
   getRoutineRun: ReturnType<typeof vi.fn>
   resumeRoutine: ReturnType<typeof vi.fn>
   confirmRoutine: ReturnType<typeof vi.fn>
+  deleteRoutine: ReturnType<typeof vi.fn>
 }
 
 const run = (id: string, status: RoutineRunStatus = 'pending'): RoutineRun => ({
@@ -183,5 +185,33 @@ describe('routines store', () => {
     mocked.confirmRoutine.mockRejectedValue(new Error('run is not awaiting confirmation'))
     const store = useRoutinesStore()
     await expect(store.confirm('a', 'wait')).rejects.toThrow('run is not awaiting confirmation')
+  })
+
+  it('remove deletes the run and drops it from every cache', async () => {
+    mocked.deleteRoutine.mockResolvedValue(undefined)
+    const store = useRoutinesStore()
+    store.runsByRepo = { r1: [run('a'), run('b')], r2: [run('a')] }
+    store.runsById = { a: run('a'), b: run('b') }
+    store.recentRunIds = ['a', 'b']
+    await store.remove('a')
+    expect(mocked.deleteRoutine).toHaveBeenCalledWith('a')
+    expect(store.runById('a')).toBeNull()
+    expect(store.runById('b')?.id).toBe('b')
+    expect(store.runsFor('r1').map((r) => r.id)).toEqual(['b'])
+    expect(store.runsFor('r2')).toEqual([])
+    expect(store.recentRunIds).toEqual(['b'])
+    expect(store.recentRuns.map((r) => r.id)).toEqual(['b'])
+  })
+
+  it('remove propagates a 409 and keeps the caches intact', async () => {
+    mocked.deleteRoutine.mockRejectedValue(new Error("can't delete a running action"))
+    const store = useRoutinesStore()
+    store.runsByRepo = { r1: [run('a', 'running')] }
+    store.runsById = { a: run('a', 'running') }
+    store.recentRunIds = ['a']
+    await expect(store.remove('a')).rejects.toThrow("can't delete a running action")
+    expect(store.runById('a')?.id).toBe('a')
+    expect(store.runsFor('r1').map((r) => r.id)).toEqual(['a'])
+    expect(store.recentRunIds).toEqual(['a'])
   })
 })

@@ -1,12 +1,24 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
+	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/webcloster-dev/ai-reviewer/internal/adapters/sqlite"
+	"github.com/webcloster-dev/ai-reviewer/internal/app/routines"
+	"github.com/webcloster-dev/ai-reviewer/internal/domain/account"
+	"github.com/webcloster-dev/ai-reviewer/internal/domain/repo"
+	"github.com/webcloster-dev/ai-reviewer/internal/domain/routine"
+	"github.com/webcloster-dev/ai-reviewer/internal/id"
+	"github.com/webcloster-dev/ai-reviewer/internal/review/skills"
 )
 
 // fakePreflightGitLab serves the endpoints the preflight probes with a fixed,
@@ -350,5 +362,127 @@ func TestGetUnknownRoutineOverHTTP(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("unknown routine status = %d, want 404", resp.StatusCode)
+	}
+}
+
+func TestDeleteRoutineOverHTTP(t *testing.T) {
+	srv := newTestServer(t)
+	repoID := newRepoForRoutine(t, srv)
+
+	// Create a (pending) run, then delete it → 204.
+	resp := postJSON(t, srv.URL+"/repos/"+repoID+"/routines/approve-and-tag", map[string]any{"mrIid": 7})
+	var run struct {
+		ID string `json:"id"`
+	}
+	decodeBody(t, resp, &run)
+
+	delResp := doDelete(t, srv.URL+"/routines/"+run.ID)
+	delResp.Body.Close()
+	if delResp.StatusCode != http.StatusNoContent {
+		t.Fatalf("delete status = %d, want 204", delResp.StatusCode)
+	}
+
+	// The run is gone: a follow-up GET is 404.
+	getResp, err := http.Get(srv.URL + "/routines/" + run.ID)
+	if err != nil {
+		t.Fatalf("GET after delete: %v", err)
+	}
+	getResp.Body.Close()
+	if getResp.StatusCode != http.StatusNotFound {
+		t.Fatalf("get after delete status = %d, want 404", getResp.StatusCode)
+	}
+}
+
+func TestDeleteUnknownRoutineOverHTTP(t *testing.T) {
+	srv := newTestServer(t)
+	resp := doDelete(t, srv.URL+"/routines/does-not-exist")
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("delete unknown status = %d, want 404", resp.StatusCode)
+	}
+}
+
+// newRoutineServerWithRunningRun wires a minimal server whose routine store holds
+// a single run in the "running" status, returning the server and that run's id so
+// the delete-conflict (409) wire contract can be exercised. Only the routines
+// service is wired; every other dependency is nil (the delete path never touches
+// them) and auth is disabled.
+func newRoutineServerWithRunningRun(t *testing.T) (*httptest.Server, string) {
+	t.Helper()
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+
+	ctx := context.Background()
+	acc := account.Account{ID: id.New(), Name: "a", BaseURL: "u", TokenRef: "r", CreatedAt: time.Now().UTC()}
+	if err := sqlite.NewAccountRepo(db).Create(ctx, acc); err != nil {
+		t.Fatalf("seed account: %v", err)
+	}
+	rp := repo.Repo{ID: id.New(), Name: "web", URL: "u", AccountID: acc.ID, CreatedAt: time.Now().UTC()}
+	if err := sqlite.NewRepoStore(db).Create(ctx, rp); err != nil {
+		t.Fatalf("seed repo: %v", err)
+	}
+
+	runStore := sqlite.NewRoutineRunStore(db)
+	runID := id.New()
+	run := routine.Run{
+		ID:        runID,
+		Kind:      routine.KindRelease,
+		RepoID:    rp.ID,
+		MRIID:     7,
+		Status:    routine.RunRunning,
+		Params:    json.RawMessage("{}"),
+		State:     json.RawMessage("{}"),
+		Steps:     []routine.Step{{Name: "verify", Status: routine.StepRunning}},
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+	}
+	if err := runStore.Create(ctx, run); err != nil {
+		t.Fatalf("seed running run: %v", err)
+	}
+
+	routinesSvc := routines.NewService(sqlite.NewRepoStore(db), nil, runStore, time.Minute, nil, log.New(io.Discard, "", 0))
+	var set skills.Set
+	srv := httptest.NewServer(NewServer(nil, nil, nil, nil, nil, routinesSvc, nil, nil, nil, set, nil, "", nil, false).Routes())
+	t.Cleanup(srv.Close)
+	return srv, runID
+}
+
+func TestDeleteRunningRoutineOverHTTP(t *testing.T) {
+	srv, runID := newRoutineServerWithRunningRun(t)
+
+	// A running run cannot be deleted mid-flight → 409 conflict.
+	resp := doDelete(t, srv.URL+"/routines/"+runID)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("delete running status = %d, want 409", resp.StatusCode)
+	}
+}
+
+func TestToRunExposesReleaseBranchInfo(t *testing.T) {
+	run := routine.Run{
+		ID:     "r1",
+		Kind:   routine.KindRelease,
+		RepoID: "repo1",
+		Status: routine.RunPending,
+		Params: json.RawMessage(`{"flow":"main","sourceBranch":"development","targetBranch":"main","bump":"minor"}`),
+	}
+	dto := toRun(run)
+	if dto.Flow != "main" {
+		t.Errorf("Flow = %q, want main", dto.Flow)
+	}
+	if dto.SourceBranch != "development" {
+		t.Errorf("SourceBranch = %q, want development", dto.SourceBranch)
+	}
+	if dto.TargetBranch != "main" {
+		t.Errorf("TargetBranch = %q, want main", dto.TargetBranch)
+	}
+
+	// A non-release run exposes none of the branch fields.
+	other := toRun(routine.Run{ID: "r2", Kind: routine.KindApproveAndTag, Params: json.RawMessage(`{"bump":"patch"}`)})
+	if other.Flow != "" || other.SourceBranch != "" || other.TargetBranch != "" {
+		t.Errorf("non-release run leaked branch info: %+v", other)
 	}
 }

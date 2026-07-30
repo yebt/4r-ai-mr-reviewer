@@ -220,6 +220,13 @@ export interface RoutineRun {
   // Best-effort repo display name. Populated only by the global recent-runs
   // endpoint (listRecentRoutines); absent on the per-repo and single-run paths.
   repoName?: string
+  // Release flow the run belongs to: 'development' (dev flow) or 'main' (main
+  // flow). Optional — absent on legacy runs created before flow capture.
+  flow?: string
+  // Branch pair the release moves between (e.g. development → main). Optional —
+  // populated once the backend records them; absent on legacy runs.
+  sourceBranch?: string
+  targetBranch?: string
 }
 
 export type Bump = 'major' | 'minor' | 'patch'

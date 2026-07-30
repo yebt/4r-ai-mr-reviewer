@@ -143,6 +143,22 @@ export const useRoutinesStore = defineStore('routines', () => {
     return run
   }
 
+  // remove deletes a run on the server, then drops it from every cache it lives
+  // in (the by-id map, each per-repo list, and the recent-runs order) so all
+  // views forget it at once. Rethrows (404 unknown, 409 running) so the caller
+  // can toast; the caches are only pruned after the delete succeeds.
+  async function remove(id: string) {
+    await api.deleteRoutine(id)
+    const { [id]: _removed, ...restById } = runsById.value
+    runsById.value = restById
+    const nextByRepo: Record<string, RoutineRun[]> = {}
+    for (const [repoId, list] of Object.entries(runsByRepo.value)) {
+      nextByRepo[repoId] = list.filter((r) => r.id !== id)
+    }
+    runsByRepo.value = nextByRepo
+    recentRunIds.value = recentRunIds.value.filter((rid) => rid !== id)
+  }
+
   return {
     runsByRepo,
     runsById,
@@ -159,5 +175,6 @@ export const useRoutinesStore = defineStore('routines', () => {
     refresh,
     resume,
     confirm,
+    remove,
   }
 })

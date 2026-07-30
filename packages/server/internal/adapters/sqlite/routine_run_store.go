@@ -55,6 +55,19 @@ func (s *RoutineRunStore) Get(ctx context.Context, id string) (routine.Run, erro
 	return run, nil
 }
 
+// Delete removes a routine run by id, mapping a missing row to
+// routine.ErrRunNotFound.
+func (s *RoutineRunStore) Delete(ctx context.Context, id string) error {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM routine_run WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("routine run store: delete: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return routine.ErrRunNotFound
+	}
+	return nil
+}
+
 // ListByRepo returns a repo's runs, newest first.
 func (s *RoutineRunStore) ListByRepo(ctx context.Context, repoID string) ([]routine.Run, error) {
 	rows, err := s.db.QueryContext(ctx,

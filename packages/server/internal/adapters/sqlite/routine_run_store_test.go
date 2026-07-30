@@ -115,6 +115,29 @@ func TestRoutineRunGetMissing(t *testing.T) {
 	}
 }
 
+func TestRoutineRunDelete(t *testing.T) {
+	ctx := context.Background()
+	s, repoID := newRoutineRunStore(t)
+
+	run := newRun(repoID)
+	if err := s.Create(ctx, run); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := s.Delete(ctx, run.ID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if _, err := s.Get(ctx, run.ID); !errors.Is(err, routine.ErrRunNotFound) {
+		t.Fatalf("Get after delete = %v, want ErrRunNotFound", err)
+	}
+}
+
+func TestRoutineRunDeleteMissing(t *testing.T) {
+	s, _ := newRoutineRunStore(t)
+	if err := s.Delete(context.Background(), "nope"); !errors.Is(err, routine.ErrRunNotFound) {
+		t.Fatalf("Delete missing = %v, want ErrRunNotFound", err)
+	}
+}
+
 func TestRoutineRunSave(t *testing.T) {
 	ctx := context.Background()
 	s, repoID := newRoutineRunStore(t)

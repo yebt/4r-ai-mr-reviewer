@@ -720,6 +720,21 @@ func (s *Service) Get(ctx context.Context, runID string) (routine.Run, error) {
 	return s.runs.Get(ctx, runID)
 }
 
+// Delete removes a run by id. A currently-executing run (running) cannot be
+// deleted mid-flight and returns routine.ErrRunActive; every other status
+// (pending, blocked, awaiting_confirmation, done) is deletable. An unknown run
+// returns routine.ErrRunNotFound.
+func (s *Service) Delete(ctx context.Context, runID string) error {
+	run, err := s.runs.Get(ctx, runID)
+	if err != nil {
+		return err
+	}
+	if run.Status == routine.RunRunning {
+		return routine.ErrRunActive
+	}
+	return s.runs.Delete(ctx, runID)
+}
+
 // ListByRepo returns a repo's runs, newest first.
 func (s *Service) ListByRepo(ctx context.Context, repoID string) ([]routine.Run, error) {
 	return s.runs.ListByRepo(ctx, repoID)

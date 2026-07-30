@@ -220,6 +220,20 @@ func (s *Server) listRecentRoutines(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// deleteRoutine removes a routine run. A running run cannot be deleted → 409;
+// an unknown run → 404; success → 204.
+func (s *Server) deleteRoutine(w http.ResponseWriter, r *http.Request) {
+	if err := s.routines.Delete(r.Context(), r.PathValue("id")); err != nil {
+		if errors.Is(err, routine.ErrRunActive) {
+			writeErr(w, err, http.StatusConflict)
+			return
+		}
+		writeErr(w, err, http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // resumeRoutine re-queues a blocked run. A non-blocked run → 409.
 func (s *Server) resumeRoutine(w http.ResponseWriter, r *http.Request) {
 	run, err := s.routines.Resume(r.Context(), r.PathValue("id"))
@@ -295,6 +309,22 @@ type routineRunResp struct {
 	// recent-runs list (listRecentRoutines); it stays empty (and omitted) on the
 	// per-repo and single-run paths, which already know their repo context.
 	RepoName string `json:"repoName,omitempty"`
+	// Flow, SourceBranch and TargetBranch are decoded best-effort from a release
+	// run's immutable params so the UI can show which branches a run moves and
+	// under which flow ("development" or "main"). They are omitted for non-release
+	// runs and when the params cannot be decoded.
+	Flow         string `json:"flow,omitempty"`
+	SourceBranch string `json:"sourceBranch,omitempty"`
+	TargetBranch string `json:"targetBranch,omitempty"`
+}
+
+// releaseParamsView is the subset of a release run's persisted params the run
+// DTO surfaces. It is decoded best-effort from run.Params (JSON), so a decode
+// error simply leaves the branch fields empty rather than failing the response.
+type releaseParamsView struct {
+	Flow         string `json:"flow"`
+	SourceBranch string `json:"sourceBranch"`
+	TargetBranch string `json:"targetBranch"`
 }
 
 func toRun(run routine.Run) routineRunResp {
@@ -308,7 +338,7 @@ func toRun(run routine.Run) routineRunResp {
 	if len(state) == 0 {
 		state = json.RawMessage("{}")
 	}
-	return routineRunResp{
+	resp := routineRunResp{
 		ID:        run.ID,
 		Kind:      string(run.Kind),
 		RepoID:    run.RepoID,
@@ -320,4 +350,16 @@ func toRun(run routine.Run) routineRunResp {
 		CreatedAt: run.CreatedAt,
 		UpdatedAt: run.UpdatedAt,
 	}
+	// Best-effort: expose a release run's flow and branches from its immutable
+	// params (persisted for every release run, so existing runs work too). A
+	// decode error just leaves the fields empty.
+	if run.Kind == routine.KindRelease && len(run.Params) > 0 {
+		var pv releaseParamsView
+		if err := json.Unmarshal(run.Params, &pv); err == nil {
+			resp.Flow = pv.Flow
+			resp.SourceBranch = pv.SourceBranch
+			resp.TargetBranch = pv.TargetBranch
+		}
+	}
+	return resp
 }

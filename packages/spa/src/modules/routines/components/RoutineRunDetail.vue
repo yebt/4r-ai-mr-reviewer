@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import type { ConfirmDecision, RoutineRun } from '@shared/api/types'
 import { runTitle, stepLabel, stepStatusUi } from '@modules/routines/format'
 import RoutineStatusChip from '@modules/routines/components/RoutineStatusChip.vue'
+import RoutineBranchChip from '@modules/routines/components/RoutineBranchChip.vue'
 
 const props = defineProps<{
   run: RoutineRun
@@ -10,10 +11,13 @@ const props = defineProps<{
   // The confirmation decision currently in flight (so only the clicked button
   // spins), or null when no confirm is pending.
   confirming?: ConfirmDecision | null
+  // True while a delete request for this run is in flight (disables the button).
+  deleting?: boolean
 }>()
 const emit = defineEmits<{
   resume: [id: string]
   confirm: [id: string, decision: ConfirmDecision]
+  delete: [id: string]
 }>()
 
 // The computed release summary is worth showing once the tag has been resolved.
@@ -39,10 +43,34 @@ const awaiting = computed(() => props.run.status === 'awaiting_confirmation')
         >!{{ props.run.mrIid }}</span>
         <RoutineStatusChip :status="props.run.status" />
       </div>
-      <span v-if="props.run.state.nextTag" class="chip text-accent">
-        <span class="i-lucide-tag text-sm" aria-hidden="true" />
-        next tag: {{ props.run.state.nextTag }}
-      </span>
+      <div class="flex shrink-0 items-center gap-3">
+        <span v-if="props.run.state.nextTag" class="chip text-accent">
+          <span class="i-lucide-tag text-sm" aria-hidden="true" />
+          next tag: {{ props.run.state.nextTag }}
+        </span>
+        <!-- Delete is offered only for a run that is not running; the backend 409
+             is a backstop. -->
+        <button
+          v-if="props.run.status !== 'running'"
+          type="button"
+          class="btn-ghost hover:text-danger"
+          :disabled="props.deleting"
+          :aria-label="`Delete ${runTitle(props.run)}`"
+          @click="emit('delete', props.run.id)"
+        >
+          <span
+            :class="props.deleting ? 'i-lucide-loader-circle animate-spin' : 'i-lucide-trash-2'"
+            class="text-sm"
+            aria-hidden="true"
+          />
+        </button>
+      </div>
+    </div>
+
+    <!-- Secondary branch/flow indicator; renders only when both branches are
+         known (absent on legacy runs). -->
+    <div v-if="props.run.sourceBranch && props.run.targetBranch" class="mb-3">
+      <RoutineBranchChip :run="props.run" />
     </div>
 
     <!-- Computed release summary: previous/next tag and the conventional-commit

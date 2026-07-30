@@ -84,6 +84,14 @@ export function runTitle(run: RoutineRun): string {
   return 'Routine run'
 }
 
+// Human label for a run's release flow, or null when the flow is absent (legacy
+// runs) or unrecognized, so callers can `v-if` the badge away.
+export function flowLabel(flow: string | undefined): string | null {
+  if (flow === 'main') return 'Main release'
+  if (flow === 'development') return 'Dev release'
+  return null
+}
+
 // Compact date/time formatter for run rows. Self-contained so the routines
 // module stays independent of other feature modules.
 export function formatDateTime(iso: string): string {
