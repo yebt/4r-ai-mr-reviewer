@@ -44,6 +44,16 @@ export interface TelegramTargetInput {
   isDefault?: boolean
 }
 
+// Edit body for a Telegram target. botToken is optional and write-only: omit it
+// (or send blank) to keep the stored token, or provide a new value to rotate it.
+export interface TelegramTargetUpdateInput {
+  name: string
+  chatId: string
+  threadId?: string
+  isDefault?: boolean
+  botToken?: string
+}
+
 // Discovered Telegram thread (forum topic) the bot has recently seen.
 export interface ResolvedThread {
   threadId: string

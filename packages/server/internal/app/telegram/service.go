@@ -77,6 +77,97 @@ func (s *Service) Add(ctx context.Context, in AddInput) (tgdomain.Target, error)
 	return t, nil
 }
 
+// UpdateInput describes an edit to an existing telegram target. BotToken is
+// optional: a nil or blank pointer keeps the stored token untouched, while a
+// non-empty value re-encrypts (rotates) the token under the same TokenRef.
+type UpdateInput struct {
+	Name      string
+	BotToken  *string
+	ChatID    string
+	ThreadID  string
+	IsDefault bool
+}
+
+// Update edits an existing target's name, chat and thread, optionally rotating
+// its bot token, and mirrors Add's default handling (setting default clears the
+// previous one). It returns tgdomain.ErrNotFound when the target is unknown.
+// Inputs are trimmed before validation and storage, matching Add.
+func (s *Service) Update(ctx context.Context, id string, in UpdateInput) (tgdomain.Target, error) {
+	existing, err := s.repo.Get(ctx, id)
+	if err != nil {
+		return tgdomain.Target{}, err
+	}
+	name := strings.TrimSpace(in.Name)
+	chatID := strings.TrimSpace(in.ChatID)
+	threadID := strings.TrimSpace(in.ThreadID)
+	if name == "" || chatID == "" {
+		return tgdomain.Target{}, fmt.Errorf("telegram: name and chatId are required")
+	}
+
+	// Rotate the token only when a new non-empty value is supplied; otherwise the
+	// existing encrypted token stays untouched under the same TokenRef.
+	if in.BotToken != nil {
+		if botToken := strings.TrimSpace(*in.BotToken); botToken != "" {
+			if err := s.secrets.Set(ctx, existing.TokenRef, []byte(botToken)); err != nil {
+				return tgdomain.Target{}, err
+			}
+		}
+	}
+
+	updated := existing
+	updated.Name = name
+	updated.ChatID = chatID
+	updated.ThreadID = threadID
+	if err := s.repo.Update(ctx, updated); err != nil {
+		return tgdomain.Target{}, err
+	}
+
+	// Mirror Add: only a request to become default is acted on (it clears the
+	// previous default). Un-defaulting is not expressed here, just as Add cannot.
+	if in.IsDefault && !existing.IsDefault {
+		if err := s.repo.SetDefault(ctx, id); err != nil {
+			return tgdomain.Target{}, err
+		}
+		updated.IsDefault = true
+	}
+	return updated, nil
+}
+
+// Duplicate creates a new target copying the source's chat, thread and bot
+// token, named "<name> (copy)". The copy is never default and never the bot, and
+// its token is decrypted from the source and re-encrypted under the copy's own
+// TokenRef so the duplicate is immediately functional. It returns
+// tgdomain.ErrNotFound when the source is unknown.
+func (s *Service) Duplicate(ctx context.Context, srcID string) (tgdomain.Target, error) {
+	src, err := s.repo.Get(ctx, srcID)
+	if err != nil {
+		return tgdomain.Target{}, err
+	}
+	token, err := s.secrets.Get(ctx, src.TokenRef)
+	if err != nil {
+		return tgdomain.Target{}, err
+	}
+
+	dup := tgdomain.Target{
+		ID:        id.New(),
+		Name:      src.Name + " (copy)",
+		ChatID:    src.ChatID,
+		ThreadID:  src.ThreadID,
+		CreatedAt: time.Now().UTC(),
+	}
+	dup.TokenRef = "telegram:" + dup.ID + ":token"
+
+	if err := s.secrets.Set(ctx, dup.TokenRef, token); err != nil {
+		return tgdomain.Target{}, err
+	}
+	if err := s.repo.Create(ctx, dup); err != nil {
+		// Roll back the orphaned secret so we never leak a dangling token.
+		_ = s.secrets.Delete(ctx, dup.TokenRef)
+		return tgdomain.Target{}, err
+	}
+	return dup, nil
+}
+
 // List returns all telegram targets.
 func (s *Service) List(ctx context.Context) ([]tgdomain.Target, error) {
 	return s.repo.List(ctx)

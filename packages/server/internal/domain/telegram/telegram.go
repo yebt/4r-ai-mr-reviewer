@@ -34,6 +34,10 @@ type Repository interface {
 	Create(ctx context.Context, t Target) error
 	Get(ctx context.Context, id string) (Target, error)
 	List(ctx context.Context) ([]Target, error)
+	// Update persists the editable fields (name, chat, thread) of an existing
+	// target. It returns ErrNotFound when no target has the given id. Default and
+	// bot designation are managed through SetDefault/SetBot, not here.
+	Update(ctx context.Context, t Target) error
 	Delete(ctx context.Context, id string) error
 	// SetDefault marks id as the sole default target.
 	SetDefault(ctx context.Context, id string) error

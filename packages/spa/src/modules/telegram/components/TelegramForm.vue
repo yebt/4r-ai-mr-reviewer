@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { errorMessage } from '@shared/api/client'
 import { toast } from '@shared/composables/useToast'
-import type { ResolvedChat, ResolvedThread } from '@shared/api/types'
+import type { ResolvedChat, ResolvedThread, TelegramTarget } from '@shared/api/types'
 import { useTelegramStore } from '@modules/telegram/store'
 
+const props = defineProps<{ editing?: TelegramTarget | null }>()
 const emit = defineEmits<{ done: [] }>()
 
 const store = useTelegramStore()
@@ -20,10 +21,33 @@ const form = reactive(blank())
 const submitting = ref(false)
 const error = ref<string | null>(null)
 
+const isEdit = computed(() => !!props.editing)
+
 // Resolve feature: discovered chats/threads the bot has recently seen. null means
 // the picker is closed; an (empty) array means we resolved and have a result set.
 const resolved = ref<ResolvedChat[] | null>(null)
 const resolving = ref(false)
+
+// Prefill from the target in edit mode; the token stays blank (write-only, never
+// returned) and is only sent when the user types a new one. Reset back to blank
+// when the modal switches to create mode.
+watch(
+  () => props.editing,
+  (t) => {
+    if (t) {
+      form.name = t.name
+      form.botToken = ''
+      form.chatId = t.chatId
+      form.threadId = t.threadId
+      form.isDefault = t.isDefault
+    } else {
+      Object.assign(form, blank())
+    }
+    resolved.value = null
+    error.value = null
+  },
+  { immediate: true },
+)
 
 async function resolveChats() {
   const token = form.botToken.trim()
@@ -54,21 +78,38 @@ function useThread(chat: ResolvedChat, thread: ResolvedThread) {
   toast.success(`Selected ${chat.title} · ${thread.name || `thread ${thread.threadId}`}`)
 }
 
-const valid = computed(() => form.name.trim() && form.botToken.trim() && form.chatId.trim())
+// In edit mode the token is optional (blank keeps the current one); on create it
+// is required.
+const valid = computed(
+  () => form.name.trim() && form.chatId.trim() && (isEdit.value || form.botToken.trim()),
+)
 
 async function submit() {
   if (!valid.value || submitting.value) return
   submitting.value = true
   error.value = null
   try {
-    await store.add({
-      name: form.name.trim(),
-      botToken: form.botToken.trim(),
-      chatId: form.chatId.trim(),
-      threadId: form.threadId.trim(),
-      isDefault: form.isDefault,
-    })
-    toast.success('Telegram target added')
+    if (props.editing) {
+      await store.update(props.editing.id, {
+        name: form.name.trim(),
+        chatId: form.chatId.trim(),
+        threadId: form.threadId.trim(),
+        isDefault: form.isDefault,
+        // Blank keeps the stored token; a value rotates it. The client trims and
+        // drops an empty token so it is never sent as a literal.
+        botToken: form.botToken.trim(),
+      })
+      toast.success('Telegram target updated')
+    } else {
+      await store.add({
+        name: form.name.trim(),
+        botToken: form.botToken.trim(),
+        chatId: form.chatId.trim(),
+        threadId: form.threadId.trim(),
+        isDefault: form.isDefault,
+      })
+      toast.success('Telegram target added')
+    }
     emit('done')
   } catch (e) {
     error.value = errorMessage(e)
@@ -92,7 +133,10 @@ async function submit() {
     </div>
 
     <div>
-      <label class="field-label" for="tg-token">Bot token</label>
+      <label class="field-label" for="tg-token">
+        Bot token
+        <span v-if="isEdit" class="text-muted/60 normal-case">— leave blank to keep current token</span>
+      </label>
       <div class="flex flex-wrap items-end gap-2 sm:flex-nowrap">
         <div class="min-w-0 flex-1">
           <input
@@ -100,7 +144,7 @@ async function submit() {
             v-model="form.botToken"
             type="password"
             class="field-underline"
-            placeholder="123456:ABC-…"
+            :placeholder="isEdit ? '••••••••' : '123456:ABC-…'"
             autocomplete="off"
           />
         </div>
@@ -188,11 +232,12 @@ async function submit() {
 
     <p v-if="error" class="text-danger text-sm">{{ error }}</p>
 
-    <div>
+    <div class="flex items-center gap-3">
       <button type="submit" class="btn-accent" :disabled="!valid || submitting">
         <span v-if="submitting" class="i-lucide-loader-circle animate-spin" aria-hidden="true" />
-        {{ submitting ? 'Saving' : 'Add target' }}
+        {{ submitting ? 'Saving' : isEdit ? 'Save changes' : 'Add target' }}
       </button>
+      <button v-if="isEdit" type="button" class="btn-ghost" @click="emit('done')">Cancel</button>
     </div>
   </form>
 </template>

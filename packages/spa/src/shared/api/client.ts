@@ -23,6 +23,7 @@ import type {
   SummaryHumanized,
   TelegramTarget,
   TelegramTargetInput,
+  TelegramTargetUpdateInput,
 } from '@shared/api/types'
 
 // Create/update body for a humanization profile. styleGuide* fields are
@@ -164,6 +165,19 @@ export const api = {
     if (input.isDefault) body.isDefault = true
     return request<TelegramTarget>('POST', '/telegram', body)
   },
+  updateTelegram: (id: string, input: TelegramTargetUpdateInput) => {
+    // Always send name/chatId; include threadId/isDefault only when meaningful,
+    // and botToken only when the user typed a new one (blank keeps the current
+    // token server-side) so an empty string never rotates the token.
+    const body: TelegramTargetUpdateInput = { name: input.name, chatId: input.chatId }
+    const thread = input.threadId?.trim()
+    if (thread) body.threadId = thread
+    if (input.isDefault) body.isDefault = true
+    const token = input.botToken?.trim()
+    if (token) body.botToken = token
+    return request<TelegramTarget>('PUT', `/telegram/${id}`, body)
+  },
+  duplicateTelegram: (id: string) => request<TelegramTarget>('POST', `/telegram/${id}/duplicate`),
   // Discover chats/threads the bot has recently seen so the user can pick an id
   // instead of copying it by hand. A bad token yields a non-2xx -> ApiError.
   resolveTelegram: (botToken: string) =>

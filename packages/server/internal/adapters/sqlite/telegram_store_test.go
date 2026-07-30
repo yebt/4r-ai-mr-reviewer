@@ -72,6 +72,35 @@ func TestTelegramStoreRoundTrip(t *testing.T) {
 	}
 }
 
+func TestTelegramStoreUpdateChangesEditableFields(t *testing.T) {
+	ctx := context.Background()
+	s := newTelegramStore(t)
+	tg := mustCreateTarget(t, s, "one")
+
+	tg.Name = "renamed"
+	tg.ChatID = "-200"
+	tg.ThreadID = "42"
+	if err := s.Update(ctx, tg); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	got, _ := s.Get(ctx, tg.ID)
+	if got.Name != "renamed" || got.ChatID != "-200" || got.ThreadID != "42" {
+		t.Fatalf("update not persisted: %+v", got)
+	}
+	// TokenRef must be left untouched by Update.
+	if got.TokenRef != tg.TokenRef {
+		t.Fatalf("TokenRef changed: got %q, want %q", got.TokenRef, tg.TokenRef)
+	}
+}
+
+func TestTelegramStoreUpdateUnknown(t *testing.T) {
+	s := newTelegramStore(t)
+	unknown := telegram.Target{ID: "nope", Name: "x", ChatID: "1"}
+	if err := s.Update(context.Background(), unknown); !errors.Is(err, telegram.ErrNotFound) {
+		t.Fatalf("Update(unknown): got %v, want ErrNotFound", err)
+	}
+}
+
 func TestTelegramStoreSetDefaultSwitches(t *testing.T) {
 	ctx := context.Background()
 	s := newTelegramStore(t)

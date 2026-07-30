@@ -7,6 +7,8 @@ import EmptyState from '@shared/components/ui/EmptyState.vue'
 import type { TelegramTarget } from '@shared/api/types'
 import { useTelegramStore } from '@modules/telegram/store'
 
+const emit = defineEmits<{ edit: [TelegramTarget] }>()
+
 const store = useTelegramStore()
 const busyId = ref<string | null>(null)
 
@@ -44,6 +46,11 @@ async function sendTest(t: TelegramTarget) {
   }
 }
 
+async function duplicateTarget(t: TelegramTarget) {
+  if (await run(t.id, () => store.duplicate(t.id).then(() => undefined)))
+    toast.success(`Duplicated ${t.name}`)
+}
+
 async function removeTarget(t: TelegramTarget) {
   const ok = await confirm({
     title: 'Delete Telegram target',
@@ -73,7 +80,7 @@ onMounted(() => {
     />
 
     <ul v-else class="border-line/50 border-t">
-      <li v-for="t in store.items" :key="t.id" class="row justify-between">
+      <li v-for="t in store.items" :key="t.id" class="row flex-wrap justify-between gap-y-2">
         <div class="min-w-0">
           <div class="flex items-center gap-2">
             <span class="text-ink truncate text-sm">{{ t.name }}</span>
@@ -84,7 +91,7 @@ onMounted(() => {
             {{ t.chatId }}<template v-if="t.threadId"> · thread {{ t.threadId }}</template>
           </div>
         </div>
-        <div class="flex shrink-0 items-center gap-1">
+        <div class="flex shrink-0 flex-wrap items-center justify-end gap-1">
           <button class="btn-ghost text-xs" :disabled="busyId === t.id" @click="sendTest(t)">
             Send test
           </button>
@@ -104,6 +111,22 @@ onMounted(() => {
             @click="setBot(t)"
           >
             Use as bot
+          </button>
+          <button
+            class="btn-ghost text-xs"
+            :disabled="busyId === t.id"
+            :aria-label="`Edit ${t.name}`"
+            @click="emit('edit', t)"
+          >
+            Edit
+          </button>
+          <button
+            class="btn-ghost text-xs"
+            :disabled="busyId === t.id"
+            :aria-label="`Duplicate ${t.name}`"
+            @click="duplicateTarget(t)"
+          >
+            Duplicate
           </button>
           <button
             class="btn-ghost hover:text-danger"

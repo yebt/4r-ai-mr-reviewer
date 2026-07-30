@@ -66,6 +66,26 @@ func (r *TelegramStore) List(ctx context.Context) ([]telegram.Target, error) {
 	return out, rows.Err()
 }
 
+// Update writes the editable fields (name, chat, thread) of an existing target,
+// leaving token_ref, is_default, is_bot and created_at untouched. It returns
+// ErrNotFound when no row matches the id.
+func (r *TelegramStore) Update(ctx context.Context, t telegram.Target) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE telegram_targets SET name = ?, chat_id = ?, thread_id = ? WHERE id = ?`,
+		t.Name, t.ChatID, t.ThreadID, t.ID)
+	if err != nil {
+		return fmt.Errorf("telegram store: update: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return telegram.ErrNotFound
+	}
+	return nil
+}
+
 // Delete removes the telegram target with the given id. Removing a missing
 // target is a no-op.
 func (r *TelegramStore) Delete(ctx context.Context, id string) error {

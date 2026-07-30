@@ -315,6 +315,90 @@ func TestTelegramLifecycleOverHTTP(t *testing.T) {
 	}
 }
 
+func TestTelegramUpdateOverHTTP(t *testing.T) {
+	srv := newTestServer(t)
+
+	resp := postJSON(t, srv.URL+"/telegram", map[string]any{"name": "team", "botToken": "bot-secret", "chatId": "-100"})
+	var created map[string]any
+	decodeBody(t, resp, &created)
+	id, _ := created["id"].(string)
+
+	// Update name/chat, omit the token (it must be kept server-side).
+	upd := sendJSON(t, http.MethodPut, srv.URL+"/telegram/"+id, map[string]any{
+		"name": "renamed", "chatId": "-200", "threadId": "9", "isDefault": true,
+	})
+	if upd.StatusCode != http.StatusOK {
+		t.Fatalf("update status = %d, want 200", upd.StatusCode)
+	}
+	var updated map[string]any
+	decodeBody(t, upd, &updated)
+	if updated["name"] != "renamed" || updated["chatId"] != "-200" || updated["threadId"] != "9" {
+		t.Fatalf("update did not persist fields: %+v", updated)
+	}
+	if updated["isDefault"] != true {
+		t.Fatalf("isDefault = %v, want true", updated["isDefault"])
+	}
+	// The response must never leak a token.
+	if _, leaked := updated["botToken"]; leaked {
+		t.Fatal("update response leaked the bot token")
+	}
+	if _, leaked := updated["token"]; leaked {
+		t.Fatal("update response leaked the token")
+	}
+}
+
+func TestTelegramUpdateUnknownIs404(t *testing.T) {
+	srv := newTestServer(t)
+	resp := sendJSON(t, http.MethodPut, srv.URL+"/telegram/nope", map[string]any{"name": "x", "chatId": "1"})
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("update unknown status = %d, want 404", resp.StatusCode)
+	}
+}
+
+func TestTelegramDuplicateOverHTTP(t *testing.T) {
+	srv := newTestServer(t)
+
+	resp := postJSON(t, srv.URL+"/telegram", map[string]any{"name": "team", "botToken": "bot-secret", "chatId": "-100", "isDefault": true})
+	var created map[string]any
+	decodeBody(t, resp, &created)
+	id, _ := created["id"].(string)
+
+	dup := postJSON(t, srv.URL+"/telegram/"+id+"/duplicate", nil)
+	if dup.StatusCode != http.StatusCreated {
+		t.Fatalf("duplicate status = %d, want 201", dup.StatusCode)
+	}
+	var copyTarget map[string]any
+	decodeBody(t, dup, &copyTarget)
+	if copyTarget["id"] == created["id"] {
+		t.Fatal("duplicate must have a new id")
+	}
+	if copyTarget["name"] != "team (copy)" {
+		t.Fatalf("name = %v, want 'team (copy)'", copyTarget["name"])
+	}
+	if copyTarget["isDefault"] != false || copyTarget["isBot"] != false {
+		t.Fatalf("copy must not be default or bot: %+v", copyTarget)
+	}
+	if _, leaked := copyTarget["botToken"]; leaked {
+		t.Fatal("duplicate response leaked the bot token")
+	}
+
+	// Two targets now exist.
+	listResp, _ := http.Get(srv.URL + "/telegram")
+	var list []map[string]any
+	decodeBody(t, listResp, &list)
+	if len(list) != 2 {
+		t.Fatalf("list len = %d, want 2 after duplicate", len(list))
+	}
+}
+
+func TestTelegramDuplicateUnknownIs404(t *testing.T) {
+	srv := newTestServer(t)
+	resp := postJSON(t, srv.URL+"/telegram/nope/duplicate", nil)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("duplicate unknown status = %d, want 404", resp.StatusCode)
+	}
+}
+
 func TestCreateRepoRejectsUnknownAccount(t *testing.T) {
 	srv := newTestServer(t)
 	resp := postJSON(t, srv.URL+"/repos", map[string]any{"name": "web", "url": "https://gitlab.com/g/p", "accountId": "nope"})

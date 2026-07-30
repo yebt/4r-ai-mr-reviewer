@@ -37,6 +37,42 @@ func (s *Server) createTelegram(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, toTelegram(t))
 }
 
+func (s *Server) updateTelegram(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Name string `json:"name"`
+		// BotToken is optional: omitted/null/blank keeps the stored token; a
+		// non-empty value rotates it. A pointer distinguishes "absent" from "".
+		BotToken  *string `json:"botToken"`
+		ChatID    string  `json:"chatId"`
+		ThreadID  string  `json:"threadId"`
+		IsDefault bool    `json:"isDefault"`
+	}
+	if err := decode(r, &in); err != nil {
+		writeErr(w, err, http.StatusBadRequest)
+		return
+	}
+	t, err := s.telegram.Update(r.Context(), r.PathValue("id"), apptelegram.UpdateInput{
+		Name: in.Name, BotToken: in.BotToken, ChatID: in.ChatID,
+		ThreadID: in.ThreadID, IsDefault: in.IsDefault,
+	})
+	if err != nil {
+		// writeErr maps tgdomain.ErrNotFound to 404; validation errors fall to 400.
+		writeErr(w, err, http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, http.StatusOK, toTelegram(t))
+}
+
+func (s *Server) duplicateTelegram(w http.ResponseWriter, r *http.Request) {
+	t, err := s.telegram.Duplicate(r.Context(), r.PathValue("id"))
+	if err != nil {
+		// writeErr maps tgdomain.ErrNotFound to 404.
+		writeErr(w, err, http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, http.StatusCreated, toTelegram(t))
+}
+
 func (s *Server) listTelegram(w http.ResponseWriter, r *http.Request) {
 	ts, err := s.telegram.List(r.Context())
 	if err != nil {

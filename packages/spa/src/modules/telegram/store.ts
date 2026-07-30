@@ -1,7 +1,12 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api, errorMessage } from '@shared/api/client'
-import type { ResolvedChat, TelegramTarget, TelegramTargetInput } from '@shared/api/types'
+import type {
+  ResolvedChat,
+  TelegramTarget,
+  TelegramTargetInput,
+  TelegramTargetUpdateInput,
+} from '@shared/api/types'
 
 export const useTelegramStore = defineStore('telegram', () => {
   const items = ref<TelegramTarget[]>([])
@@ -23,6 +28,21 @@ export const useTelegramStore = defineStore('telegram', () => {
   async function add(input: TelegramTargetInput) {
     const created = await api.createTelegram(input)
     // The backend may have flipped the previous default; refetch to stay honest.
+    await fetchAll()
+    return created
+  }
+
+  async function update(id: string, input: TelegramTargetUpdateInput) {
+    const updated = await api.updateTelegram(id, input)
+    // Setting a default flips the previous one; refetch to reflect it honestly.
+    await fetchAll()
+    return updated
+  }
+
+  // Duplicate the target server-side (token and fields are copied) and refresh
+  // so the new "(copy)" target shows up in the list.
+  async function duplicate(id: string) {
+    const created = await api.duplicateTelegram(id)
     await fetchAll()
     return created
   }
@@ -54,5 +74,18 @@ export const useTelegramStore = defineStore('telegram', () => {
     return res.chats
   }
 
-  return { items, loading, error, fetchAll, add, setDefault, setBot, test, remove, resolve }
+  return {
+    items,
+    loading,
+    error,
+    fetchAll,
+    add,
+    update,
+    duplicate,
+    setDefault,
+    setBot,
+    test,
+    remove,
+    resolve,
+  }
 })

@@ -14,6 +14,7 @@ import (
 	"github.com/webcloster-dev/ai-reviewer/internal/adapters/sqlite"
 	tgapi "github.com/webcloster-dev/ai-reviewer/internal/adapters/telegram"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/secret"
+	tgdomain "github.com/webcloster-dev/ai-reviewer/internal/domain/telegram"
 )
 
 func newService(t *testing.T) *Service {
@@ -101,6 +102,138 @@ func TestAddRequiresFields(t *testing.T) {
 	}
 	if _, err := s.Add(context.Background(), AddInput{Name: "x", BotToken: "t"}); err == nil {
 		t.Fatal("expected error when chatId is missing")
+	}
+}
+
+func strptr(s string) *string { return &s }
+
+func TestUpdateChangesFieldsAndKeepsTokenWhenOmitted(t *testing.T) {
+	ctx := context.Background()
+	s := newService(t)
+
+	tg, _ := s.Add(ctx, AddInput{Name: "old", BotToken: "keep-me", ChatID: "1", ThreadID: "7"})
+
+	got, err := s.Update(ctx, tg.ID, UpdateInput{Name: "  new  ", ChatID: " 2 ", ThreadID: " 9 "})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if got.Name != "new" || got.ChatID != "2" || got.ThreadID != "9" {
+		t.Fatalf("fields not updated/trimmed: %+v", got)
+	}
+	// The TokenRef is stable and the original token is preserved.
+	if got.TokenRef != tg.TokenRef {
+		t.Fatalf("TokenRef changed: got %q, want %q", got.TokenRef, tg.TokenRef)
+	}
+	token, err := s.token(ctx, tg.ID)
+	if err != nil {
+		t.Fatalf("token: %v", err)
+	}
+	if token != "keep-me" {
+		t.Fatalf("token = %q, want keep-me (omitted token must be kept)", token)
+	}
+}
+
+func TestUpdateRotatesTokenWhenProvided(t *testing.T) {
+	ctx := context.Background()
+	s := newService(t)
+
+	tg, _ := s.Add(ctx, AddInput{Name: "a", BotToken: "old-token", ChatID: "1"})
+
+	if _, err := s.Update(ctx, tg.ID, UpdateInput{Name: "a", ChatID: "1", BotToken: strptr("new-token")}); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	token, err := s.token(ctx, tg.ID)
+	if err != nil {
+		t.Fatalf("token: %v", err)
+	}
+	if token != "new-token" {
+		t.Fatalf("token = %q, want new-token (rotated)", token)
+	}
+
+	// A blank pointer must NOT rotate the token.
+	if _, err := s.Update(ctx, tg.ID, UpdateInput{Name: "a", ChatID: "1", BotToken: strptr("   ")}); err != nil {
+		t.Fatalf("Update blank token: %v", err)
+	}
+	token, _ = s.token(ctx, tg.ID)
+	if token != "new-token" {
+		t.Fatalf("token = %q, want new-token kept when blank pointer given", token)
+	}
+}
+
+func TestUpdateReassignsDefault(t *testing.T) {
+	ctx := context.Background()
+	s := newService(t)
+
+	first, _ := s.Add(ctx, AddInput{Name: "a", BotToken: "t1", ChatID: "1", IsDefault: true})
+	second, _ := s.Add(ctx, AddInput{Name: "b", BotToken: "t2", ChatID: "2"})
+
+	got, err := s.Update(ctx, second.ID, UpdateInput{Name: "b", ChatID: "2", IsDefault: true})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if !got.IsDefault {
+		t.Fatal("updated target should report IsDefault true")
+	}
+	def, _ := s.repo.GetDefault(ctx)
+	if def.ID != second.ID {
+		t.Fatalf("default id = %s, want %s", def.ID, second.ID)
+	}
+	reloaded, _ := s.Get(ctx, first.ID)
+	if reloaded.IsDefault {
+		t.Fatal("former default should have been cleared")
+	}
+}
+
+func TestUpdateUnknownReturnsNotFound(t *testing.T) {
+	s := newService(t)
+	if _, err := s.Update(context.Background(), "nope", UpdateInput{Name: "x", ChatID: "1"}); !errors.Is(err, tgdomain.ErrNotFound) {
+		t.Fatalf("Update(unknown): got %v, want ErrNotFound", err)
+	}
+}
+
+func TestDuplicateCopiesFieldsAndToken(t *testing.T) {
+	ctx := context.Background()
+	s := newService(t)
+
+	src, _ := s.Add(ctx, AddInput{Name: "team", BotToken: "shared-token", ChatID: "-100", ThreadID: "7", IsDefault: true})
+	// Make the source the bot as well, so we can prove the copy is neither.
+	if err := s.SetBot(ctx, src.ID); err != nil {
+		t.Fatalf("SetBot: %v", err)
+	}
+
+	dup, err := s.Duplicate(ctx, src.ID)
+	if err != nil {
+		t.Fatalf("Duplicate: %v", err)
+	}
+	if dup.ID == src.ID || dup.ID == "" {
+		t.Fatalf("duplicate must have a new id, got %q", dup.ID)
+	}
+	if dup.Name != "team (copy)" {
+		t.Fatalf("name = %q, want 'team (copy)'", dup.Name)
+	}
+	if dup.ChatID != "-100" || dup.ThreadID != "7" {
+		t.Fatalf("chat/thread not copied: %+v", dup)
+	}
+	if dup.IsDefault || dup.IsBot {
+		t.Fatalf("copy must not be default or bot: %+v", dup)
+	}
+	if dup.TokenRef != "telegram:"+dup.ID+":token" {
+		t.Fatalf("copy TokenRef = %q, want its own ref", dup.TokenRef)
+	}
+	// The copy must be fully functional: a token exists under its own ref.
+	tok, err := s.secrets.Get(ctx, dup.TokenRef)
+	if err != nil {
+		t.Fatalf("copy token missing: %v", err)
+	}
+	if string(tok) != "shared-token" {
+		t.Fatalf("copy token = %q, want shared-token", string(tok))
+	}
+}
+
+func TestDuplicateUnknownReturnsNotFound(t *testing.T) {
+	s := newService(t)
+	if _, err := s.Duplicate(context.Background(), "nope"); !errors.Is(err, tgdomain.ErrNotFound) {
+		t.Fatalf("Duplicate(unknown): got %v, want ErrNotFound", err)
 	}
 }
 

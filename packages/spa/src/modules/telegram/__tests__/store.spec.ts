@@ -6,6 +6,8 @@ vi.mock('@shared/api/client', () => ({
   api: {
     listTelegram: vi.fn(),
     createTelegram: vi.fn(),
+    updateTelegram: vi.fn(),
+    duplicateTelegram: vi.fn(),
     setDefaultTelegram: vi.fn(),
     setBotTelegram: vi.fn(),
     testTelegram: vi.fn(),
@@ -20,6 +22,8 @@ import { useTelegramStore } from '@modules/telegram/store'
 const mocked = api as unknown as {
   listTelegram: ReturnType<typeof vi.fn>
   createTelegram: ReturnType<typeof vi.fn>
+  updateTelegram: ReturnType<typeof vi.fn>
+  duplicateTelegram: ReturnType<typeof vi.fn>
   setDefaultTelegram: ReturnType<typeof vi.fn>
   setBotTelegram: ReturnType<typeof vi.fn>
   testTelegram: ReturnType<typeof vi.fn>
@@ -59,6 +63,31 @@ describe('telegram store', () => {
     expect(mocked.createTelegram).toHaveBeenCalledOnce()
     expect(mocked.listTelegram).toHaveBeenCalledOnce()
     expect(store.items).toHaveLength(2)
+  })
+
+  it('update calls the api then refetches to reflect default changes', async () => {
+    mocked.updateTelegram.mockResolvedValue(target('1'))
+    mocked.listTelegram.mockResolvedValue([target('1'), target('2')])
+    const store = useTelegramStore()
+    await store.update('1', { name: 'renamed', chatId: 'chat-1', isDefault: true })
+    expect(mocked.updateTelegram).toHaveBeenCalledWith('1', {
+      name: 'renamed',
+      chatId: 'chat-1',
+      isDefault: true,
+    })
+    expect(mocked.listTelegram).toHaveBeenCalledOnce()
+    expect(store.items).toHaveLength(2)
+  })
+
+  it('duplicate calls the api then refetches so the copy shows up', async () => {
+    mocked.duplicateTelegram.mockResolvedValue(target('2'))
+    mocked.listTelegram.mockResolvedValue([target('1'), target('2')])
+    const store = useTelegramStore()
+    const created = await store.duplicate('1')
+    expect(mocked.duplicateTelegram).toHaveBeenCalledWith('1')
+    expect(mocked.listTelegram).toHaveBeenCalledOnce()
+    expect(created.id).toBe('2')
+    expect(store.items.map((t) => t.id)).toEqual(['1', '2'])
   })
 
   it('setDefault flips isDefault to a single target', async () => {
