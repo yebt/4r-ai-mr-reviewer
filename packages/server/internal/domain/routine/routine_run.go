@@ -108,6 +108,9 @@ type RunStore interface {
 	Get(ctx context.Context, id string) (Run, error)
 	// ListByRepo returns a repo's runs, newest first.
 	ListByRepo(ctx context.Context, repoID string) ([]Run, error)
+	// ListRecent returns the most recent runs across all repos, newest first,
+	// capped at limit.
+	ListRecent(ctx context.Context, limit int) ([]Run, error)
 	// Save persists status, steps, state, last_error and updated_at.
 	Save(ctx context.Context, run Run) error
 	// ClaimPending atomically flips the oldest pending run to running and returns

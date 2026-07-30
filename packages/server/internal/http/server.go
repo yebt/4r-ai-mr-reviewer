@@ -125,6 +125,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /repos/{id}/routines/release", s.createReleaseRoutine)
 	mux.HandleFunc("POST /repos/{id}/routines/release-main", s.createMainReleaseRoutine)
 	mux.HandleFunc("GET /repos/{id}/routines", s.listRoutines)
+	mux.HandleFunc("GET /routines", s.listRecentRoutines)
 	mux.HandleFunc("GET /routines/{id}", s.getRoutine)
 	mux.HandleFunc("POST /routines/{id}/resume", s.resumeRoutine)
 	mux.HandleFunc("POST /routines/{id}/confirm", s.confirmRoutine)

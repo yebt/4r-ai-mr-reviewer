@@ -243,6 +243,44 @@ func TestServicePreflightUnknownRepo(t *testing.T) {
 	}
 }
 
+// limitRecorderStore is a routine.RunStore that only records the limit passed to
+// ListRecent, so the service's clamp logic can be tested without a real DB. The
+// embedded nil interface makes any other method panic if unexpectedly called.
+type limitRecorderStore struct {
+	routine.RunStore
+	gotLimit int
+}
+
+func (s *limitRecorderStore) ListRecent(_ context.Context, limit int) ([]routine.Run, error) {
+	s.gotLimit = limit
+	return nil, nil
+}
+
+func TestServiceListRecentClampsLimit(t *testing.T) {
+	tests := []struct {
+		name     string
+		in, want int
+	}{
+		{"zero defaults", 0, defaultRecentLimit},
+		{"negative defaults", -5, defaultRecentLimit},
+		{"in range untouched", 10, 10},
+		{"max untouched", maxRecentLimit, maxRecentLimit},
+		{"over max clamped", maxRecentLimit + 500, maxRecentLimit},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := &limitRecorderStore{}
+			svc := NewService(nil, nil, rec, 0, nil, log.New(io.Discard, "", 0))
+			if _, err := svc.ListRecent(context.Background(), tt.in); err != nil {
+				t.Fatalf("ListRecent(%d): %v", tt.in, err)
+			}
+			if rec.gotLimit != tt.want {
+				t.Errorf("ListRecent(%d) passed limit %d to the store, want %d", tt.in, rec.gotLimit, tt.want)
+			}
+		})
+	}
+}
+
 // --- approve_and_tag ---
 
 // fakeGitLabState carries the mutable, thread-safe state a fake GitLab uses to

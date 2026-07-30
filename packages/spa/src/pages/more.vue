@@ -24,6 +24,12 @@ async function logout() {
 
 const items = [
   {
+    to: '/actions',
+    label: 'Actions',
+    icon: 'i-lucide-git-merge',
+    hint: 'Recent routine runs across repos',
+  },
+  {
     to: '/accounts',
     label: 'GitLab accounts',
     icon: 'i-lucide-users',

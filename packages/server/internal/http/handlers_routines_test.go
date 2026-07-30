@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 // fakePreflightGitLab serves the endpoints the preflight probes with a fixed,
@@ -166,6 +167,55 @@ func TestCreateApproveAndTagOverHTTP(t *testing.T) {
 	decodeBody(t, listResp, &list)
 	if len(list) != 1 {
 		t.Fatalf("repo routines len = %d, want 1", len(list))
+	}
+}
+
+// TestListRecentRoutinesOverHTTP verifies GET /routines returns runs newest
+// first with a best-effort repoName on each item.
+func TestListRecentRoutinesOverHTTP(t *testing.T) {
+	srv := newTestServer(t)
+	repoID := newRepoForRoutine(t, srv)
+
+	// Two runs on the same repo; the mrIid=8 run is created last, so it is newest.
+	for _, iid := range []int{7, 8} {
+		resp := postJSON(t, srv.URL+"/repos/"+repoID+"/routines/approve-and-tag", map[string]any{"mrIid": iid})
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("create routine (mr %d) status = %d, want 201", iid, resp.StatusCode)
+		}
+		resp.Body.Close()
+		// Ensure distinct created_at timestamps so the newest-first ordering is
+		// deterministic regardless of how fast the two creates run.
+		time.Sleep(2 * time.Millisecond)
+	}
+
+	resp, err := http.Get(srv.URL + "/routines")
+	if err != nil {
+		t.Fatalf("GET routines: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("list recent routines status = %d, want 200", resp.StatusCode)
+	}
+	var list []struct {
+		MRIID    int    `json:"mrIid"`
+		RepoID   string `json:"repoId"`
+		RepoName string `json:"repoName"`
+	}
+	decodeBody(t, resp, &list)
+	if len(list) != 2 {
+		t.Fatalf("recent routines len = %d, want 2", len(list))
+	}
+	// Newest first: the mrIid=8 run precedes the mrIid=7 run.
+	if list[0].MRIID != 8 || list[1].MRIID != 7 {
+		t.Fatalf("expected newest first, got mr %d then mr %d", list[0].MRIID, list[1].MRIID)
+	}
+	// Each item carries the best-effort repo name (the repo is named "web").
+	for _, it := range list {
+		if it.RepoID != repoID {
+			t.Errorf("repoId = %q, want %q", it.RepoID, repoID)
+		}
+		if it.RepoName != "web" {
+			t.Errorf("repoName = %q, want web", it.RepoName)
+		}
 	}
 }
 

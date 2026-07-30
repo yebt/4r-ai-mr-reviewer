@@ -5,6 +5,7 @@ vi.mock('@shared/api/client', () => ({
   errorMessage: (e: unknown) => (e instanceof Error ? e.message : String(e)),
   api: {
     listRepoRoutines: vi.fn(),
+    listRecentRoutines: vi.fn(),
     createRelease: vi.fn(),
     createMainRelease: vi.fn(),
     getRoutineRun: vi.fn(),
@@ -19,6 +20,7 @@ import { useRoutinesStore } from '@modules/routines/store'
 
 const mocked = api as unknown as {
   listRepoRoutines: ReturnType<typeof vi.fn>
+  listRecentRoutines: ReturnType<typeof vi.fn>
   createRelease: ReturnType<typeof vi.fn>
   createMainRelease: ReturnType<typeof vi.fn>
   getRoutineRun: ReturnType<typeof vi.fn>
@@ -148,6 +150,33 @@ describe('routines store', () => {
     await store.confirm('a', 'merge')
     expect(mocked.confirmRoutine).toHaveBeenCalledWith('a', 'merge')
     expect(store.runById('a')?.status).toBe('running')
+  })
+
+  it('listRecent caches runs by id and exposes them in order with the limit', async () => {
+    mocked.listRecentRoutines.mockResolvedValue([run('a'), run('b')])
+    const store = useRoutinesStore()
+    await store.listRecent(20)
+    expect(mocked.listRecentRoutines).toHaveBeenCalledWith(20)
+    expect(store.recentRuns.map((r) => r.id)).toEqual(['a', 'b'])
+    expect(store.runById('a')?.id).toBe('a')
+  })
+
+  it('recentRuns stays in sync with a poll refresh', async () => {
+    mocked.listRecentRoutines.mockResolvedValue([run('a', 'running')])
+    const store = useRoutinesStore()
+    await store.listRecent()
+    expect(mocked.listRecentRoutines).toHaveBeenCalledWith(undefined)
+    mocked.getRoutineRun.mockResolvedValue(run('a', 'done'))
+    await store.refresh('a')
+    expect(store.recentRuns[0]?.status).toBe('done')
+  })
+
+  it('listRecent records the error on failure', async () => {
+    mocked.listRecentRoutines.mockRejectedValue(new Error('gitlab down'))
+    const store = useRoutinesStore()
+    await store.listRecent()
+    expect(store.listError).toBe('gitlab down')
+    expect(store.recentRuns).toEqual([])
   })
 
   it('confirm propagates a 409 when the run is not awaiting confirmation', async () => {

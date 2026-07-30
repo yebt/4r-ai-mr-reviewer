@@ -75,6 +75,28 @@ func (s *RoutineRunStore) ListByRepo(ctx context.Context, repoID string) ([]rout
 	return out, rows.Err()
 }
 
+// ListRecent returns the most recent runs across all repos, newest first, capped
+// at limit. It mirrors ListByRepo but is not scoped to a single repo, so the
+// global "recent runs" view can list activity across every tracked repo.
+func (s *RoutineRunStore) ListRecent(ctx context.Context, limit int) ([]routine.Run, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT `+routineRunCols+` FROM routine_run ORDER BY created_at DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("routine run store: list recent: %w", err)
+	}
+	defer rows.Close()
+
+	var out []routine.Run
+	for rows.Next() {
+		run, err := scanRoutineRun(rows)
+		if err != nil {
+			return nil, fmt.Errorf("routine run store: scan: %w", err)
+		}
+		out = append(out, run)
+	}
+	return out, rows.Err()
+}
+
 // Save persists the run's status, steps, state, last_error and updated_at. Params
 // are immutable and never rewritten.
 func (s *RoutineRunStore) Save(ctx context.Context, run routine.Run) error {

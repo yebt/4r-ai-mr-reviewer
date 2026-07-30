@@ -45,6 +45,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/actions': RouteRecordInfo<
+      '/actions',
+      '/actions',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/login': RouteRecordInfo<
       '/login',
       '/login',
@@ -146,6 +153,14 @@ declare module 'vue-router/auto-routes' {
     'src/pages/accounts.vue': {
       routes:
         | '/accounts'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/actions.vue': {
+      routes:
+        | '/actions'
       views:
         | never
       pathParamNames:

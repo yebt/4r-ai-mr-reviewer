@@ -213,6 +213,9 @@ export interface RoutineRun {
   lastError: string
   createdAt: string
   updatedAt: string
+  // Best-effort repo display name. Populated only by the global recent-runs
+  // endpoint (listRecentRoutines); absent on the per-repo and single-run paths.
+  repoName?: string
 }
 
 export type Bump = 'major' | 'minor' | 'patch'

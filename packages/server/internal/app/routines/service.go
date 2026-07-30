@@ -720,6 +720,27 @@ func (s *Service) ListByRepo(ctx context.Context, repoID string) ([]routine.Run,
 	return s.runs.ListByRepo(ctx, repoID)
 }
 
+// defaultRecentLimit and maxRecentLimit bound ListRecent: a non-positive limit
+// falls back to the default, and anything above the max is clamped so a single
+// request cannot ask for an unbounded number of rows.
+const (
+	defaultRecentLimit = 20
+	maxRecentLimit     = 100
+)
+
+// ListRecent returns the most recent runs across all repos, newest first. The
+// limit is clamped: a non-positive value defaults to defaultRecentLimit and a
+// value above maxRecentLimit is capped to maxRecentLimit.
+func (s *Service) ListRecent(ctx context.Context, limit int) ([]routine.Run, error) {
+	if limit <= 0 {
+		limit = defaultRecentLimit
+	}
+	if limit > maxRecentLimit {
+		limit = maxRecentLimit
+	}
+	return s.runs.ListRecent(ctx, limit)
+}
+
 // Resume re-queues a blocked run and wakes the worker. A run that is not blocked
 // returns routine.ErrNotResumable. The checkpointed steps mean the resumed run
 // skips the actions it already completed.

@@ -290,6 +290,10 @@ export const api = {
   getRoutineRun: (id: string) => request<RoutineRun>('GET', `/routines/${id}`),
   listRepoRoutines: (repoId: string) =>
     request<RoutineRun[]>('GET', `/repos/${repoId}/routines`),
+  // Recent routine runs across all repos, newest first. Each item carries a
+  // best-effort repoName. The optional limit is clamped server-side.
+  listRecentRoutines: (limit?: number) =>
+    request<RoutineRun[]>('GET', `/routines${limit != null ? `?limit=${limit}` : ''}`),
   resumeRoutine: (id: string) => request<RoutineRun>('POST', `/routines/${id}/resume`),
   // Answer a release run's confirmation gate. 409 when the run is not
   // awaiting_confirmation.

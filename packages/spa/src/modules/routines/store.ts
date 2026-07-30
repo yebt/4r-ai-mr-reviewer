@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { api, errorMessage } from '@shared/api/client'
 import type {
   ConfirmDecision,
@@ -17,10 +17,22 @@ export const useRoutinesStore = defineStore('routines', () => {
   const runsById = ref<Record<string, RoutineRun>>({})
   const listLoading = ref(false)
   const listError = ref<string | null>(null)
+  // Ordered ids of the global "recent runs" list (newest first). The runs
+  // themselves live in runsById, so the live poller's refresh() updates the same
+  // objects the recent list observes.
+  const recentRunIds = ref<string[]>([])
 
   function runsFor(repoId: string): RoutineRun[] {
     return runsByRepo.value[repoId] ?? []
   }
+
+  // recentRuns resolves the ordered recent ids against runsById so the list stays
+  // in sync with polling refreshes (which upsert runsById).
+  const recentRuns = computed<RoutineRun[]>(() =>
+    recentRunIds.value
+      .map((id) => runsById.value[id])
+      .filter((r): r is RoutineRun => r != null),
+  )
 
   function runById(id: string): RoutineRun | null {
     return runsById.value[id] ?? null
@@ -48,6 +60,23 @@ export const useRoutinesStore = defineStore('routines', () => {
     try {
       const data = await api.listRepoRoutines(repoId)
       runsByRepo.value = { ...runsByRepo.value, [repoId]: data }
+      for (const run of data) runsById.value[run.id] = run
+    } catch (e) {
+      listError.value = errorMessage(e)
+    } finally {
+      listLoading.value = false
+    }
+  }
+
+  // listRecent loads the global recent-runs list (across all repos). It stores
+  // the runs in runsById and records their order in recentRunIds, so the recent
+  // list and the live poller share the same run objects.
+  async function listRecent(limit?: number) {
+    listLoading.value = true
+    listError.value = null
+    try {
+      const data = await api.listRecentRoutines(limit)
+      recentRunIds.value = data.map((r) => r.id)
       for (const run of data) runsById.value[run.id] = run
     } catch (e) {
       listError.value = errorMessage(e)
@@ -119,9 +148,12 @@ export const useRoutinesStore = defineStore('routines', () => {
     runsById,
     listLoading,
     listError,
+    recentRunIds,
+    recentRuns,
     runsFor,
     runById,
     list,
+    listRecent,
     createRelease,
     createMainRelease,
     refresh,

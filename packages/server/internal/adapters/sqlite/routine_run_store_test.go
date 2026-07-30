@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -32,6 +33,32 @@ func newRoutineRunStore(t *testing.T) (*RoutineRunStore, string) {
 		t.Fatalf("seed repo: %v", err)
 	}
 	return NewRoutineRunStore(db), rp.ID
+}
+
+// newRoutineRunStoreMultiRepo seeds one account and repoCount repos, returning
+// the store and the repo ids so cross-repo listing can be exercised.
+func newRoutineRunStoreMultiRepo(t *testing.T, repoCount int) (*RoutineRunStore, []string) {
+	t.Helper()
+	db, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+
+	ctx := context.Background()
+	acc := account.Account{ID: id.New(), Name: "a", BaseURL: "u", TokenRef: "r", CreatedAt: time.Now().UTC()}
+	if err := NewAccountRepo(db).Create(ctx, acc); err != nil {
+		t.Fatalf("seed account: %v", err)
+	}
+	ids := make([]string, 0, repoCount)
+	for i := 0; i < repoCount; i++ {
+		rp := repo.Repo{ID: id.New(), Name: fmt.Sprintf("repo-%d", i), URL: "u", AccountID: acc.ID, CreatedAt: time.Now().UTC()}
+		if err := NewRepoStore(db).Create(ctx, rp); err != nil {
+			t.Fatalf("seed repo %d: %v", i, err)
+		}
+		ids = append(ids, rp.ID)
+	}
+	return NewRoutineRunStore(db), ids
 }
 
 func newRun(repoID string) routine.Run {
@@ -152,6 +179,48 @@ func TestRoutineRunListByRepoNewestFirst(t *testing.T) {
 	}
 	if len(list) != 2 || list[0].ID != newer.ID {
 		t.Fatalf("expected newest first, got %+v", list)
+	}
+}
+
+func TestRoutineRunListRecentAcrossReposNewestFirst(t *testing.T) {
+	ctx := context.Background()
+	s, repoIDs := newRoutineRunStoreMultiRepo(t, 2)
+
+	// Create three runs, interleaving the two repos, oldest to newest.
+	order := []string{repoIDs[0], repoIDs[1], repoIDs[0]}
+	created := make([]routine.Run, 0, len(order))
+	for i, repoID := range order {
+		run := newRun(repoID)
+		if err := s.Create(ctx, run); err != nil {
+			t.Fatalf("Create run %d: %v", i, err)
+		}
+		created = append(created, run)
+		time.Sleep(2 * time.Millisecond)
+	}
+
+	// ListRecent spans both repos, newest first.
+	list, err := s.ListRecent(ctx, 10)
+	if err != nil {
+		t.Fatalf("ListRecent: %v", err)
+	}
+	if len(list) != 3 {
+		t.Fatalf("ListRecent len = %d, want 3", len(list))
+	}
+	if list[0].ID != created[2].ID || list[1].ID != created[1].ID || list[2].ID != created[0].ID {
+		t.Fatalf("expected newest first across repos, got %s,%s,%s", list[0].ID, list[1].ID, list[2].ID)
+	}
+	// It genuinely spans both repos (not scoped to one).
+	if list[1].RepoID != repoIDs[1] {
+		t.Fatalf("second run repo = %q, want the other repo %q", list[1].RepoID, repoIDs[1])
+	}
+
+	// The limit caps the result to the newest N.
+	limited, err := s.ListRecent(ctx, 2)
+	if err != nil {
+		t.Fatalf("ListRecent(limit 2): %v", err)
+	}
+	if len(limited) != 2 || limited[0].ID != created[2].ID || limited[1].ID != created[1].ID {
+		t.Fatalf("limit=2 should return the two newest, got %+v", limited)
 	}
 }
 

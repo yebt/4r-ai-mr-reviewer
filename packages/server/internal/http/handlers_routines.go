@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/webcloster-dev/ai-reviewer/internal/app/routines"
@@ -184,6 +185,41 @@ func (s *Server) listRoutines(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// listRecentRoutines returns recent routine runs across all repos, newest first.
+// An optional ?limit=N caps the result (the service clamps it to a sane range).
+// Each item carries a best-effort repoName resolved via the repos service so the
+// global list can show which repo a run belongs to; an unresolvable repo yields
+// an empty repoName rather than failing the whole list.
+func (s *Server) listRecentRoutines(w http.ResponseWriter, r *http.Request) {
+	limit := 0
+	if q := r.URL.Query().Get("limit"); q != "" {
+		if n, err := strconv.Atoi(q); err == nil {
+			limit = n
+		}
+	}
+	runs, err := s.routines.ListRecent(r.Context(), limit)
+	if err != nil {
+		writeErr(w, err, http.StatusInternalServerError)
+		return
+	}
+	// Cache repo-name lookups so several runs from the same repo cost one lookup.
+	names := make(map[string]string)
+	out := make([]routineRunResp, 0, len(runs))
+	for _, run := range runs {
+		dto := toRun(run)
+		name, ok := names[run.RepoID]
+		if !ok {
+			if rp, gerr := s.repos.Get(r.Context(), run.RepoID); gerr == nil {
+				name = rp.Name
+			}
+			names[run.RepoID] = name
+		}
+		dto.RepoName = name
+		out = append(out, dto)
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 // resumeRoutine re-queues a blocked run. A non-blocked run → 409.
 func (s *Server) resumeRoutine(w http.ResponseWriter, r *http.Request) {
 	run, err := s.routines.Resume(r.Context(), r.PathValue("id"))
@@ -255,6 +291,10 @@ type routineRunResp struct {
 	LastError string            `json:"lastError"`
 	CreatedAt time.Time         `json:"createdAt"`
 	UpdatedAt time.Time         `json:"updatedAt"`
+	// RepoName is a best-effort repo display name, populated only on the global
+	// recent-runs list (listRecentRoutines); it stays empty (and omitted) on the
+	// per-repo and single-run paths, which already know their repo context.
+	RepoName string `json:"repoName,omitempty"`
 }
 
 func toRun(run routine.Run) routineRunResp {
