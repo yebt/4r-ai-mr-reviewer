@@ -21,6 +21,15 @@ const (
 	maxMergeWaitSeconds     = 3600
 )
 
+// Session-lifetime bounds for API auth. The default is 7 days; the value is
+// clamped to [minAuthSessionHours, maxAuthSessionHours] so a mistyped env value
+// cannot mint effectively-immortal or already-dead sessions.
+const (
+	defaultAuthSessionHours = 168 // 7 days
+	minAuthSessionHours     = 1
+	maxAuthSessionHours     = 8760 // 365 days
+)
+
 // Config holds process-wide runtime settings.
 type Config struct {
 	// DBPath is the SQLite database file path.
@@ -33,6 +42,18 @@ type Config struct {
 	SkillsDir string
 	// Password unlocks the secret vault at startup. Empty selects key-file mode.
 	Password string
+	// AuthPassword opts the HTTP API into password + signed-cookie session auth.
+	// Empty disables auth entirely (all routes pass through); non-empty enforces
+	// it. This is distinct from Password (the vault password) on purpose.
+	AuthPassword string
+	// AuthSessionHours is the session-cookie lifetime in hours (clamped to a sane
+	// range). It only matters when AuthPassword is set.
+	AuthSessionHours int
+	// TrustProxyHeaders opts into trusting client-supplied X-Forwarded-* headers
+	// (X-Forwarded-Proto for the cookie Secure decision, X-Forwarded-For for
+	// login rate limiting). Leave false unless a trusted TLS-terminating proxy
+	// sits in front and sets these from a trusted source.
+	TrustProxyHeaders bool
 	// ReviewConcurrency is how many reviews run at once. Bounds LLM concurrency
 	// and resource use; keep it modest.
 	ReviewConcurrency int
@@ -60,6 +81,9 @@ func Load() Config {
 		HTTPAddr:              envOr("AIR_HTTP_ADDR", "127.0.0.1:8080"),
 		SkillsDir:             os.Getenv("AIR_SKILLS_DIR"),
 		Password:              os.Getenv("AIR_PASSWORD"),
+		AuthPassword:          os.Getenv("AIR_AUTH_PASSWORD"),
+		AuthSessionHours:      clampAuthSessionHours(envInt("AIR_AUTH_SESSION_HOURS", defaultAuthSessionHours)),
+		TrustProxyHeaders:     envBool("AIR_TRUST_PROXY", false),
 		ReviewConcurrency:     envInt("AIR_REVIEW_CONCURRENCY", 2),
 		ReasoningBudget:       clampReasoningBudget(envInt("AIR_REASONING_BUDGET", 0)),
 		TelegramWebhookSecret: os.Getenv("AIR_TELEGRAM_WEBHOOK_SECRET"),
@@ -99,4 +123,27 @@ func envInt(key string, fallback int) int {
 		}
 	}
 	return fallback
+}
+
+// envBool parses key as a boolean (strconv.ParseBool: 1/t/true/0/f/false, etc.),
+// falling back on an unset or unparseable value.
+func envBool(key string, fallback bool) bool {
+	if v := os.Getenv(key); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			return b
+		}
+	}
+	return fallback
+}
+
+// clampAuthSessionHours bounds the session lifetime to [minAuthSessionHours,
+// maxAuthSessionHours] so a mistyped value cannot mint unbounded sessions.
+func clampAuthSessionHours(h int) int {
+	if h < minAuthSessionHours {
+		return minAuthSessionHours
+	}
+	if h > maxAuthSessionHours {
+		return maxAuthSessionHours
+	}
+	return h
 }

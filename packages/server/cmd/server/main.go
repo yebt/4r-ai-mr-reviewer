@@ -25,6 +25,7 @@ import (
 	"github.com/webcloster-dev/ai-reviewer/internal/app/routines"
 	apptelegram "github.com/webcloster-dev/ai-reviewer/internal/app/telegram"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/vault"
+	"github.com/webcloster-dev/ai-reviewer/internal/auth"
 	"github.com/webcloster-dev/ai-reviewer/internal/config"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/notification"
 	httpapi "github.com/webcloster-dev/ai-reviewer/internal/http"
@@ -98,7 +99,12 @@ func run() error {
 	// Re-trigger any style-guide distillations left pending by a prior crash.
 	go profileSvc.RecoverPending(context.Background())
 
-	api := httpapi.NewServer(accountSvc, providerSvc, profileSvc, repoSvc, reviewSvc, routinesSvc, humanizeSvc, telegramSvc, notificationsSvc, ruleSet, botSvc, cfg.TelegramWebhookSecret)
+	authMgr := auth.NewManager(cfg.AuthPassword, time.Duration(cfg.AuthSessionHours)*time.Hour)
+	if !authMgr.Enabled() {
+		log.Print("ai-reviewer: WARNING — API authentication is DISABLED; set AIR_AUTH_PASSWORD to require a password")
+	}
+
+	api := httpapi.NewServer(accountSvc, providerSvc, profileSvc, repoSvc, reviewSvc, routinesSvc, humanizeSvc, telegramSvc, notificationsSvc, ruleSet, botSvc, cfg.TelegramWebhookSecret, authMgr, cfg.TrustProxyHeaders)
 	srv := &http.Server{Addr: cfg.HTTPAddr, Handler: api.Routes()}
 
 	go func() {

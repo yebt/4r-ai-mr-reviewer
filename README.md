@@ -107,6 +107,22 @@ backend, so no CORS setup is needed.
 | `AIR_SKILLS_DIR` | _(empty)_ | Override dir for the 4R rule files |
 | `AIR_REVIEW_CONCURRENCY` | `2` | Max reviews running in parallel (min 1) |
 | `AIR_REASONING_BUDGET` | `0` | Reasoning capture per 4R phase: `0` = off; a positive value is the Anthropic thinking-token budget and also enables capture of reasoning returned by OpenAI-compatible providers (clamped to 32768) |
+| `AIR_AUTH_PASSWORD` | _(empty)_ | Enables API auth (password + signed-cookie sessions); empty → auth disabled, every route open |
+| `AIR_AUTH_SESSION_HOURS` | `168` | Session-cookie lifetime in hours (7 days); clamped to `1`..`8760` |
+| `AIR_TRUST_PROXY` | `false` | Trust client `X-Forwarded-Proto`/`X-Forwarded-For`; set `true` **only** behind a trusted TLS-terminating proxy that sets these from a trusted source |
+
+> **API auth footguns.** Before turning on `AIR_AUTH_PASSWORD`:
+> - The SPA login UI (a separate slice) is required to use the app once auth is
+>   enabled. **Do not set `AIR_AUTH_PASSWORD` until the SPA login ships**, or you
+>   will lock yourself out of the web UI.
+> - Sessions are stateless signed tokens. Logout is client-side only: a leaked
+>   session token stays valid until it expires (`AIR_AUTH_SESSION_HOURS`). To
+>   revoke every session immediately, change `AIR_AUTH_PASSWORD` — that rotates
+>   the signing key and invalidates all outstanding tokens.
+> - Leave `AIR_TRUST_PROXY=false` unless a trusted proxy terminates TLS in front.
+>   When it is `false`, the cookie `Secure` flag and login rate-limit IP are
+>   derived only from the real connection, so a client cannot spoof
+>   `X-Forwarded-Proto`/`X-Forwarded-For` to weaken them.
 
 ## Make targets
 

@@ -19,6 +19,7 @@ import (
 	"github.com/webcloster-dev/ai-reviewer/internal/app/reviews"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/routines"
 	apptelegram "github.com/webcloster-dev/ai-reviewer/internal/app/telegram"
+	"github.com/webcloster-dev/ai-reviewer/internal/auth"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/account"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/job"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/notification"
@@ -49,11 +50,24 @@ type Server struct {
 	bot *bot.Service
 	// telegramWebhookSecret gates the webhook. Empty keeps the receiver dormant.
 	telegramWebhookSecret string
+	// auth gates the API with password + signed-cookie sessions. A disabled
+	// Manager (empty password) lets every route through. Always non-nil after
+	// NewServer: a nil argument is replaced with a disabled manager.
+	auth *auth.Manager
+	// trustProxy controls whether client-supplied X-Forwarded-* headers are
+	// trusted (the cookie Secure decision and login-rate-limit IP).
+	trustProxy bool
+	// loginLimiter throttles POST /auth/login per client IP.
+	loginLimiter *rateLimiter
 }
 
-// NewServer wires a Server.
-func NewServer(a *accounts.Service, p *providers.Service, pr *profiles.Service, r *repos.Service, rv *reviews.Service, rt *routines.Service, hz *apphumanize.Service, tg *apptelegram.Service, nt *notifications.Service, sk skills.Set, bt *bot.Service, telegramWebhookSecret string) *Server {
-	return &Server{accounts: a, providers: p, profiles: pr, repos: r, reviews: rv, routines: rt, humanize: hz, telegram: tg, notifications: nt, skills: sk, bot: bt, telegramWebhookSecret: telegramWebhookSecret}
+// NewServer wires a Server. A nil authMgr is treated as auth-disabled (replaced
+// with a disabled Manager) so handlers never have to nil-check s.auth.
+func NewServer(a *accounts.Service, p *providers.Service, pr *profiles.Service, r *repos.Service, rv *reviews.Service, rt *routines.Service, hz *apphumanize.Service, tg *apptelegram.Service, nt *notifications.Service, sk skills.Set, bt *bot.Service, telegramWebhookSecret string, authMgr *auth.Manager, trustProxy bool) *Server {
+	if authMgr == nil {
+		authMgr = auth.NewManager("", defaultSessionLifetime)
+	}
+	return &Server{accounts: a, providers: p, profiles: pr, repos: r, reviews: rv, routines: rt, humanize: hz, telegram: tg, notifications: nt, skills: sk, bot: bt, telegramWebhookSecret: telegramWebhookSecret, auth: authMgr, trustProxy: trustProxy, loginLimiter: newRateLimiter(maxLoginAttempts, loginWindow)}
 }
 
 // Routes returns the HTTP handler with every endpoint registered.
@@ -113,6 +127,10 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /routines/{id}/resume", s.resumeRoutine)
 	mux.HandleFunc("POST /routines/{id}/confirm", s.confirmRoutine)
 
+	mux.HandleFunc("POST /auth/login", s.authLogin)
+	mux.HandleFunc("POST /auth/logout", s.authLogout)
+	mux.HandleFunc("GET /auth/status", s.authStatus)
+
 	mux.HandleFunc("POST /reviews", s.createReview)
 	mux.HandleFunc("GET /reviews/{id}", s.getReview)
 	mux.HandleFunc("DELETE /reviews/{id}", s.deleteReview)
@@ -124,7 +142,10 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /reviews/{id}/humanize", s.humanizeReview)
 	mux.HandleFunc("GET /reviews/{id}/humanizations", s.getHumanizations)
 
-	return mux
+	// Wrap every route with the session gate. When auth is disabled the gate is
+	// a pass-through; when enabled it enforces a valid cookie except on the
+	// exempt paths (auth endpoints, health, the self-secured Telegram webhook).
+	return s.requireAuth(mux)
 }
 
 // --- helpers ---

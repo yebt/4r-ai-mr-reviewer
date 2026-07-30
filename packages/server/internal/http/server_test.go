@@ -24,6 +24,7 @@ import (
 	"github.com/webcloster-dev/ai-reviewer/internal/app/reviews"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/routines"
 	apptelegram "github.com/webcloster-dev/ai-reviewer/internal/app/telegram"
+	"github.com/webcloster-dev/ai-reviewer/internal/auth"
 	"github.com/webcloster-dev/ai-reviewer/internal/jobs"
 	"github.com/webcloster-dev/ai-reviewer/internal/review/engine"
 	"github.com/webcloster-dev/ai-reviewer/internal/review/skills"
@@ -31,12 +32,42 @@ import (
 
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	return newTestServerWithSecret(t, "")
+	return newTestServerFull(t, "", "")
 }
 
 // newTestServerWithSecret wires a full test server, gating the Telegram webhook
 // with the given secret ("" keeps the receiver dormant).
 func newTestServerWithSecret(t *testing.T, webhookSecret string) *httptest.Server {
+	t.Helper()
+	return newTestServerFull(t, webhookSecret, "")
+}
+
+// newTestServerWithAuth wires a full test server with API auth enabled under the
+// given password ("" disables it).
+func newTestServerWithAuth(t *testing.T, authPassword string) *httptest.Server {
+	t.Helper()
+	return newTestServerFull(t, "", authPassword)
+}
+
+// newTestServerFull wires a full test server, gating the Telegram webhook with
+// webhookSecret and the API with authPassword (both "" leave them off). Session
+// tokens use a one-hour lifetime.
+func newTestServerFull(t *testing.T, webhookSecret, authPassword string) *httptest.Server {
+	t.Helper()
+	return newTestServerFullWithLifetime(t, webhookSecret, authPassword, time.Hour)
+}
+
+// newTestServerWithAuthLifetime wires an auth-enabled test server whose session
+// tokens expire after lifetime. A past/negative lifetime yields already-expired
+// tokens, exercising the expiry-rejection path without sleeping.
+func newTestServerWithAuthLifetime(t *testing.T, authPassword string, lifetime time.Duration) *httptest.Server {
+	t.Helper()
+	return newTestServerFullWithLifetime(t, "", authPassword, lifetime)
+}
+
+// newTestServerFullWithLifetime is newTestServerFull with an explicit session
+// lifetime seam.
+func newTestServerFullWithLifetime(t *testing.T, webhookSecret, authPassword string, lifetime time.Duration) *httptest.Server {
 	t.Helper()
 	db, err := sqlite.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
@@ -63,7 +94,8 @@ func newTestServerWithSecret(t *testing.T, webhookSecret string) *httptest.Serve
 	reviewSvc.AttachRunner(runner)
 	botSvc := bot.NewService(bot.NewAPIClient(), telegramSvc, reviewSvc, repoSvc)
 
-	srv := httptest.NewServer(NewServer(accountSvc, providerSvc, profileSvc, repoSvc, reviewSvc, routinesSvc, humanizeSvc, telegramSvc, notificationsSvc, set, botSvc, webhookSecret).Routes())
+	authMgr := auth.NewManager(authPassword, lifetime)
+	srv := httptest.NewServer(NewServer(accountSvc, providerSvc, profileSvc, repoSvc, reviewSvc, routinesSvc, humanizeSvc, telegramSvc, notificationsSvc, set, botSvc, webhookSecret, authMgr, false).Routes())
 	t.Cleanup(srv.Close)
 	return srv
 }
@@ -83,6 +115,26 @@ func decodeBody(t *testing.T, resp *http.Response, dst any) {
 	defer resp.Body.Close()
 	if err := json.NewDecoder(resp.Body).Decode(dst); err != nil {
 		t.Fatalf("decode: %v", err)
+	}
+}
+
+// TestNewServerNilAuthManagerPassthrough is the FIX-5 regression: a Server built
+// with a nil *auth.Manager must substitute a disabled manager so s.auth is never
+// nil and the session gate passes every request through instead of nil-panicking.
+func TestNewServerNilAuthManagerPassthrough(t *testing.T) {
+	var set skills.Set
+	s := NewServer(nil, nil, nil, nil, nil, nil, nil, nil, nil, set, nil, "", nil, false)
+	if s.auth == nil {
+		t.Fatal("NewServer left s.auth nil for a nil authMgr; want a substituted disabled manager")
+	}
+
+	gated := s.requireAuth(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	rec := httptest.NewRecorder()
+	gated.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/accounts", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("nil auth manager passthrough = %d, want 200", rec.Code)
 	}
 }
 
