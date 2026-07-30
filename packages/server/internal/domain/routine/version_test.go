@@ -234,3 +234,48 @@ func TestHighestSemverEmptyFeedsZeroBase(t *testing.T) {
 		t.Errorf("next = %q, want 0.1.0 (empty base treated as 0.0.0)", next)
 	}
 }
+
+func TestHighestReleaseSemver(t *testing.T) {
+	cases := []struct {
+		name     string
+		existing []string
+		want     string
+	}{
+		{
+			// A prerelease with a higher core (1.7.2-dev) must NOT be chosen: the base
+			// is the highest PURE release (1.6.0).
+			name:     "ignores -dev prerelease with a higher core",
+			existing: []string{"1.6.0", "1.7.2-dev"},
+			want:     "1.6.0",
+		},
+		{
+			name:     "picks the highest pure release, ignoring an rc prerelease",
+			existing: []string{"1.2.3", "1.10.0", "2.0.0-rc1"},
+			want:     "1.10.0",
+		},
+		{
+			// The original string form (v prefix) is preserved.
+			name:     "v prefix preserved",
+			existing: []string{"1.2.2", "v1.2.3"},
+			want:     "v1.2.3",
+		},
+		{
+			// All prerelease → no pure release exists → empty.
+			name:     "only prereleases returns empty",
+			existing: []string{"1.0.0-dev", "2.0.0-dev"},
+			want:     "",
+		},
+		{
+			name:     "empty input returns empty",
+			existing: nil,
+			want:     "",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := HighestReleaseSemver(tc.existing); got != tc.want {
+				t.Errorf("HighestReleaseSemver(%v) = %q, want %q", tc.existing, got, tc.want)
+			}
+		})
+	}
+}

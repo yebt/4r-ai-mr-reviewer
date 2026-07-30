@@ -32,19 +32,41 @@ const (
 )
 
 // Fixed step ledger for the release routine, executed in this order. It reuses
-// stepReact and stepTag (same names) and adds the release-specific steps.
+// stepReact and stepTag (same names) and adds the release-specific steps. Both
+// flows pause on the shared confirm gate before merging: the dev flow uses
+// verify→...→confirm→merge; the main flow uses compute_tag→create_mr→
+// wait_pipeline→approve→react→confirm→merge→tag→notify.
 const (
-	stepVerify     = "verify"
-	stepApprove    = "approve"
-	stepComputeTag = "compute_tag"
-	stepConfirm    = "confirm"
-	stepMerge      = "merge"
-	stepNotify     = "notify"
+	stepVerify       = "verify"
+	stepApprove      = "approve"
+	stepComputeTag   = "compute_tag"
+	stepConfirm      = "confirm"
+	stepMerge        = "merge"
+	stepNotify       = "notify"
+	stepCreateMR     = "create_mr"
+	stepWaitPipeline = "wait_pipeline"
 )
 
-// devBranch is the only target branch the release routine supports in this slice
-// (the dev flow). Its tags carry a "-dev" prerelease suffix.
+// Release flows. The dev flow drives an existing MR into "development" and tags a
+// "-dev" prerelease; the main flow CREATES an MR from development into main and
+// tags a pure release (no suffix, no confirmation gate).
+const (
+	flowDevelopment = "development"
+	flowMain        = "main"
+)
+
+// devBranch is the source/target branch of the dev flow (an MR targeting it). Its
+// tags carry a "-dev" prerelease suffix.
 const devBranch = "development"
+
+// mainBranch is the default target branch of the main flow.
+const mainBranch = "main"
+
+// mainReleaseMarker prefixes every MR title the main flow creates. runCreateMRStep
+// only ever reuses an open source→target MR whose title carries this marker (one
+// this routine opened on a prior attempt); an unmarked human-opened MR for the
+// same branch pair blocks the run rather than being adopted and merged.
+const mainReleaseMarker = "Main Release:"
 
 // defaultMergePollInterval is how long the merge step waits between polls of the
 // MR state while waiting for it to be merged. It is a field on Service so tests
@@ -56,6 +78,12 @@ const defaultMergePollInterval = 10 * time.Second
 // flips the run to awaiting_confirmation WITHOUT blocking or failing the step, so
 // a later Confirm re-enters the same step.
 var errAwaitConfirmation = errors.New("routines: awaiting merge confirmation")
+
+// errNothingToRelease is a control sentinel (not a failure): runComputeTagMain
+// returns it when there are no releasable commits since the last release tag.
+// executeRelease recognizes it, marks the compute step done with an explanatory
+// detail, and completes the run WITHOUT opening an MR or running later steps.
+var errNothingToRelease = errors.New("routines: no releasable commits")
 
 // ReleaseNotifier delivers a best-effort, human-readable summary when a release
 // routine finishes. It is optional: a nil notifier disables notification (the
@@ -119,8 +147,15 @@ type approveAndTagState struct {
 
 // releaseParams is the immutable input persisted in a release run's Run.Params.
 type releaseParams struct {
-	// TargetBranch is captured at creation from the MR (must be "development" in
-	// this slice). The tag suffix and future main-flow branching key off it.
+	// Flow discriminates the dev flow ("development": drive an existing MR) from the
+	// main flow ("main": create an MR from development into main). An empty Flow is
+	// treated as the dev flow so runs created before this field existed keep working.
+	Flow string `json:"flow,omitempty"`
+	// SourceBranch / TargetBranch are the MR's branches. Dev flow: source is the MR
+	// source, target is "development". Main flow: source "development", target "main".
+	SourceBranch string `json:"sourceBranch,omitempty"`
+	// TargetBranch is captured at creation from the MR (dev flow) or set to the main
+	// branch (main flow). The tag suffix and flow branching key off it / Flow.
 	TargetBranch string `json:"targetBranch"`
 	// Bump is the semver bump mode fed to routine.NextRelease.
 	Bump string `json:"bump"`
@@ -154,6 +189,30 @@ type releaseState struct {
 	// merge (GitLab rejects a second merge on an already merging/scheduled MR).
 	MergeTriggered bool   `json:"mergeTriggered,omitempty"`
 	MergeSHA       string `json:"mergeSHA,omitempty"`
+	// MRIID is the main flow's created MR. The main flow starts with no MR
+	// (run.MRIID == 0) and fills this in at the create_mr step; effectiveMRIID reads
+	// run.MRIID for the dev flow and this for the main flow.
+	MRIID int `json:"mrIid,omitempty"`
+}
+
+// effectiveMRIID returns the merge request IID a release step should act on:
+// run.MRIID for the dev flow (the MR exists at creation) or state.MRIID for the
+// main flow (the MR is created mid-run at the create_mr step).
+func effectiveMRIID(run routine.Run, state releaseState) int {
+	if run.MRIID > 0 {
+		return run.MRIID
+	}
+	return state.MRIID
+}
+
+// tagSuffix is the prerelease suffix appended to the computed version at the tag
+// step: empty for the main flow (a pure release), "-dev" otherwise (the dev flow,
+// including runs created before the Flow field existed).
+func tagSuffix(flow string) string {
+	if flow == flowMain {
+		return ""
+	}
+	return "-dev"
 }
 
 // Preflight probes a repo's GitLab project and reports which routine actions the
@@ -451,6 +510,8 @@ func (s *Service) CreateRelease(ctx context.Context, in ReleaseInput) (routine.R
 	}
 
 	params, err := json.Marshal(releaseParams{
+		Flow:                      flowDevelopment,
+		SourceBranch:              mr.SourceBranch,
 		TargetBranch:              mr.TargetBranch,
 		Bump:                      bump,
 		Emojis:                    emojis,
@@ -475,6 +536,133 @@ func (s *Service) CreateRelease(ctx context.Context, in ReleaseInput) (routine.R
 			{Name: stepReact, Status: routine.StepPending},
 			{Name: stepApprove, Status: routine.StepPending},
 			{Name: stepComputeTag, Status: routine.StepPending},
+			{Name: stepConfirm, Status: routine.StepPending},
+			{Name: stepMerge, Status: routine.StepPending},
+			{Name: stepTag, Status: routine.StepPending},
+			{Name: stepNotify, Status: routine.StepPending},
+		},
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := s.runs.Create(ctx, run); err != nil {
+		return routine.Run{}, err
+	}
+	s.wake()
+	return run, nil
+}
+
+// MainReleaseInput is the request to create a MAIN-flow release run. Unlike the
+// dev flow no MR exists yet: the routine creates one from SourceBranch into
+// TargetBranch. All fields are optional and fall back to defaults (source
+// "development", target "main", bump "minor", the default emojis). The two merge
+// options are plain bools here — the HTTP layer resolves its "*bool" defaults
+// (RemoveSourceBranch=false, MergeWhenPipelineSucceeds=false) before calling.
+type MainReleaseInput struct {
+	RepoID                    string
+	Bump                      string
+	SourceBranch              string
+	TargetBranch              string
+	Emojis                    []string
+	RemoveSourceBranch        bool
+	MergeWhenPipelineSucceeds bool
+}
+
+// CreateMainRelease validates the repo, applies defaults, and records a pending
+// MAIN-flow release run with the compute_tag→create_mr→wait_pipeline→approve→
+// react→confirm→merge→tag→notify ledger, then wakes the worker. Like the dev
+// flow the main flow PAUSES on the shared confirm gate: state.Decision is left
+// empty so stepConfirm returns errAwaitConfirmation and a later Confirm("merge"|
+// "wait") drives it. The run starts with run.MRIID=0 (the create_mr step fills
+// state.MRIID). It returns repo.ErrNotFound for an unknown repo,
+// routine.ErrDuplicateRun for a second active main run targeting the same branch,
+// and a validation error otherwise.
+func (s *Service) CreateMainRelease(ctx context.Context, in MainReleaseInput) (routine.Run, error) {
+	if _, err := s.repos.Get(ctx, in.RepoID); err != nil {
+		return routine.Run{}, err
+	}
+
+	sourceBranch := in.SourceBranch
+	if sourceBranch == "" {
+		sourceBranch = devBranch
+	}
+	targetBranch := in.TargetBranch
+	if targetBranch == "" {
+		targetBranch = mainBranch
+	}
+	// A release must move commits between two DIFFERENT branches; a same-branch MR
+	// is impossible, so reject it up front (the HTTP layer maps this to 400).
+	if sourceBranch == targetBranch {
+		return routine.Run{}, fmt.Errorf("routines: source branch %q must differ from target branch %q", sourceBranch, targetBranch)
+	}
+	bump := in.Bump
+	if bump == "" {
+		bump = "minor"
+	}
+	if !validBumps[bump] {
+		return routine.Run{}, fmt.Errorf("routines: invalid bump %q (want major, minor or patch)", bump)
+	}
+	if len(in.Emojis) > maxEmojis {
+		return routine.Run{}, fmt.Errorf("routines: too many emojis %d (max %d)", len(in.Emojis), maxEmojis)
+	}
+	emojis := in.Emojis
+	if len(emojis) == 0 {
+		emojis = []string{"thumbsup", "seedling"}
+	}
+
+	// Reject a duplicate active MAIN run for the same repo+target branch. The main
+	// flow has no MR at creation, so dedupe on flow+targetBranch rather than MR IID.
+	//
+	// TODO: this scan is check-then-act — two HTTP creations racing here could both
+	// pass the check and create two runs. The single worker limits the blast radius
+	// to two sequential releases (never a concurrent double-merge), so no store-level
+	// uniqueness constraint is added now.
+	runs, err := s.runs.ListByRepo(ctx, in.RepoID)
+	if err != nil {
+		return routine.Run{}, err
+	}
+	for _, r := range runs {
+		if r.Kind != routine.KindRelease || !isActiveRun(r.Status) {
+			continue
+		}
+		var p releaseParams
+		if len(r.Params) > 0 {
+			_ = json.Unmarshal(r.Params, &p)
+		}
+		if p.Flow == flowMain && p.TargetBranch == targetBranch {
+			return routine.Run{}, routine.ErrDuplicateRun
+		}
+	}
+
+	params, err := json.Marshal(releaseParams{
+		Flow:                      flowMain,
+		SourceBranch:              sourceBranch,
+		TargetBranch:              targetBranch,
+		Bump:                      bump,
+		Emojis:                    emojis,
+		RemoveSourceBranch:        in.RemoveSourceBranch,
+		MergeWhenPipelineSucceeds: in.MergeWhenPipelineSucceeds,
+	})
+	if err != nil {
+		return routine.Run{}, err
+	}
+
+	now := time.Now().UTC()
+	run := routine.Run{
+		ID:     id.New(),
+		Kind:   routine.KindRelease,
+		RepoID: in.RepoID,
+		MRIID:  0,
+		Status: routine.RunPending,
+		Params: params,
+		// State starts empty: like the dev flow, the confirm step pauses the run at
+		// awaiting_confirmation until Confirm records a merge decision.
+		State: json.RawMessage("{}"),
+		Steps: []routine.Step{
+			{Name: stepComputeTag, Status: routine.StepPending},
+			{Name: stepCreateMR, Status: routine.StepPending},
+			{Name: stepWaitPipeline, Status: routine.StepPending},
+			{Name: stepApprove, Status: routine.StepPending},
+			{Name: stepReact, Status: routine.StepPending},
 			{Name: stepConfirm, Status: routine.StepPending},
 			{Name: stepMerge, Status: routine.StepPending},
 			{Name: stepTag, Status: routine.StepPending},
@@ -844,7 +1032,7 @@ func (s *Service) executeRelease(ctx context.Context, run routine.Run) error {
 			return fmt.Errorf("routines: save run %s: %w", run.ID, err)
 		}
 
-		detail, herr := s.runReleaseStep(ctx, gl, projectID, run.MRIID, step.Name, params, &state, checkpoint)
+		detail, herr := s.runReleaseStep(ctx, gl, projectID, run, step.Name, params, &state, checkpoint)
 		step.UpdatedAt = time.Now().UTC()
 		run.State = marshalReleaseState(state)
 
@@ -857,6 +1045,26 @@ func (s *Service) executeRelease(ctx context.Context, run routine.Run) error {
 				return fmt.Errorf("routines: save run %s: %w", run.ID, err)
 			}
 			s.logger.Printf("routines: run %s awaiting confirmation at step %q", run.ID, step.Name)
+			return nil
+		}
+
+		// Nothing-to-release is a clean stop, not a failure: mark the compute step
+		// done with an explanatory detail and finish the run WITHOUT opening an MR or
+		// running the remaining steps.
+		if errors.Is(herr, errNothingToRelease) {
+			base := state.LastTag
+			if base == "" {
+				base = "the last release"
+			}
+			step.Status = routine.StepDone
+			step.Detail = fmt.Sprintf("no releasable commits since %s; nothing to release", base)
+			run.Status = routine.RunDone
+			run.LastError = ""
+			run.State = marshalReleaseState(state)
+			if err := s.runs.Save(ctx, run); err != nil {
+				return fmt.Errorf("routines: save run %s: %w", run.ID, err)
+			}
+			s.logger.Printf("routines: run %s finished: %s", run.ID, step.Detail)
 			return nil
 		}
 
@@ -891,7 +1099,10 @@ func (s *Service) executeRelease(ctx context.Context, run routine.Run) error {
 
 // runReleaseStep executes one release step (check-then-act / idempotent) and
 // returns a short human-readable detail on success. It may mutate state.
-func (s *Service) runReleaseStep(ctx context.Context, gl *gitlab.Client, projectID string, mrIID int, name string, params releaseParams, state *releaseState, checkpoint func(*releaseState) error) (string, error) {
+func (s *Service) runReleaseStep(ctx context.Context, gl *gitlab.Client, projectID string, run routine.Run, name string, params releaseParams, state *releaseState, checkpoint func(*releaseState) error) (string, error) {
+	// Both flows key their MR-scoped steps off the effective IID: the dev flow's
+	// pre-existing run.MRIID, or the main flow's state.MRIID (set at create_mr).
+	mrIID := effectiveMRIID(run, *state)
 	switch name {
 	case stepVerify:
 		// The MR must be mergeable: no conflicts, and any latest pipeline must be
@@ -952,6 +1163,9 @@ func (s *Service) runReleaseStep(ctx context.Context, gl *gitlab.Client, project
 		return "approved", nil
 
 	case stepComputeTag:
+		if params.Flow == flowMain {
+			return s.runComputeTagMain(ctx, gl, projectID, params, state, checkpoint)
+		}
 		// The next version is a durable decision: compute it once and persist it
 		// before any side effect, so a resume reuses it rather than recomputing a
 		// different (wrongly bumped) value.
@@ -990,6 +1204,12 @@ func (s *Service) runReleaseStep(ctx context.Context, gl *gitlab.Client, project
 		}
 		return fmt.Sprintf("next release %s (feat %d, fix %d)", state.NextTag, state.FeatCount, state.FixCount), nil
 
+	case stepCreateMR:
+		return s.runCreateMRStep(ctx, gl, projectID, params, state, checkpoint)
+
+	case stepWaitPipeline:
+		return s.runWaitPipelineStep(ctx, gl, projectID, mrIID, state, checkpoint)
+
 	case stepConfirm:
 		// Interactive gate: pause until Confirm records a decision.
 		if state.Decision == "" {
@@ -1004,8 +1224,9 @@ func (s *Service) runReleaseStep(ctx context.Context, gl *gitlab.Client, project
 		if state.MergeSHA == "" {
 			return "", fmt.Errorf("merge request !%d has no merge commit SHA to tag", mrIID)
 		}
-		// Dev flow: the tag name is the computed next version with a "-dev" suffix.
-		finalName := state.NextTag + "-dev"
+		// The tag name is the computed next version plus a flow-dependent suffix:
+		// "-dev" for the dev flow, empty (a pure release) for the main flow.
+		finalName := state.NextTag + tagSuffix(params.Flow)
 
 		tags, err := gl.ListTags(ctx, projectID)
 		if err != nil {
@@ -1025,7 +1246,7 @@ func (s *Service) runReleaseStep(ctx context.Context, gl *gitlab.Client, project
 
 	case stepNotify:
 		// Best-effort: a notify failure must NEVER fail the run.
-		summary := fmt.Sprintf("release %s-dev created for MR !%d", state.NextTag, mrIID)
+		summary := fmt.Sprintf("release %s created for MR !%d", state.NextTag+tagSuffix(params.Flow), mrIID)
 		if s.notifier == nil {
 			s.logger.Printf("routines: %s (no notifier configured)", summary)
 			return "notify skipped (no notifier)", nil
@@ -1113,6 +1334,185 @@ func (s *Service) runMergeStep(ctx context.Context, gl *gitlab.Client, projectID
 		}
 		if time.Now().After(deadline) {
 			return "", fmt.Errorf("merge request !%d still waiting for merge; resume to keep waiting", mrIID)
+		}
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(s.mergePollInterval):
+		}
+	}
+}
+
+// runComputeTagMain computes the next MAIN release version. Its base is the
+// highest PURE RELEASE tag (prerelease/"-dev" tags are ignored, so a 1.7.2-dev
+// never becomes the base for a main release). The commits counted are those on the
+// source branch (development) since that last release tag — or since the target
+// branch (main) when there is no release tag yet. Like the dev variant the result
+// is a durable decision: computed once and checkpointed before any side effect.
+func (s *Service) runComputeTagMain(ctx context.Context, gl *gitlab.Client, projectID string, params releaseParams, state *releaseState, checkpoint func(*releaseState) error) (string, error) {
+	if state.NextTag == "" {
+		tags, err := gl.ListTags(ctx, projectID)
+		if err != nil {
+			return "", fmt.Errorf("list tags: %w", err)
+		}
+		existing := make([]string, 0, len(tags))
+		for _, t := range tags {
+			existing = append(existing, t.Name)
+		}
+		// Ignore prerelease/"-dev" tags: a main release bases off pure X.Y.Z only.
+		lastTag := routine.HighestReleaseSemver(existing)
+
+		// Count commits reachable from the source branch (development) but not from
+		// the base ref: the last release tag if present, else the target branch.
+		from := lastTag
+		if from == "" {
+			from = params.TargetBranch
+		}
+		cmp, err := gl.CompareRefs(ctx, projectID, from, params.SourceBranch)
+		if err != nil {
+			return "", fmt.Errorf("compare refs %s...%s: %w", from, params.SourceBranch, err)
+		}
+		// CompareRefs returns commits oldest-first, which is the order NextRelease
+		// wants, so the titles are used as-is (no reverse, unlike the dev variant).
+		subjects := make([]string, len(cmp.Commits))
+		for i, c := range cmp.Commits {
+			subjects[i] = c.Title
+		}
+
+		next, counts, err := routine.NextRelease(lastTag, subjects, routine.BumpMode(params.Bump))
+		if err != nil {
+			return "", fmt.Errorf("compute next release: %w", err)
+		}
+		// Nothing to release: no feat/fix commits since the base means next == lastTag.
+		// Persist the base so executeRelease can name it, then stop the run without
+		// opening an MR (opening an empty development→main MR would be noise).
+		if counts.Feat == 0 && counts.Fix == 0 {
+			state.LastTag = lastTag
+			if err := checkpoint(state); err != nil {
+				return "", fmt.Errorf("checkpoint computed tag: %w", err)
+			}
+			return "", errNothingToRelease
+		}
+		state.LastTag = lastTag // "" when there is no previous release (UI shows "no previous")
+		state.NextTag = next
+		state.FeatCount = counts.Feat
+		state.FixCount = counts.Fix
+		if err := checkpoint(state); err != nil {
+			return "", fmt.Errorf("checkpoint computed tag: %w", err)
+		}
+	}
+	return fmt.Sprintf("next release %s (feat %d, fix %d)", state.NextTag, state.FeatCount, state.FixCount), nil
+}
+
+// runCreateMRStep creates the main flow's development→main MR, or REUSES the one
+// this routine opened on a prior attempt (check-then-act for resume idempotency:
+// a crash after CreateMergeRequest but before the checkpoint would otherwise open
+// a duplicate). The resulting IID is persisted in state.MRIID so the later
+// MR-scoped steps act on it.
+//
+// Anti-hijack: it only ever reuses an open source→target MR whose title carries
+// the mainReleaseMarker prefix. An open source→target MR WITHOUT that marker is a
+// human's unrelated MR — adopting it would merge and tag work this routine never
+// reviewed — so its presence BLOCKS the run instead. The branch filter is applied
+// server-side (OpenMergeRequestsForBranches) rather than over an unpaginated list.
+func (s *Service) runCreateMRStep(ctx context.Context, gl *gitlab.Client, projectID string, params releaseParams, state *releaseState, checkpoint func(*releaseState) error) (string, error) {
+	// Reuse: if state.MRIID is already set (resume) nothing to do; otherwise inspect
+	// the open source→target MRs before creating a new one.
+	if state.MRIID == 0 {
+		open, err := gl.OpenMergeRequestsForBranches(ctx, projectID, params.SourceBranch, params.TargetBranch)
+		if err != nil {
+			return "", fmt.Errorf("list open merge requests: %w", err)
+		}
+		var marked []gitlab.MergeRequest
+		for _, mr := range open {
+			// The server already filtered by branch pair; guard defensively anyway.
+			if mr.SourceBranch != params.SourceBranch || mr.TargetBranch != params.TargetBranch {
+				continue
+			}
+			if !strings.HasPrefix(mr.Title, mainReleaseMarker) {
+				// A human opened an unrelated development→main MR: refuse to adopt it.
+				return "", fmt.Errorf("an unrelated %s->%s merge request is already open; close or merge it before running a release", params.SourceBranch, params.TargetBranch)
+			}
+			marked = append(marked, mr)
+		}
+		if len(marked) > 0 {
+			// Resume idempotency: reuse the MR this routine created. Pick the lowest
+			// IID deterministically if somehow more than one marked MR is open.
+			lowest := marked[0]
+			for _, mr := range marked[1:] {
+				if mr.IID < lowest.IID {
+					lowest = mr
+				}
+			}
+			if len(marked) > 1 {
+				s.logger.Printf("routines: found %d open %s->%s release merge requests; reusing lowest IID !%d", len(marked), params.SourceBranch, params.TargetBranch, lowest.IID)
+			}
+			state.MRIID = lowest.IID
+		}
+	}
+	if state.MRIID == 0 {
+		title := fmt.Sprintf("%s %s TAG: %s", mainReleaseMarker, time.Now().Format("02.01.2006"), state.NextTag)
+		description := fmt.Sprintf("Commits: feat %d, fix %d", state.FeatCount, state.FixCount)
+		mr, err := gl.CreateMergeRequest(ctx, projectID, params.SourceBranch, params.TargetBranch, title, description)
+		if err != nil {
+			return "", fmt.Errorf("create merge request: %w", err)
+		}
+		state.MRIID = mr.IID
+	}
+	if err := checkpoint(state); err != nil {
+		return "", fmt.Errorf("checkpoint created MR: %w", err)
+	}
+	return fmt.Sprintf("merge request !%d ready (%s -> %s)", state.MRIID, params.SourceBranch, params.TargetBranch), nil
+}
+
+// runWaitPipelineStep re-fetches the created MR and blocks on conflicts, then
+// polls the latest pipeline until it succeeds. A failed/canceled pipeline blocks
+// (an expected pause: fix and resume); no pipeline at all is treated as OK. It is
+// bounded by s.mergeWaitTimeout and honors ctx; on timeout it blocks so a resume
+// keeps waiting.
+//
+// The main flow has no verify step, so this is where the merge head is pinned:
+// right before returning success it records state.HeadSHA = mr.SHA (the MR's
+// current diff head) so the merge step's SHA pin rejects a merge if development
+// moved after the pipeline went green (the confirm gate can sit indefinitely).
+func (s *Service) runWaitPipelineStep(ctx context.Context, gl *gitlab.Client, projectID string, mrIID int, state *releaseState, checkpoint func(*releaseState) error) (string, error) {
+	mr, err := gl.GetMergeRequest(ctx, projectID, mrIID)
+	if err != nil {
+		return "", fmt.Errorf("get merge request: %w", err)
+	}
+	if mr.HasConflicts || mr.MergeStatus == "cannot_be_merged" {
+		return "", fmt.Errorf("created merge request !%d has conflicts; resolve and resume", mrIID)
+	}
+	// pinHead records the verified diff head so runMergeStep can SHA-pin the merge.
+	pinHead := func() error {
+		state.HeadSHA = mr.SHA
+		return checkpoint(state)
+	}
+	deadline := time.Now().Add(s.mergeWaitTimeout)
+	for {
+		pipelines, err := gl.MergeRequestPipelines(ctx, projectID, mrIID)
+		if err != nil {
+			return "", fmt.Errorf("list merge request pipelines: %w", err)
+		}
+		latest, ok := latestPipeline(pipelines)
+		if !ok {
+			// No pipeline attached: nothing to wait for, proceed.
+			if err := pinHead(); err != nil {
+				return "", fmt.Errorf("checkpoint verified head: %w", err)
+			}
+			return "no pipeline; proceeding", nil
+		}
+		switch latest.Status {
+		case "success":
+			if err := pinHead(); err != nil {
+				return "", fmt.Errorf("checkpoint verified head: %w", err)
+			}
+			return "pipeline succeeded", nil
+		case "failed", "canceled", "skipped":
+			return "", fmt.Errorf("pipeline failed (status %q); fix it and resume", latest.Status)
+		}
+		if time.Now().After(deadline) {
+			return "", fmt.Errorf("still waiting for pipeline (status %q); resume to keep waiting", latest.Status)
 		}
 		select {
 		case <-ctx.Done():

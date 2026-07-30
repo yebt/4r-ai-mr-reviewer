@@ -109,6 +109,27 @@ func (c *Client) ListOpenMergeRequests(ctx context.Context, projectID string) ([
 	return mrs, nil
 }
 
+// OpenMergeRequestsForBranches returns the opened MRs of a project filtered
+// server-side by source and target branch. It is the branch-scoped counterpart to
+// ListOpenMergeRequests: the main release flow uses it to find (or refuse to
+// adopt) an already-open source→target MR without paging an unfiltered list. The
+// branch names and projectID are URL-encoded by url.Values/url.PathEscape.
+func (c *Client) OpenMergeRequestsForBranches(ctx context.Context, projectID, source, target string) ([]MergeRequest, error) {
+	path := fmt.Sprintf("/projects/%s/merge_requests", url.PathEscape(projectID))
+	q := url.Values{
+		"state":         {"opened"},
+		"source_branch": {source},
+		"target_branch": {target},
+		"per_page":      {"100"},
+	}
+
+	var mrs []MergeRequest
+	if err := c.getJSON(ctx, path, q, &mrs); err != nil {
+		return nil, err
+	}
+	return mrs, nil
+}
+
 // GetMergeRequest returns a single merge request by IID. Routines need its
 // target/source branches and state to decide the tag ref and prerelease suffix.
 func (c *Client) GetMergeRequest(ctx context.Context, projectID string, iid int) (MergeRequest, error) {

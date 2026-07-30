@@ -220,6 +220,38 @@ func TestCreateReleaseOverHTTP(t *testing.T) {
 	}
 }
 
+func TestCreateMainReleaseOverHTTP(t *testing.T) {
+	srv := newTestServer(t)
+	// The main flow does NOT fetch an MR at creation, so an arbitrary account base
+	// URL is fine here (no GitLab call happens until the worker runs).
+	repoID := newRepoForRoutine(t, srv)
+
+	resp := postJSON(t, srv.URL+"/repos/"+repoID+"/routines/release-main", map[string]any{"bump": "minor"})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create main release status = %d, want 201", resp.StatusCode)
+	}
+	var run struct {
+		Kind   string `json:"kind"`
+		Status string `json:"status"`
+		MRIID  int    `json:"mrIid"`
+		Steps  []struct {
+			Name string `json:"name"`
+		} `json:"steps"`
+	}
+	decodeBody(t, resp, &run)
+	if run.Kind != "release" || run.Status != "pending" {
+		t.Fatalf("unexpected created run: %+v", run)
+	}
+	if run.MRIID != 0 {
+		t.Errorf("mrIid = %d, want 0 (no MR at creation)", run.MRIID)
+	}
+	// The main flow now pauses on a confirm gate before merging: compute_tag,
+	// create_mr, wait_pipeline, approve, react, confirm, merge, tag, notify.
+	if len(run.Steps) != 9 || run.Steps[0].Name != "compute_tag" || run.Steps[1].Name != "create_mr" || run.Steps[5].Name != "confirm" {
+		t.Fatalf("unexpected main-flow steps: %+v", run.Steps)
+	}
+}
+
 func TestConfirmInvalidDecisionOverHTTP(t *testing.T) {
 	srv := newTestServer(t)
 	// Invalid decision is rejected before the run is loaded, so any id yields 400.

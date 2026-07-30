@@ -699,12 +699,24 @@ type fakeReleaseState struct {
 	commits   []map[string]any // MR commits (newest first, GitLab order)
 	tags      []string
 
+	// Main-flow fixtures: compare commits (oldest first, CompareRefs order), the
+	// list of open MRs served to the create_mr reuse check, and the IID a create
+	// returns.
+	compareCommits []map[string]any
+	openMRs        []map[string]any
+	createdMRIID   int
+
 	awardCount     int
 	approveCount   int
 	mergeCount     int
 	createTagCount int
+	createMRCount  int
 	lastTagName    string
 	lastCreateRef  string
+	lastMergeSHA   string
+	lastMRTitle    string
+	lastMRSource   string
+	lastMRTarget   string
 }
 
 // newFakeReleaseGitLab serves the endpoints a release run exercises: MR fetch,
@@ -725,6 +737,7 @@ func newFakeReleaseGitLab(t *testing.T, st *fakeReleaseState) *httptest.Server {
 			_ = json.NewEncoder(w).Encode(map[string]any{"id": st.approveCount})
 		case strings.HasSuffix(r.URL.Path, "/merge") && r.Method == http.MethodPut:
 			st.mergeCount++
+			st.lastMergeSHA = r.FormValue("sha")
 			_ = json.NewEncoder(w).Encode(map[string]any{"iid": 7, "state": "merged"})
 		case strings.HasSuffix(r.URL.Path, "/pipelines") && r.Method == http.MethodGet:
 			out := st.pipelines
@@ -750,6 +763,47 @@ func newFakeReleaseGitLab(t *testing.T, st *fakeReleaseState) *httptest.Server {
 			out := make([]map[string]any, 0, len(st.tags))
 			for _, name := range st.tags {
 				out = append(out, map[string]any{"name": name})
+			}
+			_ = json.NewEncoder(w).Encode(out)
+		case strings.HasSuffix(r.URL.Path, "/repository/compare") && r.Method == http.MethodGet:
+			_ = json.NewEncoder(w).Encode(map[string]any{"commits": st.compareCommits})
+		case strings.HasSuffix(r.URL.Path, "/merge_requests") && r.Method == http.MethodPost:
+			// Create MR (main flow): record the call and return a new IID, and append
+			// the created MR to the open list so a later reuse check would find it.
+			st.createMRCount++
+			iid := st.createdMRIID
+			if iid == 0 {
+				iid = 101
+			}
+			source := r.FormValue("source_branch")
+			target := r.FormValue("target_branch")
+			st.lastMRTitle = r.FormValue("title")
+			st.lastMRSource = source
+			st.lastMRTarget = target
+			st.openMRs = append(st.openMRs, map[string]any{
+				"iid": iid, "state": "opened", "source_branch": source, "target_branch": target,
+				"title": st.lastMRTitle,
+			})
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"iid": iid, "state": "opened", "source_branch": source, "target_branch": target,
+				"title": st.lastMRTitle,
+			})
+		case strings.HasSuffix(r.URL.Path, "/merge_requests") && r.Method == http.MethodGet:
+			// List open MRs (main flow create_mr reuse check). Emulate GitLab's
+			// server-side source_branch/target_branch filter so the branch-scoped
+			// OpenMergeRequestsForBranches call only sees matching MRs.
+			source := r.URL.Query().Get("source_branch")
+			target := r.URL.Query().Get("target_branch")
+			out := make([]map[string]any, 0, len(st.openMRs))
+			for _, mr := range st.openMRs {
+				if source != "" && mr["source_branch"] != source {
+					continue
+				}
+				if target != "" && mr["target_branch"] != target {
+					continue
+				}
+				out = append(out, mr)
 			}
 			_ = json.NewEncoder(w).Encode(out)
 		case strings.Contains(r.URL.Path, "/merge_requests/") && r.Method == http.MethodGet:
@@ -783,7 +837,10 @@ func devReleaseState() *fakeReleaseState {
 	return &fakeReleaseState{
 		mrState:      "opened",
 		targetBranch: "development",
-		tags:         []string{"1.2.3"},
+		// sha is the MR diff head verify pins into state.HeadSHA; the merge step must
+		// forward it as the "sha" merge param.
+		sha:  "devheadsha",
+		tags: []string{"1.2.3"},
 		// GitLab returns commits newest first: fix (newer), feat (older).
 		commits: []map[string]any{
 			{"id": "c2", "title": "fix: bug"},
@@ -882,6 +939,14 @@ func TestReleaseConfirmMergeMergesPollsAndTags(t *testing.T) {
 	}
 	if st.mergeCount != 1 {
 		t.Errorf("mergeCount = %d, want 1", st.mergeCount)
+	}
+	// The merge was SHA-pinned to the head verify captured (state.HeadSHA).
+	var done1State releaseState
+	if err := json.Unmarshal(done.State, &done1State); err != nil {
+		t.Fatalf("decode state: %v", err)
+	}
+	if done1State.HeadSHA == "" || st.lastMergeSHA != done1State.HeadSHA {
+		t.Errorf("merge sha = %q, want the verified head %q (non-empty)", st.lastMergeSHA, done1State.HeadSHA)
 	}
 	if st.createTagCount != 1 || st.lastTagName != "1.3.1-dev" {
 		t.Errorf("tag = %q (count %d), want 1.3.1-dev", st.lastTagName, st.createTagCount)
@@ -1186,6 +1251,519 @@ func TestCreateReleaseRejectsBadInputs(t *testing.T) {
 	}
 	if _, err := svc.CreateRelease(ctx, ReleaseInput{RepoID: repoID, MRIID: 7}); !errors.Is(err, routine.ErrDuplicateRun) {
 		t.Errorf("duplicate CreateRelease = %v, want ErrDuplicateRun", err)
+	}
+}
+
+// --- release: main flow ---
+
+// mainReleaseState returns a fake state for a mergeable main-flow release: a base
+// 1.6.0 release tag alongside a 1.7.2-dev prerelease that must NOT become the base,
+// two conventional commits (one feat, one fix) reachable on development, and a
+// create that returns IID 101.
+func mainReleaseState() *fakeReleaseState {
+	return &fakeReleaseState{
+		mrState:      "opened",
+		targetBranch: "main",
+		// sha is the created MR's diff head; wait_pipeline pins it into state.HeadSHA
+		// and the merge step forwards it as the "sha" merge param.
+		sha:  "mainheadsha",
+		tags: []string{"1.6.0", "1.7.2-dev"},
+		// CompareRefs order is oldest-first: feat then fix.
+		compareCommits: []map[string]any{
+			{"id": "c1", "title": "feat: thing"},
+			{"id": "c2", "title": "fix: bug"},
+		},
+		createdMRIID: 101,
+	}
+}
+
+func TestMainReleaseFullRun(t *testing.T) {
+	st := mainReleaseState()
+	st.pipelines = []map[string]any{{"id": 10, "status": "success"}}
+	// GetMergeRequest calls: wait_pipeline (#1), merge-trigger check (#2), first poll
+	// (#3) flips the MR to merged.
+	st.mergedAfterGets = 3
+	st.mergeCommitSHA = "mainmergesha"
+	srv := newFakeReleaseGitLab(t, st)
+	ctx, svc, repoID := setupRoutinesTest(t, srv.URL)
+	svc.mergePollInterval = time.Millisecond
+
+	run, err := svc.CreateMainRelease(ctx, MainReleaseInput{RepoID: repoID, MergeWhenPipelineSucceeds: true})
+	if err != nil {
+		t.Fatalf("CreateMainRelease: %v", err)
+	}
+	// First pass: the main flow now pauses on the shared confirm gate before merging.
+	if err := svc.execute(ctx, run); err != nil {
+		t.Fatalf("execute (to gate): %v", err)
+	}
+	gate, _ := svc.Get(ctx, run.ID)
+	if gate.Status != routine.RunAwaitingConfirmation {
+		t.Fatalf("status = %q, want awaiting_confirmation before merge (lastError %q)", gate.Status, gate.LastError)
+	}
+	if st.mergeCount != 0 || st.createTagCount != 0 {
+		t.Fatalf("nothing must merge/tag before confirmation: mergeCount=%d createTagCount=%d", st.mergeCount, st.createTagCount)
+	}
+
+	confirmed, err := svc.Confirm(ctx, gate.ID, "merge")
+	if err != nil {
+		t.Fatalf("Confirm(merge): %v", err)
+	}
+	if err := svc.execute(ctx, confirmed); err != nil {
+		t.Fatalf("execute (after confirm): %v", err)
+	}
+
+	done, _ := svc.Get(ctx, run.ID)
+	if done.Status != routine.RunDone {
+		t.Fatalf("status = %q, want done (lastError %q)", done.Status, done.LastError)
+	}
+	for _, name := range []string{"compute_tag", "create_mr", "wait_pipeline", "approve", "react", "confirm", "merge", "tag", "notify"} {
+		if s := stepByName(t, done, name).Status; s != routine.StepDone {
+			t.Errorf("step %q = %q, want done", name, s)
+		}
+	}
+
+	var state releaseState
+	if err := json.Unmarshal(done.State, &state); err != nil {
+		t.Fatalf("decode state: %v", err)
+	}
+	// HighestReleaseSemver ignores 1.7.2-dev, so the base is the pure 1.6.0 release.
+	if state.LastTag != "1.6.0" {
+		t.Errorf("state.lastTag = %q, want 1.6.0 (the -dev prerelease must not be the base)", state.LastTag)
+	}
+	// minor bump on 1.6.0 with one feat + one trailing fix → 1.7.1.
+	if state.NextTag != "1.7.1" {
+		t.Errorf("state.nextTag = %q, want 1.7.1", state.NextTag)
+	}
+	if state.FeatCount != 1 || state.FixCount != 1 {
+		t.Errorf("counts = feat %d/fix %d, want 1/1", state.FeatCount, state.FixCount)
+	}
+	if state.MRIID != 101 {
+		t.Errorf("state.mrIid = %d, want 101", state.MRIID)
+	}
+
+	// create_mr opened exactly one development→main MR with the expected title.
+	if st.createMRCount != 1 {
+		t.Errorf("createMRCount = %d, want 1", st.createMRCount)
+	}
+	if st.lastMRSource != "development" || st.lastMRTarget != "main" {
+		t.Errorf("created MR %s->%s, want development->main", st.lastMRSource, st.lastMRTarget)
+	}
+	wantTitle := "Main Release: " + time.Now().Format("02.01.2006") + " TAG: 1.7.1"
+	if st.lastMRTitle != wantTitle {
+		t.Errorf("MR title = %q, want %q", st.lastMRTitle, wantTitle)
+	}
+	// The tag is a PURE release (no -dev suffix) at the merge commit SHA.
+	if st.createTagCount != 1 || st.lastTagName != "1.7.1" {
+		t.Errorf("tag = %q (count %d), want 1.7.1 with no -dev suffix", st.lastTagName, st.createTagCount)
+	}
+	if st.lastCreateRef != "mainmergesha" {
+		t.Errorf("tag ref = %q, want mainmergesha", st.lastCreateRef)
+	}
+	if st.mergeCount != 1 {
+		t.Errorf("mergeCount = %d, want 1", st.mergeCount)
+	}
+	// The main merge was SHA-pinned to the head wait_pipeline captured (state.HeadSHA).
+	if state.HeadSHA == "" || st.lastMergeSHA != state.HeadSHA {
+		t.Errorf("merge sha = %q, want the verified head %q (non-empty)", st.lastMergeSHA, state.HeadSHA)
+	}
+	if st.awardCount != 2 || st.approveCount != 1 {
+		t.Errorf("awardCount=%d approveCount=%d, want 2/1", st.awardCount, st.approveCount)
+	}
+}
+
+// The create_mr step is idempotent on resume: after the MR is opened once, a
+// re-entry that lost its state.MRIID checkpoint reuses the already-open MR (found
+// via ListOpenMergeRequests) rather than opening a second one.
+func TestMainReleaseCreateMRIdempotentOnResume(t *testing.T) {
+	st := mainReleaseState()
+	st.pipelines = []map[string]any{{"id": 10, "status": "success"}}
+	st.mergedAfterGets = 3
+	st.mergeCommitSHA = "mainmergesha"
+	srv := newFakeReleaseGitLab(t, st)
+	ctx, svc, repoID := setupRoutinesTest(t, srv.URL)
+	svc.mergePollInterval = time.Millisecond
+
+	run, err := svc.CreateMainRelease(ctx, MainReleaseInput{RepoID: repoID, MergeWhenPipelineSucceeds: true})
+	if err != nil {
+		t.Fatalf("CreateMainRelease: %v", err)
+	}
+	if err := svc.execute(ctx, run); err != nil {
+		t.Fatalf("execute (first pass): %v", err)
+	}
+	if st.createMRCount != 1 {
+		t.Fatalf("createMRCount after first pass = %d, want 1", st.createMRCount)
+	}
+
+	// Simulate a resume that lost the create_mr checkpoint: re-run the step with
+	// state.MRIID cleared. The open MR created above is still in st.openMRs, so the
+	// reuse check must find it and NOT create a second MR.
+	done, _ := svc.Get(ctx, run.ID)
+	var state releaseState
+	_ = json.Unmarshal(done.State, &state)
+	state.MRIID = 0
+	done.State = marshalReleaseState(state)
+	for i := range done.Steps {
+		if done.Steps[i].Name == stepCreateMR {
+			done.Steps[i].Status = routine.StepRunning
+		}
+	}
+	done.Status = routine.RunRunning
+	if err := svc.runs.Save(ctx, done); err != nil {
+		t.Fatalf("Save (simulate resume): %v", err)
+	}
+	if err := svc.execute(ctx, done); err != nil {
+		t.Fatalf("execute (resume): %v", err)
+	}
+
+	if st.createMRCount != 1 {
+		t.Errorf("createMRCount after resume = %d, want 1 (open MR must be reused, not recreated)", st.createMRCount)
+	}
+	after, _ := svc.Get(ctx, run.ID)
+	var afterState releaseState
+	_ = json.Unmarshal(after.State, &afterState)
+	if afterState.MRIID != 101 {
+		t.Errorf("state.mrIid after resume = %d, want 101 (reused)", afterState.MRIID)
+	}
+}
+
+func TestMainReleaseWaitPipelineBlocksOnFailedPipeline(t *testing.T) {
+	st := mainReleaseState()
+	st.pipelines = []map[string]any{{"id": 10, "status": "failed"}}
+	srv := newFakeReleaseGitLab(t, st)
+	ctx, svc, repoID := setupRoutinesTest(t, srv.URL)
+	svc.mergePollInterval = time.Millisecond
+
+	run, err := svc.CreateMainRelease(ctx, MainReleaseInput{RepoID: repoID, MergeWhenPipelineSucceeds: true})
+	if err != nil {
+		t.Fatalf("CreateMainRelease: %v", err)
+	}
+	if err := svc.execute(ctx, run); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	got, _ := svc.Get(ctx, run.ID)
+	if got.Status != routine.RunBlocked {
+		t.Fatalf("status = %q, want blocked", got.Status)
+	}
+	if stepByName(t, got, "wait_pipeline").Status != routine.StepFailed {
+		t.Fatalf("wait_pipeline = %q, want failed", stepByName(t, got, "wait_pipeline").Status)
+	}
+	if !strings.Contains(got.LastError, "pipeline failed") {
+		t.Errorf("lastError = %q, want it to mention a failed pipeline", got.LastError)
+	}
+	// The MR was created before wait_pipeline, but nothing merged or tagged.
+	if st.createMRCount != 1 {
+		t.Errorf("createMRCount = %d, want 1", st.createMRCount)
+	}
+	if st.mergeCount != 0 || st.createTagCount != 0 {
+		t.Errorf("mergeCount=%d createTagCount=%d, want 0/0", st.mergeCount, st.createTagCount)
+	}
+}
+
+func TestMainReleaseWaitPipelineBlocksOnConflicts(t *testing.T) {
+	st := mainReleaseState()
+	st.hasConflicts = true
+	srv := newFakeReleaseGitLab(t, st)
+	ctx, svc, repoID := setupRoutinesTest(t, srv.URL)
+	svc.mergePollInterval = time.Millisecond
+
+	run, err := svc.CreateMainRelease(ctx, MainReleaseInput{RepoID: repoID, MergeWhenPipelineSucceeds: true})
+	if err != nil {
+		t.Fatalf("CreateMainRelease: %v", err)
+	}
+	if err := svc.execute(ctx, run); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	got, _ := svc.Get(ctx, run.ID)
+	if got.Status != routine.RunBlocked {
+		t.Fatalf("status = %q, want blocked", got.Status)
+	}
+	if stepByName(t, got, "wait_pipeline").Status != routine.StepFailed {
+		t.Fatalf("wait_pipeline = %q, want failed", stepByName(t, got, "wait_pipeline").Status)
+	}
+	if !strings.Contains(got.LastError, "conflicts") {
+		t.Errorf("lastError = %q, want it to mention conflicts", got.LastError)
+	}
+}
+
+func TestCreateMainReleaseDefaultsAndValidation(t *testing.T) {
+	st := mainReleaseState()
+	srv := newFakeReleaseGitLab(t, st)
+	ctx, svc, repoID := setupRoutinesTest(t, srv.URL)
+
+	run, err := svc.CreateMainRelease(ctx, MainReleaseInput{RepoID: repoID})
+	if err != nil {
+		t.Fatalf("CreateMainRelease: %v", err)
+	}
+	if run.MRIID != 0 {
+		t.Errorf("run.MRIID = %d, want 0 (main flow has no MR at creation)", run.MRIID)
+	}
+	var params releaseParams
+	if err := json.Unmarshal(run.Params, &params); err != nil {
+		t.Fatalf("decode params: %v", err)
+	}
+	if params.Flow != "main" || params.SourceBranch != "development" || params.TargetBranch != "main" {
+		t.Errorf("params flow/source/target = %q/%q/%q, want main/development/main", params.Flow, params.SourceBranch, params.TargetBranch)
+	}
+	if params.Bump != "minor" {
+		t.Errorf("params.Bump = %q, want minor", params.Bump)
+	}
+	if len(params.Emojis) != 2 {
+		t.Errorf("params.Emojis = %v, want the 2 defaults", params.Emojis)
+	}
+	var state releaseState
+	if err := json.Unmarshal(run.State, &state); err != nil {
+		t.Fatalf("decode state: %v", err)
+	}
+	if state.Decision != "" {
+		t.Errorf("state.Decision = %q, want empty (the main flow now pauses on the confirm gate)", state.Decision)
+	}
+	wantSteps := []string{"compute_tag", "create_mr", "wait_pipeline", "approve", "react", "confirm", "merge", "tag", "notify"}
+	if len(run.Steps) != len(wantSteps) {
+		t.Fatalf("steps len = %d, want %d", len(run.Steps), len(wantSteps))
+	}
+	for i, name := range wantSteps {
+		if run.Steps[i].Name != name {
+			t.Errorf("step[%d] = %q, want %q", i, run.Steps[i].Name, name)
+		}
+	}
+
+	// A second active main run targeting the same branch is a duplicate.
+	if _, err := svc.CreateMainRelease(ctx, MainReleaseInput{RepoID: repoID}); !errors.Is(err, routine.ErrDuplicateRun) {
+		t.Errorf("duplicate main run = %v, want ErrDuplicateRun", err)
+	}
+	// Emojis are capped.
+	many := make([]string, maxEmojis+1)
+	if _, err := svc.CreateMainRelease(ctx, MainReleaseInput{RepoID: repoID, Emojis: many}); err == nil {
+		t.Error("expected a validation error for too many emojis")
+	}
+	// Unknown repo and bad bump are rejected.
+	if _, err := svc.CreateMainRelease(ctx, MainReleaseInput{RepoID: "nope"}); !errors.Is(err, repo.ErrNotFound) {
+		t.Errorf("unknown repo = %v, want repo.ErrNotFound", err)
+	}
+	if _, err := svc.CreateMainRelease(ctx, MainReleaseInput{RepoID: repoID, Bump: "nope"}); err == nil {
+		t.Error("bad bump: expected a validation error")
+	}
+}
+
+// driveMainToGate runs a main-flow release to the confirmation gate and returns
+// the paused run.
+func driveMainToGate(t *testing.T, ctx context.Context, svc *Service, repoID string, in MainReleaseInput) routine.Run {
+	t.Helper()
+	in.RepoID = repoID
+	run, err := svc.CreateMainRelease(ctx, in)
+	if err != nil {
+		t.Fatalf("CreateMainRelease: %v", err)
+	}
+	if err := svc.execute(ctx, run); err != nil {
+		t.Fatalf("execute (to gate): %v", err)
+	}
+	got, _ := svc.Get(ctx, run.ID)
+	if got.Status != routine.RunAwaitingConfirmation {
+		t.Fatalf("status = %q, want awaiting_confirmation (lastError %q)", got.Status, got.LastError)
+	}
+	return got
+}
+
+// CreateMainRelease rejects a source branch equal to the target branch (400).
+func TestCreateMainReleaseRejectsSameSourceAndTarget(t *testing.T) {
+	st := mainReleaseState()
+	srv := newFakeReleaseGitLab(t, st)
+	ctx, svc, repoID := setupRoutinesTest(t, srv.URL)
+	_, err := svc.CreateMainRelease(ctx, MainReleaseInput{RepoID: repoID, SourceBranch: "main", TargetBranch: "main"})
+	if err == nil || !strings.Contains(err.Error(), "must differ") {
+		t.Fatalf("CreateMainRelease(source==target) = %v, want a validation error", err)
+	}
+}
+
+// create_mr BLOCKS when an unrelated (unmarked) source→target MR is already open:
+// a human's development→main MR must never be adopted, merged, and tagged.
+func TestMainReleaseCreateMRBlocksOnUnrelatedMR(t *testing.T) {
+	st := mainReleaseState()
+	st.openMRs = []map[string]any{
+		{"iid": 55, "state": "opened", "source_branch": "development", "target_branch": "main", "title": "Human WIP: refactor auth"},
+	}
+	srv := newFakeReleaseGitLab(t, st)
+	ctx, svc, repoID := setupRoutinesTest(t, srv.URL)
+
+	run, err := svc.CreateMainRelease(ctx, MainReleaseInput{RepoID: repoID})
+	if err != nil {
+		t.Fatalf("CreateMainRelease: %v", err)
+	}
+	if err := svc.execute(ctx, run); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	got, _ := svc.Get(ctx, run.ID)
+	if got.Status != routine.RunBlocked {
+		t.Fatalf("status = %q, want blocked", got.Status)
+	}
+	if stepByName(t, got, "create_mr").Status != routine.StepFailed {
+		t.Fatalf("create_mr = %q, want failed", stepByName(t, got, "create_mr").Status)
+	}
+	if !strings.Contains(got.LastError, "unrelated") {
+		t.Errorf("lastError = %q, want it to mention an unrelated open MR", got.LastError)
+	}
+	if st.createMRCount != 0 {
+		t.Errorf("createMRCount = %d, want 0 (must not create alongside the human MR)", st.createMRCount)
+	}
+}
+
+// create_mr REUSES a pre-existing marked ("Main Release:") MR instead of opening a
+// second one — the idempotent path when a prior attempt already created the MR.
+func TestMainReleaseReusesPreexistingMarkedMR(t *testing.T) {
+	st := mainReleaseState()
+	st.pipelines = []map[string]any{{"id": 10, "status": "success"}}
+	st.openMRs = []map[string]any{
+		{"iid": 77, "state": "opened", "source_branch": "development", "target_branch": "main",
+			"title": "Main Release: 01.01.2026 TAG: 1.7.1"},
+	}
+	srv := newFakeReleaseGitLab(t, st)
+	ctx, svc, repoID := setupRoutinesTest(t, srv.URL)
+	svc.mergePollInterval = time.Millisecond
+
+	gate := driveMainToGate(t, ctx, svc, repoID, MainReleaseInput{})
+	if st.createMRCount != 0 {
+		t.Errorf("createMRCount = %d, want 0 (the marked MR must be reused)", st.createMRCount)
+	}
+	var state releaseState
+	if err := json.Unmarshal(gate.State, &state); err != nil {
+		t.Fatalf("decode state: %v", err)
+	}
+	if state.MRIID != 77 {
+		t.Errorf("state.mrIid = %d, want 77 (reused marked MR)", state.MRIID)
+	}
+}
+
+// A realistic resume: create_mr and every downstream step are Pending again and
+// state.MRIID was lost. The marked MR opened on the first attempt is still open, so
+// the reuse check finds it and no second MR is created.
+func TestMainReleaseCreateMRReuseOnFullResume(t *testing.T) {
+	st := mainReleaseState()
+	st.pipelines = []map[string]any{{"id": 10, "status": "success"}}
+	srv := newFakeReleaseGitLab(t, st)
+	ctx, svc, repoID := setupRoutinesTest(t, srv.URL)
+	svc.mergePollInterval = time.Millisecond
+
+	gate := driveMainToGate(t, ctx, svc, repoID, MainReleaseInput{})
+	if st.createMRCount != 1 {
+		t.Fatalf("createMRCount after first pass = %d, want 1", st.createMRCount)
+	}
+
+	// Simulate losing the whole post-compute checkpoint: reset MRIID and set
+	// create_mr plus all downstream steps back to Pending.
+	var state releaseState
+	_ = json.Unmarshal(gate.State, &state)
+	state.MRIID = 0
+	gate.State = marshalReleaseState(state)
+	downstream := map[string]bool{
+		stepCreateMR: true, stepWaitPipeline: true, stepApprove: true,
+		stepReact: true, stepConfirm: true, stepMerge: true, stepTag: true, stepNotify: true,
+	}
+	for i := range gate.Steps {
+		if downstream[gate.Steps[i].Name] {
+			gate.Steps[i].Status = routine.StepPending
+		}
+	}
+	gate.Status = routine.RunPending
+	if err := svc.runs.Save(ctx, gate); err != nil {
+		t.Fatalf("Save (simulate resume): %v", err)
+	}
+	if err := svc.execute(ctx, gate); err != nil {
+		t.Fatalf("execute (resume): %v", err)
+	}
+
+	if st.createMRCount != 1 {
+		t.Errorf("createMRCount after resume = %d, want 1 (marked MR reused, not recreated)", st.createMRCount)
+	}
+	after, _ := svc.Get(ctx, gate.ID)
+	var afterState releaseState
+	_ = json.Unmarshal(after.State, &afterState)
+	if afterState.MRIID != 101 {
+		t.Errorf("state.mrIid after resume = %d, want 101 (reused)", afterState.MRIID)
+	}
+}
+
+// Main-flow merge idempotency: once the merge is triggered and the poll times out
+// (the run blocks), a resume must NOT re-issue the merge. state.MergeTriggered and
+// effectiveMRIID(state.MRIID) keep the resumed step polling only.
+func TestMainReleaseMergeIsIdempotentAcrossResume(t *testing.T) {
+	st := mainReleaseState()
+	st.pipelines = []map[string]any{{"id": 10, "status": "success"}}
+	st.mergedAfterGets = 0 // never flips to merged: the merge keeps polling
+	srv := newFakeReleaseGitLab(t, st)
+	ctx, svc, repoID := setupRoutinesTest(t, srv.URL)
+	svc.mergePollInterval = time.Millisecond
+	svc.mergeWaitTimeout = 5 * time.Millisecond
+
+	gate := driveMainToGate(t, ctx, svc, repoID, MainReleaseInput{})
+	confirmed, err := svc.Confirm(ctx, gate.ID, "merge")
+	if err != nil {
+		t.Fatalf("Confirm(merge): %v", err)
+	}
+
+	// First pass after confirm: the merge is triggered once, then the poll times out.
+	if err := svc.execute(ctx, confirmed); err != nil {
+		t.Fatalf("execute (first pass): %v", err)
+	}
+	blocked, _ := svc.Get(ctx, gate.ID)
+	if blocked.Status != routine.RunBlocked {
+		t.Fatalf("status = %q, want blocked on merge-wait timeout", blocked.Status)
+	}
+	if st.mergeCount != 1 {
+		t.Fatalf("mergeCount after first pass = %d, want 1", st.mergeCount)
+	}
+	if st.lastMergeSHA != "mainheadsha" {
+		t.Errorf("merge sha = %q, want the pinned head mainheadsha", st.lastMergeSHA)
+	}
+
+	// Resume: the merge must NOT be re-issued; the step only polls.
+	resumed, err := svc.Resume(ctx, gate.ID)
+	if err != nil {
+		t.Fatalf("Resume: %v", err)
+	}
+	if err := svc.execute(ctx, resumed); err != nil {
+		t.Fatalf("execute (resume): %v", err)
+	}
+	if st.mergeCount != 1 {
+		t.Errorf("mergeCount after resume = %d, want 1 (merge must not be re-issued)", st.mergeCount)
+	}
+}
+
+// nothing-to-release: with no feat/fix commits since the base release, the run
+// completes at compute_tag WITHOUT opening an MR or running later steps.
+func TestMainReleaseNothingToRelease(t *testing.T) {
+	st := mainReleaseState()
+	st.compareCommits = []map[string]any{
+		{"id": "c1", "title": "chore: tidy"},
+		{"id": "c2", "title": "docs: notes"},
+	}
+	srv := newFakeReleaseGitLab(t, st)
+	ctx, svc, repoID := setupRoutinesTest(t, srv.URL)
+
+	run, err := svc.CreateMainRelease(ctx, MainReleaseInput{RepoID: repoID})
+	if err != nil {
+		t.Fatalf("CreateMainRelease: %v", err)
+	}
+	if err := svc.execute(ctx, run); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	done, _ := svc.Get(ctx, run.ID)
+	if done.Status != routine.RunDone {
+		t.Fatalf("status = %q, want done (lastError %q)", done.Status, done.LastError)
+	}
+	if s := stepByName(t, done, "compute_tag").Status; s != routine.StepDone {
+		t.Errorf("compute_tag = %q, want done", s)
+	}
+	if d := stepByName(t, done, "compute_tag").Detail; !strings.Contains(d, "nothing to release") {
+		t.Errorf("compute_tag detail = %q, want it to mention nothing to release", d)
+	}
+	if st.createMRCount != 0 {
+		t.Errorf("createMRCount = %d, want 0 (no MR for an empty release)", st.createMRCount)
+	}
+	// The remaining steps never ran.
+	for _, name := range []string{"create_mr", "wait_pipeline", "merge", "tag"} {
+		if s := stepByName(t, done, name).Status; s != routine.StepPending {
+			t.Errorf("step %q = %q, want pending (skipped)", name, s)
+		}
 	}
 }
 

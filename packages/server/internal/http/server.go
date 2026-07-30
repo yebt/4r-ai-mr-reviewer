@@ -107,6 +107,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /repos/{id}/reviews", s.listReviews)
 	mux.HandleFunc("POST /repos/{id}/routines/approve-and-tag", s.createApproveAndTagRoutine)
 	mux.HandleFunc("POST /repos/{id}/routines/release", s.createReleaseRoutine)
+	mux.HandleFunc("POST /repos/{id}/routines/release-main", s.createMainReleaseRoutine)
 	mux.HandleFunc("GET /repos/{id}/routines", s.listRoutines)
 	mux.HandleFunc("GET /routines/{id}", s.getRoutine)
 	mux.HandleFunc("POST /routines/{id}/resume", s.resumeRoutine)

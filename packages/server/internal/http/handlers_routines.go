@@ -85,6 +85,55 @@ func (s *Server) createReleaseRoutine(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, toRun(run))
 }
 
+// createMainReleaseRoutine creates a MAIN-flow release run for a repo: it creates
+// the development→main MR itself, waits for its pipeline to go green, then pauses
+// on the shared confirmation gate before merging. No MR need exist yet.
+func (s *Server) createMainReleaseRoutine(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Bump         string   `json:"bump"`
+		SourceBranch string   `json:"sourceBranch"`
+		TargetBranch string   `json:"targetBranch"`
+		Emojis       []string `json:"emojis"`
+		// Optional merge options. When omitted (nil), the defaults apply:
+		// RemoveSourceBranch=false, MergeWhenPipelineSucceeds=false (the main flow
+		// already gates on a green pipeline in wait_pipeline, so an immediate
+		// all-or-nothing merge of the pinned head is safer than scheduling an async
+		// MWPS merge).
+		RemoveSourceBranch        *bool `json:"removeSourceBranch"`
+		MergeWhenPipelineSucceeds *bool `json:"mergeWhenPipelineSucceeds"`
+	}
+	if err := decode(r, &in); err != nil {
+		writeErr(w, err, http.StatusBadRequest)
+		return
+	}
+	removeSourceBranch := false
+	if in.RemoveSourceBranch != nil {
+		removeSourceBranch = *in.RemoveSourceBranch
+	}
+	mergeWhenPipelineSucceeds := false
+	if in.MergeWhenPipelineSucceeds != nil {
+		mergeWhenPipelineSucceeds = *in.MergeWhenPipelineSucceeds
+	}
+	run, err := s.routines.CreateMainRelease(r.Context(), routines.MainReleaseInput{
+		RepoID:                    r.PathValue("id"),
+		Bump:                      in.Bump,
+		SourceBranch:              in.SourceBranch,
+		TargetBranch:              in.TargetBranch,
+		Emojis:                    in.Emojis,
+		RemoveSourceBranch:        removeSourceBranch,
+		MergeWhenPipelineSucceeds: mergeWhenPipelineSucceeds,
+	})
+	if err != nil {
+		if errors.Is(err, routine.ErrDuplicateRun) {
+			writeErr(w, err, http.StatusConflict)
+			return
+		}
+		writeErr(w, err, http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, http.StatusCreated, toRun(run))
+}
+
 // confirmRoutine resolves a release run's confirmation gate. An invalid decision
 // → 400; a non-awaiting run → 409; an unknown run → 404 (and any unexpected error
 // → 500) via writeErr, mirroring resumeRoutine's routing.

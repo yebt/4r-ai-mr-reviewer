@@ -77,6 +77,28 @@ func HighestSemver(existing []string) string {
 	return bestRaw
 }
 
+// HighestReleaseSemver returns the highest RELEASE semver tag among existing,
+// IGNORING any prerelease tag (one carrying a "-suffix" such as "1.7.2-dev"), so a
+// main release never bases its next version on a dev/prerelease tag. It preserves
+// the original string form (a "v" prefix survives), or returns "" when no pure
+// MAJOR.MINOR.PATCH release tag parses. It is the main-flow counterpart to
+// HighestSemver (which does include prereleases).
+func HighestReleaseSemver(existing []string) string {
+	var best parsedTag
+	bestRaw := ""
+	found := false
+	for _, tag := range existing {
+		pt, ok := parseTag(tag)
+		if !ok || pt.hasPre {
+			continue
+		}
+		if !found || pt.higher(best) {
+			best, bestRaw, found = pt, tag, true
+		}
+	}
+	return bestRaw
+}
+
 // NextRelease computes the next version from the last tag and the ordered list of
 // commit subjects (OLDEST first), applying the configured bump mode. It also
 // returns the TOTAL feat/fix counts across all commits (for display).
