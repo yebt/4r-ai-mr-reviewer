@@ -7,6 +7,7 @@ import { setBreadcrumbs } from '@shared/composables/useBreadcrumbs'
 import { confirm } from '@shared/composables/useConfirm'
 import { toast } from '@shared/composables/useToast'
 import PageHeader from '@shared/components/ui/PageHeader.vue'
+import Tabs, { type TabItem } from '@shared/components/ui/Tabs.vue'
 import PreflightReport from '@modules/repos/components/PreflightReport.vue'
 import { useReposStore } from '@modules/repos/store'
 import { useReviewsStore } from '@modules/reviews/store'
@@ -24,9 +25,12 @@ const repos = useReposStore()
 const reviews = useReviewsStore()
 const providers = useProvidersStore()
 
-// The routines section owns the approve-and-tag modal; the MR list opens it via
-// this ref so the trigger lives on each merge-request row.
-const routinesRef = ref<InstanceType<typeof RoutinesSection> | null>(null)
+// Local-only tab selection (no need to persist across visits).
+const tabs: TabItem[] = [
+  { id: 'reviews', label: 'Reviews', icon: 'i-lucide-scan-search' },
+  { id: 'routines', label: 'Routines', icon: 'i-lucide-workflow' },
+]
+const activeTab = ref('reviews')
 
 const creatingIid = ref<number | null>(null)
 // Ids with an archive/unarchive request in flight. Tracked as a set (not a
@@ -149,95 +153,116 @@ async function unarchiveReview(id: string) {
   <div>
     <PageHeader :title="repo?.name ?? 'Repository'" />
 
-    <section class="mb-10">
-      <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <h2 class="section-title flex items-center gap-2">
+    <Tabs v-model="activeTab" :tabs="tabs" class="mb-8" />
+
+    <!-- Reviews tab: launch reviews on open MRs and browse this repo's reviews. -->
+    <div
+      v-show="activeTab === 'reviews'"
+      id="panel-reviews"
+      role="tabpanel"
+      aria-labelledby="tab-reviews"
+      tabindex="0"
+      class="outline-none"
+    >
+      <section class="mb-10">
+        <h2 class="section-title mb-3 flex items-center gap-2">
           <span class="bg-accent inline-block h-3.5 w-0.5" aria-hidden="true" />
-          API scope
+          Open merge requests
         </h2>
-        <button
-          type="button"
-          class="btn-line text-xs"
-          :disabled="preflightLoading"
-          @click="testApiScope"
-        >
-          <span
-            :class="preflightLoading ? 'i-lucide-loader-circle animate-spin' : 'i-lucide-shield-check'"
-            class="text-sm"
-            aria-hidden="true"
-          />
-          {{ preflightLoading ? 'Testing…' : 'Test API scope' }}
-        </button>
-      </div>
-
-      <p class="text-muted mb-3 text-xs">
-        Check which automated actions your token and project access permit before running a
-        routine.
-      </p>
-
-      <p v-if="preflightError" class="text-danger py-1 text-sm" role="alert">
-        {{ preflightError }}
-      </p>
-      <PreflightReport v-else-if="preflight" :report="preflight" />
-    </section>
-
-    <section class="mb-10">
-      <h2 class="section-title mb-3 flex items-center gap-2">
-        <span class="bg-accent inline-block h-3.5 w-0.5" aria-hidden="true" />
-        Open merge requests
-      </h2>
-      <MergeRequestList
-        :items="mrs"
-        :loading="mrsLoading"
-        :error="reviews.mrsError"
-        :busy-iid="creatingIid"
-        :providers="providers.items"
-        :default-provider-id="defaultProviderId"
-        @review="startReview"
-        @approve-and-tag="(iid) => routinesRef?.open(iid)"
-      />
-    </section>
-
-    <section class="mb-10">
-      <RoutinesSection ref="routinesRef" :repo-id="repoId" :merge-requests="mrs" />
-    </section>
-
-    <section>
-      <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <h2 class="section-title flex items-center gap-2">
-          <span class="bg-accent inline-block h-3.5 w-0.5" aria-hidden="true" />
-          Reviews
-        </h2>
-        <button class="btn-ghost text-xs" @click="toggleArchived">
-          <span
-            :class="showArchived ? 'i-lucide-eye-off' : 'i-lucide-archive'"
-            class="text-sm"
-            aria-hidden="true"
-          />
-          {{ showArchived ? 'Hide archived' : 'Show archived' }}
-        </button>
-      </div>
-      <ReviewList
-        :items="repoReviews"
-        :loading="reviewsLoading"
-        :error="reviews.listError"
-        :busy-ids="archivingIds"
-        @archive="archiveReview"
-      />
-
-      <template v-if="showArchived">
-        <h3 class="section-title text-muted mt-6 mb-3 flex items-center gap-2">
-          <span class="bg-line inline-block h-3.5 w-0.5" aria-hidden="true" />
-          Archived
-        </h3>
-        <ReviewList
-          :items="archivedReviews"
-          :loading="archivedLoading"
-          :error="reviews.archivedError"
-          :busy-ids="archivingIds"
-          @unarchive="unarchiveReview"
+        <MergeRequestList
+          :items="mrs"
+          :loading="mrsLoading"
+          :error="reviews.mrsError"
+          :busy-iid="creatingIid"
+          :providers="providers.items"
+          :default-provider-id="defaultProviderId"
+          @review="startReview"
         />
-      </template>
-    </section>
+      </section>
+
+      <section>
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <h2 class="section-title flex items-center gap-2">
+            <span class="bg-accent inline-block h-3.5 w-0.5" aria-hidden="true" />
+            Reviews
+          </h2>
+          <button class="btn-ghost text-xs" @click="toggleArchived">
+            <span
+              :class="showArchived ? 'i-lucide-eye-off' : 'i-lucide-archive'"
+              class="text-sm"
+              aria-hidden="true"
+            />
+            {{ showArchived ? 'Hide archived' : 'Show archived' }}
+          </button>
+        </div>
+        <ReviewList
+          :items="repoReviews"
+          :loading="reviewsLoading"
+          :error="reviews.listError"
+          :busy-ids="archivingIds"
+          @archive="archiveReview"
+        />
+
+        <template v-if="showArchived">
+          <h3 class="section-title text-muted mt-6 mb-3 flex items-center gap-2">
+            <span class="bg-line inline-block h-3.5 w-0.5" aria-hidden="true" />
+            Archived
+          </h3>
+          <ReviewList
+            :items="archivedReviews"
+            :loading="archivedLoading"
+            :error="reviews.archivedError"
+            :busy-ids="archivingIds"
+            @unarchive="unarchiveReview"
+          />
+        </template>
+      </section>
+    </div>
+
+    <!-- Routines tab: preflight the API scope, then start/watch release routines. -->
+    <div
+      v-show="activeTab === 'routines'"
+      id="panel-routines"
+      role="tabpanel"
+      aria-labelledby="tab-routines"
+      tabindex="0"
+      class="outline-none"
+    >
+      <section class="mb-10">
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <h2 class="section-title flex items-center gap-2">
+            <span class="bg-accent inline-block h-3.5 w-0.5" aria-hidden="true" />
+            API scope
+          </h2>
+          <button
+            type="button"
+            class="btn-line text-xs"
+            :disabled="preflightLoading"
+            @click="testApiScope"
+          >
+            <span
+              :class="preflightLoading ? 'i-lucide-loader-circle animate-spin' : 'i-lucide-shield-check'"
+              class="text-sm"
+              aria-hidden="true"
+            />
+            {{ preflightLoading ? 'Testing…' : 'Test API scope' }}
+          </button>
+        </div>
+
+        <p class="text-muted mb-3 text-xs">
+          Check which automated actions your token and project access permit before running a
+          routine.
+        </p>
+
+        <p v-if="preflightError" class="text-danger py-1 text-sm" role="alert">
+          {{ preflightError }}
+        </p>
+        <PreflightReport v-else-if="preflight" :report="preflight" />
+      </section>
+
+      <section>
+        <RoutinesSection :repo-id="repoId" :merge-requests="mrs" />
+      </section>
+    </div>
   </div>
 </template>

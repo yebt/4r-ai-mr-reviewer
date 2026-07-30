@@ -2,17 +2,19 @@
 // which Vite proxies to the server in dev (see vite.config.ts).
 import type {
   Account,
-  ApproveAndTagInput,
+  ConfirmDecision,
   CreateReviewInput,
   FindingHumanized,
   HumanizationsResponse,
   HumanizeFindingText,
+  MainReleaseInput,
   MergeRequest,
   NotificationRule,
   Preflight,
   Profile,
   Provider,
   ProviderKind,
+  ReleaseInput,
   Repo,
   ResolvedChat,
   Review,
@@ -230,12 +232,21 @@ export const api = {
     request<HumanizationsResponse>('GET', `/reviews/${id}/humanizations`),
 
   // routines (automated GitLab actions)
-  createApproveAndTag: (repoId: string, input: ApproveAndTagInput) =>
-    request<RoutineRun>('POST', `/repos/${repoId}/routines/approve-and-tag`, input),
+  // Dev-flow release: requires the MR target to be `development` (the backend
+  // rejects other targets). Non-2xx (400 bad target, 409 duplicate) throws.
+  createRelease: (repoId: string, input: ReleaseInput) =>
+    request<RoutineRun>('POST', `/repos/${repoId}/routines/release`, input),
+  // Main-flow release: defaults source=development, target=main when omitted.
+  createMainRelease: (repoId: string, input: MainReleaseInput) =>
+    request<RoutineRun>('POST', `/repos/${repoId}/routines/release-main`, input),
   getRoutineRun: (id: string) => request<RoutineRun>('GET', `/routines/${id}`),
   listRepoRoutines: (repoId: string) =>
     request<RoutineRun[]>('GET', `/repos/${repoId}/routines`),
   resumeRoutine: (id: string) => request<RoutineRun>('POST', `/routines/${id}/resume`),
+  // Answer a release run's confirmation gate. 409 when the run is not
+  // awaiting_confirmation.
+  confirmRoutine: (id: string, decision: ConfirmDecision) =>
+    request<RoutineRun>('POST', `/routines/${id}/confirm`, { decision }),
 
   // skills
   getSkills: () =>

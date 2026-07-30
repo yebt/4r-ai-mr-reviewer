@@ -136,11 +136,37 @@ export interface MergeRequest {
 export type RoutineStepStatus = 'pending' | 'running' | 'done' | 'failed' | 'skipped'
 
 // Overall status of a routine run. A `blocked` run stopped on a recoverable
-// condition and can be resumed; `done` is terminal.
-export type RoutineRunStatus = 'pending' | 'running' | 'blocked' | 'done'
+// condition and can be resumed. `awaiting_confirmation` means the run paused on
+// an interactive gate and is waiting on the user (see confirmRoutine); it is not
+// actively progressing, so the poller idles until the user answers. `done` is
+// terminal.
+export type RoutineRunStatus =
+  | 'pending'
+  | 'running'
+  | 'blocked'
+  | 'awaiting_confirmation'
+  | 'done'
 
-// The approve_and_tag routine executes these steps, in this fixed order.
-export type RoutineStepName = 'react' | 'comment' | 'tag'
+// The kinds of routine the backend can run. `release` (dev + main flows)
+// supersedes the legacy `approve_and_tag`, which older runs may still report.
+export type RoutineKind = 'release' | 'approve_and_tag'
+
+// Every step name a routine run can report. The release routine drives the first
+// group (dev flow: verify, react, approve, compute_tag, confirm, merge, tag,
+// notify; main flow: compute_tag, create_mr, wait_pipeline, approve, react,
+// confirm, merge, tag, notify). `comment` is the legacy approve_and_tag step.
+export type RoutineStepName =
+  | 'verify'
+  | 'react'
+  | 'approve'
+  | 'compute_tag'
+  | 'create_mr'
+  | 'wait_pipeline'
+  | 'confirm'
+  | 'merge'
+  | 'tag'
+  | 'notify'
+  | 'comment'
 
 export interface RoutineStep {
   name: RoutineStepName
@@ -149,29 +175,61 @@ export interface RoutineStep {
   updatedAt: string
 }
 
-// A routine run. `state` is a decoded object (may be `{}`); `nextTag` is the
-// most useful field for approve_and_tag and is surfaced in the UI.
+// Decoded `state` of a routine run. All fields are optional because the backend
+// populates them as the run progresses (e.g. nextTag/featCount appear once the
+// tag has been computed).
+export interface RoutineRunState {
+  lastTag?: string
+  nextTag?: string
+  featCount?: number
+  fixCount?: number
+  decision?: ConfirmDecision
+  mrIid?: number
+  headSha?: string
+  mergeSha?: string
+  [key: string]: unknown
+}
+
+// A routine run. `state` is a decoded object (may be `{}`); its release fields
+// (nextTag, featCount, …) drive the run-detail summary.
 export interface RoutineRun {
   id: string
-  kind: 'approve_and_tag'
+  kind: RoutineKind
   repoId: string
   mrIid: number
   status: RoutineRunStatus
   steps: RoutineStep[]
-  state: { nextTag?: string; [key: string]: unknown }
+  state: RoutineRunState
   lastError: string
   createdAt: string
   updatedAt: string
 }
 
-// Create body for an approve_and_tag run. Only mrIid is required; the backend
-// fills defaults (emojis: thumbsup/seedling, comment: "LGFM", bump: patch) when
-// the optional fields are omitted.
-export interface ApproveAndTagInput {
+export type Bump = 'major' | 'minor' | 'patch'
+
+// The user's answer to a release run's confirmation gate: merge the MR now, or
+// leave it for the user to merge manually.
+export type ConfirmDecision = 'merge' | 'wait'
+
+// Create body for a dev-flow release run (MR target must be `development`). Only
+// mrIid is required; the backend fills defaults for the rest.
+export interface ReleaseInput {
   mrIid: number
+  bump?: Bump
   emojis?: string[]
-  comment?: string
-  bump?: 'major' | 'minor' | 'patch'
+  removeSourceBranch?: boolean
+  mergeWhenPipelineSucceeds?: boolean
+}
+
+// Create body for a main-flow release run. All fields are optional; the backend
+// defaults source=development, target=main.
+export interface MainReleaseInput {
+  bump?: Bump
+  sourceBranch?: string
+  targetBranch?: string
+  emojis?: string[]
+  removeSourceBranch?: boolean
+  mergeWhenPipelineSucceeds?: boolean
 }
 
 export type Dimension = 'risk' | 'readability' | 'reliability' | 'resilience'

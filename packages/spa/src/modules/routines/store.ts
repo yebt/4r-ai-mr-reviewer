@@ -1,7 +1,12 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api, errorMessage } from '@shared/api/client'
-import type { ApproveAndTagInput, RoutineRun } from '@shared/api/types'
+import type {
+  ConfirmDecision,
+  MainReleaseInput,
+  ReleaseInput,
+  RoutineRun,
+} from '@shared/api/types'
 
 export const useRoutinesStore = defineStore('routines', () => {
   // Runs cached per repo (newest first, as the backend returns them) so
@@ -51,16 +56,36 @@ export const useRoutinesStore = defineStore('routines', () => {
     }
   }
 
-  // create starts an approve_and_tag run. Optional fields are only sent when
-  // meaningful so the backend applies its own defaults for the rest. Rethrows so
-  // callers can surface a 409 (duplicate active run) / 400 via a toast.
-  async function create(repoId: string, input: ApproveAndTagInput) {
-    const body: ApproveAndTagInput = { mrIid: input.mrIid }
+  // createRelease starts a dev-flow release run for a merge request whose target
+  // is `development`. Optional fields are only sent when meaningful so the
+  // backend applies its own defaults. Rethrows so callers can surface a 400 (bad
+  // target) / 409 (duplicate active run) via a toast.
+  async function createRelease(repoId: string, input: ReleaseInput) {
+    const body: ReleaseInput = { mrIid: input.mrIid }
     if (input.bump) body.bump = input.bump
-    const comment = input.comment?.trim()
-    if (comment) body.comment = comment
     if (input.emojis && input.emojis.length > 0) body.emojis = input.emojis
-    const created = await api.createApproveAndTag(repoId, body)
+    if (input.removeSourceBranch != null) body.removeSourceBranch = input.removeSourceBranch
+    if (input.mergeWhenPipelineSucceeds != null)
+      body.mergeWhenPipelineSucceeds = input.mergeWhenPipelineSucceeds
+    const created = await api.createRelease(repoId, body)
+    cacheRun(created)
+    return created
+  }
+
+  // createMainRelease starts a main-flow release run. Branch names are only sent
+  // when non-empty so the backend applies its defaults (development → main).
+  async function createMainRelease(repoId: string, input: MainReleaseInput) {
+    const body: MainReleaseInput = {}
+    if (input.bump) body.bump = input.bump
+    const source = input.sourceBranch?.trim()
+    if (source) body.sourceBranch = source
+    const target = input.targetBranch?.trim()
+    if (target) body.targetBranch = target
+    if (input.emojis && input.emojis.length > 0) body.emojis = input.emojis
+    if (input.removeSourceBranch != null) body.removeSourceBranch = input.removeSourceBranch
+    if (input.mergeWhenPipelineSucceeds != null)
+      body.mergeWhenPipelineSucceeds = input.mergeWhenPipelineSucceeds
+    const created = await api.createMainRelease(repoId, body)
     cacheRun(created)
     return created
   }
@@ -80,6 +105,15 @@ export const useRoutinesStore = defineStore('routines', () => {
     return run
   }
 
+  // confirm answers a release run's confirmation gate. The run flips back to
+  // running (decision 'merge') or continues to its resting state, so the caller
+  // restarts polling. Rethrows (409 when the run is not awaiting_confirmation).
+  async function confirm(id: string, decision: ConfirmDecision) {
+    const run = await api.confirmRoutine(id, decision)
+    cacheRun(run)
+    return run
+  }
+
   return {
     runsByRepo,
     runsById,
@@ -88,8 +122,10 @@ export const useRoutinesStore = defineStore('routines', () => {
     runsFor,
     runById,
     list,
-    create,
+    createRelease,
+    createMainRelease,
     refresh,
     resume,
+    confirm,
   }
 })

@@ -7,7 +7,9 @@ import type {
 
 // A run is "active" while it is still progressing on the server, so the UI must
 // keep polling it. Pure and side-effect free so it can drive both the polling
-// loop and its tests. `blocked` and `done` are the resting states.
+// loop and its tests. `blocked`, `awaiting_confirmation`, and `done` are resting
+// states: awaiting_confirmation is idle *waiting on the user*, so the poller
+// pauses for it and only resumes once the user answers the confirmation gate.
 export function isRunActive(status: RoutineRunStatus): boolean {
   return status === 'pending' || status === 'running'
 }
@@ -26,6 +28,12 @@ export const runStatusUi: Record<RoutineRunStatus, RunStatusUi> = {
   pending: { icon: 'i-lucide-circle-dashed', class: 'text-muted', label: 'Pending', spin: false },
   running: { icon: 'i-lucide-loader-circle', class: 'text-accent', label: 'Running', spin: true },
   blocked: { icon: 'i-lucide-triangle-alert', class: 'text-warn', label: 'Blocked', spin: false },
+  awaiting_confirmation: {
+    icon: 'i-lucide-circle-pause',
+    class: 'text-warn',
+    label: 'Awaiting confirmation',
+    spin: false,
+  },
   done: { icon: 'i-lucide-check', class: 'text-ok', label: 'Done', spin: false },
 }
 
@@ -46,13 +54,24 @@ export const stepStatusUi: Record<RoutineStepStatus, StepStatusUi> = {
 }
 
 export const routineKindLabel: Record<RoutineRun['kind'], string> = {
+  release: 'Release',
   approve_and_tag: 'Approve & tag',
 }
 
+// Human labels for every step either release flow (dev/main) can emit, plus the
+// legacy approve_and_tag `comment` step so historical runs still render.
 export const stepLabel: Record<RoutineStepName, string> = {
+  verify: 'Verify',
   react: 'React',
-  comment: 'Comment',
+  approve: 'Approve',
+  compute_tag: 'Compute tag',
+  create_mr: 'Create merge request',
+  wait_pipeline: 'Wait for pipeline',
+  confirm: 'Confirm',
+  merge: 'Merge',
   tag: 'Tag',
+  notify: 'Notify',
+  comment: 'Comment',
 }
 
 // Compact date/time formatter for run rows. Self-contained so the routines
