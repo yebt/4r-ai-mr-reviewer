@@ -65,11 +65,11 @@ func TestNextRelease(t *testing.T) {
 			wantCounts: CommitCounts{Feat: 0, Fix: 4},
 		},
 		{
-			name:       "empty lastTag minor no prefix",
+			name:       "empty lastTag minor defaults to v prefix",
 			lastTag:    "",
 			subjects:   []string{"feat: a", "fix: b", "fix: c"},
 			mode:       BumpMinor,
-			wantNext:   "0.1.2",
+			wantNext:   "v0.1.2",
 			wantCounts: CommitCounts{Feat: 1, Fix: 2},
 		},
 		{
@@ -116,11 +116,11 @@ func TestNextRelease(t *testing.T) {
 			wantCounts: CommitCounts{Feat: 1, Fix: 0},
 		},
 		{
-			name:       "non-semver lastTag treated as zero base",
+			name:       "non-semver lastTag treated as zero base with v default",
 			lastTag:    "not-a-version",
 			subjects:   []string{"feat: a", "fix: b"},
 			mode:       BumpMinor,
-			wantNext:   "0.1.1",
+			wantNext:   "v0.1.1",
 			wantCounts: CommitCounts{Feat: 1, Fix: 1},
 		},
 		{
@@ -230,8 +230,8 @@ func TestHighestSemverEmptyFeedsZeroBase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NextRelease: %v", err)
 	}
-	if next != "0.1.0" {
-		t.Errorf("next = %q, want 0.1.0 (empty base treated as 0.0.0)", next)
+	if next != "v0.1.0" {
+		t.Errorf("next = %q, want v0.1.0 (empty base treated as 0.0.0 with v default)", next)
 	}
 }
 

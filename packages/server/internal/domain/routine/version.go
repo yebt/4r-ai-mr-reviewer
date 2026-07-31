@@ -126,7 +126,10 @@ func NextRelease(lastTag string, commitSubjects []string, mode BumpMode) (next s
 	}
 
 	base, ok := parseTag(lastTag)
-	hasV := ok && base.hasV // no "v" prefix for an empty/non-semver base
+	// Default to a "v" prefix (e.g. v1.2.3). When there IS a parseable base tag we
+	// follow its convention instead — an existing non-"v" tag keeps producing
+	// non-"v" tags; only an empty/non-semver base falls back to the "v" default.
+	hasV := !ok || base.hasV
 
 	// Total counts and the index of the last feat, in a single pass.
 	lastFeatIdx := -1

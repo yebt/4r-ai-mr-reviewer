@@ -10,10 +10,10 @@ func TestNextTag(t *testing.T) {
 		prerelease string
 		want       string
 	}{
-		{name: "no tags, patch", existing: nil, bump: "patch", want: "0.0.1"},
-		{name: "no tags, minor", existing: nil, bump: "minor", want: "0.1.0"},
-		{name: "no tags, major", existing: nil, bump: "major", want: "1.0.0"},
-		{name: "no v-prefix by default", existing: []string{}, bump: "patch", want: "0.0.1"},
+		{name: "no tags, patch", existing: nil, bump: "patch", want: "v0.0.1"},
+		{name: "no tags, minor", existing: nil, bump: "minor", want: "v0.1.0"},
+		{name: "no tags, major", existing: nil, bump: "major", want: "v1.0.0"},
+		{name: "v-prefix by default", existing: []string{}, bump: "patch", want: "v0.0.1"},
 
 		{name: "patch bump", existing: []string{"1.2.3"}, bump: "patch", want: "1.2.4"},
 		{name: "minor bump resets patch", existing: []string{"1.2.3"}, bump: "minor", want: "1.3.0"},
@@ -57,12 +57,13 @@ func TestNextTag(t *testing.T) {
 		},
 		{
 			// An out-of-int-range numeric component makes the tag unrepresentable;
-			// it must be ignored (not misparsed as 0). If it were misparsed the "v"
-			// prefix would be preserved and the result would be "v0.0.1".
-			name:     "overflow numeric component is ignored, not misparsed as 0",
-			existing: []string{"v999999999999999999999999999999.0.0"},
+			// it must be ignored (not misparsed). Paired with a valid tag, the valid
+			// one must drive the bump — if the overflow tag were misparsed as a huge
+			// major it would dominate, and if misparsed as 0 it would be lower.
+			name:     "overflow numeric component is ignored, not misparsed",
+			existing: []string{"v1.2.3", "v999999999999999999999999999999.0.0"},
 			bump:     "patch",
-			want:     "0.0.1",
+			want:     "v1.2.4",
 		},
 		{
 			name:     "overflow tag ignored while a real tag still wins",

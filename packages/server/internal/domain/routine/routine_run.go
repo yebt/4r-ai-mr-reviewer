@@ -242,7 +242,9 @@ func NextTag(existing []string, bump, prerelease string) (string, error) {
 	}
 
 	var b strings.Builder
-	if best.hasV {
+	// Default to a "v" prefix; when a base tag was found, follow its convention
+	// (an existing non-"v" tag keeps producing non-"v" tags).
+	if !found || best.hasV {
 		b.WriteByte('v')
 	}
 	fmt.Fprintf(&b, "%d.%d.%d", major, minor, patch)
