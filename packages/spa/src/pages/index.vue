@@ -50,6 +50,7 @@ const scoreTrend = computed(() =>
 const shortcuts = [
   { to: '/repos', label: 'Repositories', icon: 'i-lucide-folder-git-2' },
   { to: '/reviews', label: 'Reviews', icon: 'i-lucide-list-checks' },
+  { to: '/actions', label: 'Actions', icon: 'i-lucide-git-merge' },
   { to: '/accounts', label: 'GitLab accounts', icon: 'i-lucide-users' },
   { to: '/providers', label: 'AI providers', icon: 'i-lucide-cpu' },
   { to: '/profiles', label: 'Profiles', icon: 'i-lucide-feather' },
