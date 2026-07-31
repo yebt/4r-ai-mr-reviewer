@@ -81,15 +81,24 @@ func TestNextRelease(t *testing.T) {
 			wantCounts: CommitCounts{Feat: 1, Fix: 1},
 		},
 		{
-			name:    "patch ignores feats counts all fixes",
+			name:    "patch counts every releasable commit (feat and fix)",
 			lastTag: "v1.4.2",
 			subjects: []string{
 				"feat: a", "feat: b", "feat: c",
 				"fix: d", "fix: e", "fix: f", "fix: g", "fix: h",
 			},
 			mode:       BumpPatch,
-			wantNext:   "v1.4.7",
+			wantNext:   "v1.4.10",
 			wantCounts: CommitCounts{Feat: 3, Fix: 5},
+		},
+		{
+			// Regression: patch mode with only a feat (no fix) must still increment.
+			name:       "patch with a feat and no fix still increments",
+			lastTag:    "2.4.5",
+			subjects:   []string{"feat: a"},
+			mode:       BumpPatch,
+			wantNext:   "2.4.6",
+			wantCounts: CommitCounts{Feat: 1, Fix: 0},
 		},
 		{
 			name:       "no v prefix preserved",

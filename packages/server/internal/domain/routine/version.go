@@ -149,7 +149,10 @@ func NextRelease(lastTag string, commitSubjects []string, mode BumpMode) (next s
 	case BumpMajor:
 		major, minor, patch = major+1, 0, 0
 	case BumpPatch:
-		patch += counts.Fix
+		// Patch mode bumps the patch once per releasable commit (feat OR fix), so a
+		// release with only feats still increments. Counting every commit mirrors
+		// the per-commit counting the minor mode uses for feats.
+		patch += counts.Feat + counts.Fix
 	case BumpMinor:
 		if counts.Feat > 0 {
 			// Patch resets to the number of fixes that land after the last feat.
