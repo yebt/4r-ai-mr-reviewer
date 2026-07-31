@@ -112,6 +112,16 @@ func (s *RoutineRunStore) ListRecent(ctx context.Context, limit int) ([]routine.
 
 // Save persists the run's status, steps, state, last_error and updated_at. Params
 // are immutable and never rewritten.
+//
+// It is a compare-and-set on status: the UPDATE is guarded by
+// "status NOT IN ('cancelled','done')", so the DB row is the synchronization
+// point between the worker's per-step Saves and an out-of-band Cancel. Once a row
+// is terminal, no further Save can revive it — a worker writing running/done from
+// its in-memory copy matches zero rows and gets ErrRunFinalized. The legitimate
+// running->done transition still succeeds because the row is running (not
+// terminal) when execute writes done: only an ALREADY-terminal row blocks the
+// write. On a zero-row update a follow-up SELECT disambiguates a missing row
+// (ErrRunNotFound) from an already-finalized one (ErrRunFinalized).
 func (s *RoutineRunStore) Save(ctx context.Context, run routine.Run) error {
 	steps, err := json.Marshal(run.Steps)
 	if err != nil {
@@ -120,14 +130,24 @@ func (s *RoutineRunStore) Save(ctx context.Context, run routine.Run) error {
 	res, err := s.db.ExecContext(ctx, `
 		UPDATE routine_run SET
 			status = ?, state_json = ?, steps_json = ?, last_error = ?, updated_at = ?
-		WHERE id = ?`,
+		WHERE id = ? AND status NOT IN ('cancelled','done')`,
 		string(run.Status), rawJSONOr(run.State, "{}"), string(steps), run.LastError,
 		formatTime(time.Now().UTC()), run.ID)
 	if err != nil {
 		return fmt.Errorf("routine run store: save: %w", err)
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		return routine.ErrRunNotFound
+		// Zero rows means the row is either gone or already terminal. Disambiguate
+		// so callers can tell a missing run from a finalized one.
+		var status string
+		serr := s.db.QueryRowContext(ctx, `SELECT status FROM routine_run WHERE id = ?`, run.ID).Scan(&status)
+		if errors.Is(serr, sql.ErrNoRows) {
+			return routine.ErrRunNotFound
+		}
+		if serr != nil {
+			return fmt.Errorf("routine run store: save: disambiguate: %w", serr)
+		}
+		return routine.ErrRunFinalized
 	}
 	return nil
 }

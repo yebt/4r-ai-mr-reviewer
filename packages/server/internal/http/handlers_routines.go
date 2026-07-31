@@ -153,6 +153,9 @@ func (s *Server) confirmRoutine(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, err, http.StatusBadRequest)
 		case errors.Is(err, routine.ErrNotAwaitingConfirmation):
 			writeErr(w, err, http.StatusConflict)
+		case errors.Is(err, routine.ErrRunFinalized):
+			// The run was cancelled/finalized concurrently with this confirm.
+			writeErr(w, err, http.StatusConflict)
 		default:
 			writeErr(w, err, http.StatusInternalServerError)
 		}
@@ -238,11 +241,30 @@ func (s *Server) deleteRoutine(w http.ResponseWriter, r *http.Request) {
 func (s *Server) resumeRoutine(w http.ResponseWriter, r *http.Request) {
 	run, err := s.routines.Resume(r.Context(), r.PathValue("id"))
 	if err != nil {
-		if errors.Is(err, routine.ErrNotResumable) {
+		if errors.Is(err, routine.ErrNotResumable) || errors.Is(err, routine.ErrRunFinalized) {
+			// ErrRunFinalized: the run was cancelled/finalized concurrently.
 			writeErr(w, err, http.StatusConflict)
 			return
 		}
 		writeErr(w, err, http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, toRun(run))
+}
+
+// cancelRoutine aborts a routine run and returns the updated run. A terminal run
+// (done or cancelled) → 409; an unknown run → 404; any other error → 500.
+func (s *Server) cancelRoutine(w http.ResponseWriter, r *http.Request) {
+	run, err := s.routines.Cancel(r.Context(), r.PathValue("id"))
+	if err != nil {
+		switch {
+		case errors.Is(err, routine.ErrRunNotCancelable):
+			writeErr(w, err, http.StatusConflict)
+		case errors.Is(err, routine.ErrRunNotFound):
+			writeErr(w, err, http.StatusNotFound)
+		default:
+			writeErr(w, err, http.StatusInternalServerError)
+		}
 		return
 	}
 	writeJSON(w, http.StatusOK, toRun(run))

@@ -102,6 +102,32 @@ async function onConfirm(id: string, decision: ConfirmDecision) {
   }
 }
 
+// --- Cancel this action ---
+// Offered while the run is still cancelable (RoutineRunDetail hides the button
+// once terminal). A destructive confirm gates the abort; on success the run
+// flips to `cancelled` and Delete takes over. A 409 (already terminal) is
+// toasted as a backstop.
+const cancelling = ref(false)
+async function onCancel(id: string) {
+  const r = run.value
+  const ok = await confirm({
+    title: 'Cancel action',
+    message: `Cancel "${r ? runTitle(r) : 'this action'}"? This aborts the routine run; it cannot be resumed.`,
+    danger: true,
+  })
+  if (!ok) return
+  cancelling.value = true
+  try {
+    await store.cancel(id)
+    pause()
+    toast.success('Action cancelled')
+  } catch (e) {
+    toast.error(errorMessage(e))
+  } finally {
+    cancelling.value = false
+  }
+}
+
 // --- Delete this action ---
 // Offered only for a non-running run (RoutineRunDetail hides the button while
 // running); a running run's 409 is a backstop toasted below. On success the run
@@ -186,9 +212,11 @@ onUnmounted(pause)
         :resuming="resuming"
         :confirming="confirmingDecision"
         :deleting="deleting"
+        :cancelling="cancelling"
         @resume="onResume"
         @confirm="onConfirm"
         @delete="onDelete"
+        @cancel="onCancel"
       />
     </template>
   </div>

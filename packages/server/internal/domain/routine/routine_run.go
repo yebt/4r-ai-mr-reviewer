@@ -39,6 +39,10 @@ const (
 	RunAwaitingConfirmation RunStatus = "awaiting_confirmation"
 	// RunDone completed every step.
 	RunDone RunStatus = "done"
+	// RunCancelled was aborted by an out-of-band Cancel. It is terminal (like
+	// RunDone): the worker never claims it and it can no longer transition, but
+	// unlike a running run it is deletable.
+	RunCancelled RunStatus = "cancelled"
 )
 
 // StepStatus is the state of a single step within a run's ledger.
@@ -83,8 +87,21 @@ type Run struct {
 // ErrRunNotFound is returned when a routine run does not exist.
 var ErrRunNotFound = errors.New("routine: run not found")
 
+// ErrRunFinalized is returned by Save when the run's PERSISTED status is already
+// terminal (cancelled or done), so the conditional (compare-and-set) update
+// matched no rows. It is the synchronization signal that a concurrent Cancel — or
+// a run that already completed — has finalized the row: the caller must STOP and
+// must not revive it. The DB row, not the in-memory copy, is the source of truth
+// for whether a run may still transition.
+var ErrRunFinalized = errors.New("routine: run is finalized")
+
 // ErrNotResumable is returned when a run cannot be resumed (it is not blocked).
 var ErrNotResumable = errors.New("routine: run is not resumable")
+
+// ErrRunNotCancelable is returned when a run cannot be cancelled because it has
+// already reached a terminal status (done or cancelled). The HTTP layer maps it
+// to 409 Conflict.
+var ErrRunNotCancelable = errors.New("routine: run is not cancelable")
 
 // ErrRunActive is returned when a run cannot be deleted because it is actively
 // executing (running); deleting it mid-flight would orphan in-progress work.
@@ -117,7 +134,10 @@ type RunStore interface {
 	// ListRecent returns the most recent runs across all repos, newest first,
 	// capped at limit.
 	ListRecent(ctx context.Context, limit int) ([]Run, error)
-	// Save persists status, steps, state, last_error and updated_at.
+	// Save persists status, steps, state, last_error and updated_at as a
+	// compare-and-set: it never overwrites a row whose persisted status is already
+	// terminal (cancelled or done). It returns ErrRunFinalized when the row is
+	// terminal and ErrRunNotFound when the row is missing.
 	Save(ctx context.Context, run Run) error
 	// ClaimPending atomically flips the oldest pending run to running and returns
 	// it. found is false when nothing was claimable.

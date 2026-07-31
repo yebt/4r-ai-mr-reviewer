@@ -156,6 +156,9 @@ export type RoutineRunStatus =
   | 'blocked'
   | 'awaiting_confirmation'
   | 'done'
+  // `cancelled` is terminal (like `done`): the run was aborted by the user, so
+  // the poller idles and the run becomes deletable.
+  | 'cancelled'
 
 // The kinds of routine the backend can run. `release` (dev + main flows)
 // supersedes the legacy `approve_and_tag`, which older runs may still report.

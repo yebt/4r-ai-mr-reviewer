@@ -11,6 +11,7 @@ vi.mock('@shared/api/client', () => ({
     getRoutineRun: vi.fn(),
     resumeRoutine: vi.fn(),
     confirmRoutine: vi.fn(),
+    cancelRoutine: vi.fn(),
     deleteRoutine: vi.fn(),
   },
 }))
@@ -27,6 +28,7 @@ const mocked = api as unknown as {
   getRoutineRun: ReturnType<typeof vi.fn>
   resumeRoutine: ReturnType<typeof vi.fn>
   confirmRoutine: ReturnType<typeof vi.fn>
+  cancelRoutine: ReturnType<typeof vi.fn>
   deleteRoutine: ReturnType<typeof vi.fn>
 }
 
@@ -185,6 +187,28 @@ describe('routines store', () => {
     mocked.confirmRoutine.mockRejectedValue(new Error('run is not awaiting confirmation'))
     const store = useRoutinesStore()
     await expect(store.confirm('a', 'wait')).rejects.toThrow('run is not awaiting confirmation')
+  })
+
+  it('cancel calls the api and adopts the returned cancelled run', async () => {
+    const store = useRoutinesStore()
+    store.runsByRepo = { r1: [run('a', 'running')] }
+    store.runsById = { a: run('a', 'running') }
+    store.recentRunIds = ['a']
+    mocked.cancelRoutine.mockResolvedValue(run('a', 'cancelled'))
+    await store.cancel('a')
+    expect(mocked.cancelRoutine).toHaveBeenCalledWith('a')
+    expect(store.runById('a')?.status).toBe('cancelled')
+    expect(store.runsFor('r1')[0]?.status).toBe('cancelled')
+    expect(store.recentRuns[0]?.status).toBe('cancelled')
+  })
+
+  it('cancel propagates a 409 when the run is already terminal', async () => {
+    mocked.cancelRoutine.mockRejectedValue(new Error('run is not cancelable'))
+    const store = useRoutinesStore()
+    store.runsByRepo = { r1: [run('a', 'done')] }
+    store.runsById = { a: run('a', 'done') }
+    await expect(store.cancel('a')).rejects.toThrow('run is not cancelable')
+    expect(store.runById('a')?.status).toBe('done')
   })
 
   it('remove deletes the run and drops it from every cache', async () => {

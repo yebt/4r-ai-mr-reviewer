@@ -11,6 +11,7 @@ import (
 	"log"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/webcloster-dev/ai-reviewer/internal/adapters/gitlab"
@@ -109,6 +110,12 @@ type Service struct {
 	mergePollInterval time.Duration
 	// notifier delivers the release summary; nil disables notification.
 	notifier ReleaseNotifier
+	// Cancellation state. The single worker derives a cancelable context per
+	// claimed run and registers its CancelFunc here under the run id; an
+	// HTTP-triggered Cancel (on another goroutine) fires it by id so the run's
+	// in-flight step or poll unwinds via ctx.Done().
+	mu      sync.Mutex
+	cancels map[string]context.CancelFunc // runID -> cancel of the executing run's ctx
 }
 
 // NewService wires the routines service. A nil logger defaults to the standard
@@ -130,6 +137,7 @@ func NewService(repos repo.Repository, accounts *accounts.Service, runs routine.
 		mergeWaitTimeout:  mergeWaitTimeout,
 		mergePollInterval: defaultMergePollInterval,
 		notifier:          notifier,
+		cancels:           make(map[string]context.CancelFunc),
 	}
 }
 
@@ -781,6 +789,71 @@ func (s *Service) Resume(ctx context.Context, runID string) (routine.Run, error)
 	return run, nil
 }
 
+// Cancel aborts a routine run and returns its updated state. The transition to
+// cancelled is an ATOMIC compare-and-set on the DB row, so it is race-free
+// against both ClaimPending and the worker's per-step Saves:
+//
+//   - The run is loaded only to distinguish an unknown run (routine.ErrRunNotFound)
+//     from an existing one; the read status is NOT used for the cancel decision.
+//   - The registered CancelFunc is fired best-effort so any in-flight ctx-aware
+//     step or poll unwinds via ctx.Done(). It is a no-op for a pending/blocked/
+//     awaiting run (nothing registered), where the conditional Save alone suffices.
+//   - Save is conditional (WHERE status NOT IN ('cancelled','done')), so it flips
+//     pending/running/blocked/awaiting_confirmation to cancelled and returns
+//     routine.ErrRunFinalized when the row is ALREADY terminal (done/cancelled) —
+//     mapped here to routine.ErrRunNotCancelable (409).
+//
+// This closes the pending/ClaimPending race: if the worker claimed the run
+// (pending->running) first, Cancel's CAS still flips running->cancelled because
+// the WHERE excludes only terminal states; the worker's NEXT Save then hits
+// ErrRunFinalized and stops before running further steps.
+func (s *Service) Cancel(ctx context.Context, runID string) (routine.Run, error) {
+	run, err := s.runs.Get(ctx, runID)
+	if err != nil {
+		return routine.Run{}, err
+	}
+	// Fire the derived context of an actively-executing run so its in-flight step
+	// (or long poll) returns context.Canceled. A no-op when nothing is registered
+	// (the run is pending/blocked/awaiting), where the conditional Save is enough.
+	s.cancelRun(runID)
+
+	run.Status = routine.RunCancelled
+	run.LastError = "cancelled by user"
+	if err := s.runs.Save(ctx, run); err != nil {
+		// Zero rows updated because the row is already terminal: not cancelable.
+		if errors.Is(err, routine.ErrRunFinalized) {
+			return routine.Run{}, routine.ErrRunNotCancelable
+		}
+		return routine.Run{}, err
+	}
+	return run, nil
+}
+
+// registerCancel stores the executing run's cancel func under its id.
+func (s *Service) registerCancel(runID string, cancel context.CancelFunc) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.cancels[runID] = cancel
+}
+
+// clearCancel drops a finished run's cancel func.
+func (s *Service) clearCancel(runID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.cancels, runID)
+}
+
+// cancelRun fires a run's registered cancel func, if any. It is a no-op when the
+// run is not currently executing (nothing registered).
+func (s *Service) cancelRun(runID string) {
+	s.mu.Lock()
+	cancel := s.cancels[runID]
+	s.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+}
+
 // Start recovers interrupted runs and drives the worker loop until ctx is done.
 // It blocks; run it in its own goroutine. A SINGLE worker is intentional: it
 // serializes runs so two routines never race the same repo's tags.
@@ -838,7 +911,16 @@ func (s *Service) safeExecute(ctx context.Context, run routine.Run) {
 			s.logger.Printf("routines: run %s panicked: %v\n%s", run.ID, rec, debug.Stack())
 		}
 	}()
-	if err := s.execute(ctx, run); err != nil {
+	// Per-run cancelable context so Cancel(id) can abort this run's steps/polls
+	// without disturbing the worker's long-lived loop context. Register the cancel
+	// func for the duration of the run so an out-of-band Cancel can fire it.
+	rctx, cancel := context.WithCancel(ctx)
+	s.registerCancel(run.ID, cancel)
+	defer func() {
+		s.clearCancel(run.ID)
+		cancel()
+	}()
+	if err := s.execute(rctx, run); err != nil {
 		s.logger.Printf("routines: run %s execute failed: %v", run.ID, err)
 	}
 }
@@ -851,6 +933,25 @@ func (s *Service) execute(ctx context.Context, run routine.Run) error {
 	default:
 		return s.executeApproveAndTag(ctx, run)
 	}
+}
+
+// saveRun persists run from an execute path and translates the store's
+// compare-and-set guard into a bail decision. It returns:
+//   - (true, nil)  when the run was finalized concurrently (an out-of-band Cancel,
+//     or a completed run): the caller MUST stop immediately with `return nil` and
+//     write nothing further, so a stale in-memory copy can never revive a
+//     cancelled run to running/done;
+//   - (false, nil) on a normal successful save;
+//   - (false, err) on a genuine persistence failure the caller should propagate.
+func (s *Service) saveRun(ctx context.Context, run routine.Run) (finalized bool, err error) {
+	if err := s.runs.Save(ctx, run); err != nil {
+		if errors.Is(err, routine.ErrRunFinalized) {
+			s.logger.Printf("routines: run %s finalized concurrently; stopping without further writes", run.ID)
+			return true, nil
+		}
+		return false, fmt.Errorf("routines: save run %s: %w", run.ID, err)
+	}
+	return false, nil
 }
 
 // executeApproveAndTag drives an approve_and_tag run's steps to completion,
@@ -897,25 +998,53 @@ func (s *Service) executeApproveAndTag(ctx context.Context, run routine.Run) err
 		if step.Status == routine.StepDone || step.Status == routine.StepSkipped {
 			continue
 		}
+		// A user Cancel fired this run's context before the step started: stop
+		// without writing running, leaving the terminal "cancelled" status Cancel
+		// persisted intact.
+		if ctx.Err() != nil {
+			s.logger.Printf("routines: run %s cancelled before step %q", run.ID, step.Name)
+			return nil
+		}
 
+		// Step-start Save. Because it happens BEFORE the step handler runs, a run
+		// cancelled before the step starts hits the finalized guard here and stops
+		// before any GitLab side effect in that step.
 		step.Status = routine.StepRunning
 		step.UpdatedAt = time.Now().UTC()
 		run.State = marshalState(state)
-		if err := s.runs.Save(ctx, run); err != nil {
-			return fmt.Errorf("routines: save run %s: %w", run.ID, err)
+		if finalized, err := s.saveRun(ctx, run); err != nil {
+			return err
+		} else if finalized {
+			return nil
 		}
 
 		detail, herr := s.runStep(ctx, gl, projectID, run.MRIID, step.Name, params, mr, &state, checkpoint)
 		step.UpdatedAt = time.Now().UTC()
 		run.State = marshalState(state)
+
+		// A checkpoint inside the step hit the finalized guard: the run was cancelled
+		// (or completed) concurrently. Stop without any further Save.
+		if errors.Is(herr, routine.ErrRunFinalized) {
+			s.logger.Printf("routines: run %s finalized concurrently at step %q; stopping", run.ID, step.Name)
+			return nil
+		}
+		// Cancellation is not a failure: when the step unwinds because Cancel fired
+		// the run's context, do NOT block — return without overriding the
+		// "cancelled" status Cancel persists.
+		if errors.Is(herr, context.Canceled) || ctx.Err() != nil {
+			s.logger.Printf("routines: run %s cancelled at step %q", run.ID, step.Name)
+			return nil
+		}
 		if herr != nil {
 			safe := s.clientSafeError(herr)
 			step.Status = routine.StepFailed
 			step.Detail = safe
 			run.Status = routine.RunBlocked
 			run.LastError = safe
-			if err := s.runs.Save(ctx, run); err != nil {
-				return fmt.Errorf("routines: save run %s: %w", run.ID, err)
+			if finalized, err := s.saveRun(ctx, run); err != nil {
+				return err
+			} else if finalized {
+				return nil
 			}
 			s.logger.Printf("routines: run %s blocked at step %q: %v", run.ID, step.Name, herr)
 			return nil
@@ -923,16 +1052,20 @@ func (s *Service) executeApproveAndTag(ctx context.Context, run routine.Run) err
 
 		step.Status = routine.StepDone
 		step.Detail = detail
-		if err := s.runs.Save(ctx, run); err != nil {
-			return fmt.Errorf("routines: save run %s: %w", run.ID, err)
+		if finalized, err := s.saveRun(ctx, run); err != nil {
+			return err
+		} else if finalized {
+			return nil
 		}
 	}
 
 	run.Status = routine.RunDone
 	run.LastError = ""
 	run.State = marshalState(state)
-	if err := s.runs.Save(ctx, run); err != nil {
-		return fmt.Errorf("routines: save run %s: %w", run.ID, err)
+	if finalized, err := s.saveRun(ctx, run); err != nil {
+		return err
+	} else if finalized {
+		return nil
 	}
 	return nil
 }
@@ -978,7 +1111,12 @@ func (s *Service) runStep(ctx context.Context, gl *gitlab.Client, projectID stri
 		// creating the tag, and reuse it on any resume. Recomputing after a crash
 		// that already created the tag would pick a higher (wrongly bumped) value.
 		if state.NextTag == "" {
-			tags, _ := gl.ListTags(ctx, projectID)
+			// Check the error: a swallowed context.Canceled (or real failure) would
+			// otherwise compute a tag from an empty list. Surface it so the step aborts.
+			tags, err := gl.ListTags(ctx, projectID)
+			if err != nil {
+				return "", fmt.Errorf("list tags: %w", err)
+			}
 			existing := make([]string, 0, len(tags))
 			for _, t := range tags {
 				existing = append(existing, t.Name)
@@ -1012,8 +1150,12 @@ func (s *Service) runStep(ctx context.Context, gl *gitlab.Client, projectID stri
 
 		// Check-then-act against the durable decision: on resume the tag created by
 		// a prior attempt is recognized (across a "v" prefix mismatch) and no second
-		// tag is created.
-		tags, _ := gl.ListTags(ctx, projectID)
+		// tag is created. Check the error so a swallowed context.Canceled (or real
+		// failure) aborts the step instead of creating a tag off an empty list.
+		tags, err := gl.ListTags(ctx, projectID)
+		if err != nil {
+			return "", fmt.Errorf("list tags: %w", err)
+		}
 		existing := make([]string, 0, len(tags))
 		for _, t := range tags {
 			existing = append(existing, t.Name)
@@ -1065,25 +1207,54 @@ func (s *Service) executeRelease(ctx context.Context, run routine.Run) error {
 		if step.Status == routine.StepDone || step.Status == routine.StepSkipped {
 			continue
 		}
+		// A user Cancel fired this run's context before the step started: stop
+		// without writing running, leaving the terminal "cancelled" status Cancel
+		// persisted intact.
+		if ctx.Err() != nil {
+			s.logger.Printf("routines: run %s cancelled before step %q", run.ID, step.Name)
+			return nil
+		}
 
+		// Step-start Save. Because it happens BEFORE the step handler runs, a run
+		// cancelled before the step starts hits the finalized guard here and stops
+		// before any GitLab side effect in that step.
 		step.Status = routine.StepRunning
 		step.UpdatedAt = time.Now().UTC()
 		run.State = marshalReleaseState(state)
-		if err := s.runs.Save(ctx, run); err != nil {
-			return fmt.Errorf("routines: save run %s: %w", run.ID, err)
+		if finalized, err := s.saveRun(ctx, run); err != nil {
+			return err
+		} else if finalized {
+			return nil
 		}
 
 		detail, herr := s.runReleaseStep(ctx, gl, projectID, run, step.Name, params, &state, checkpoint)
 		step.UpdatedAt = time.Now().UTC()
 		run.State = marshalReleaseState(state)
 
+		// A checkpoint inside the step hit the finalized guard: the run was cancelled
+		// (or completed) concurrently. Stop without any further Save.
+		if errors.Is(herr, routine.ErrRunFinalized) {
+			s.logger.Printf("routines: run %s finalized concurrently at step %q; stopping", run.ID, step.Name)
+			return nil
+		}
+		// Cancellation is not a failure: when the step unwinds because Cancel fired
+		// the run's context (e.g. the merge poll's ctx.Done() path returns
+		// context.Canceled), do NOT block — return without overriding the
+		// "cancelled" status Cancel persists.
+		if errors.Is(herr, context.Canceled) || ctx.Err() != nil {
+			s.logger.Printf("routines: run %s cancelled at step %q", run.ID, step.Name)
+			return nil
+		}
+
 		// The confirmation gate is a pause, not a failure: leave the confirm step
 		// non-terminal (StepRunning) so the resume that Confirm triggers re-enters
 		// it, and flip the run to awaiting_confirmation.
 		if errors.Is(herr, errAwaitConfirmation) {
 			run.Status = routine.RunAwaitingConfirmation
-			if err := s.runs.Save(ctx, run); err != nil {
-				return fmt.Errorf("routines: save run %s: %w", run.ID, err)
+			if finalized, err := s.saveRun(ctx, run); err != nil {
+				return err
+			} else if finalized {
+				return nil
 			}
 			s.logger.Printf("routines: run %s awaiting confirmation at step %q", run.ID, step.Name)
 			return nil
@@ -1102,8 +1273,10 @@ func (s *Service) executeRelease(ctx context.Context, run routine.Run) error {
 			run.Status = routine.RunDone
 			run.LastError = ""
 			run.State = marshalReleaseState(state)
-			if err := s.runs.Save(ctx, run); err != nil {
-				return fmt.Errorf("routines: save run %s: %w", run.ID, err)
+			if finalized, err := s.saveRun(ctx, run); err != nil {
+				return err
+			} else if finalized {
+				return nil
 			}
 			s.logger.Printf("routines: run %s finished: %s", run.ID, step.Detail)
 			return nil
@@ -1115,8 +1288,10 @@ func (s *Service) executeRelease(ctx context.Context, run routine.Run) error {
 			step.Detail = safe
 			run.Status = routine.RunBlocked
 			run.LastError = safe
-			if err := s.runs.Save(ctx, run); err != nil {
-				return fmt.Errorf("routines: save run %s: %w", run.ID, err)
+			if finalized, err := s.saveRun(ctx, run); err != nil {
+				return err
+			} else if finalized {
+				return nil
 			}
 			s.logger.Printf("routines: run %s blocked at step %q: %v", run.ID, step.Name, herr)
 			return nil
@@ -1124,16 +1299,20 @@ func (s *Service) executeRelease(ctx context.Context, run routine.Run) error {
 
 		step.Status = routine.StepDone
 		step.Detail = detail
-		if err := s.runs.Save(ctx, run); err != nil {
-			return fmt.Errorf("routines: save run %s: %w", run.ID, err)
+		if finalized, err := s.saveRun(ctx, run); err != nil {
+			return err
+		} else if finalized {
+			return nil
 		}
 	}
 
 	run.Status = routine.RunDone
 	run.LastError = ""
 	run.State = marshalReleaseState(state)
-	if err := s.runs.Save(ctx, run); err != nil {
-		return fmt.Errorf("routines: save run %s: %w", run.ID, err)
+	if finalized, err := s.saveRun(ctx, run); err != nil {
+		return err
+	} else if finalized {
+		return nil
 	}
 	return nil
 }
@@ -1617,8 +1796,12 @@ func (s *Service) block(ctx context.Context, run routine.Run, cause error) error
 	run.Status = routine.RunBlocked
 	run.LastError = s.clientSafeError(cause)
 	s.logger.Printf("routines: run %s blocked: %v", run.ID, cause)
-	if err := s.runs.Save(ctx, run); err != nil {
-		return fmt.Errorf("routines: save run %s: %w", run.ID, err)
+	// A concurrent Cancel may have finalized the run before we could block it: the
+	// finalized guard then wins and we stop without overriding the cancelled status.
+	if finalized, err := s.saveRun(ctx, run); err != nil {
+		return err
+	} else if finalized {
+		return nil
 	}
 	return nil
 }
@@ -1643,8 +1826,8 @@ func marshalReleaseState(state releaseState) json.RawMessage {
 	return b
 }
 
-// isActiveRun reports whether a run is still in flight (not done) and therefore
-// blocks creating another run for the same merge request.
+// isActiveRun reports whether a run is still in flight (not done, not cancelled)
+// and therefore blocks creating another run for the same merge request.
 func isActiveRun(status routine.RunStatus) bool {
 	switch status {
 	case routine.RunPending, routine.RunRunning, routine.RunBlocked, routine.RunAwaitingConfirmation:

@@ -182,6 +182,72 @@ func TestRoutineRunSaveMissing(t *testing.T) {
 	}
 }
 
+// TestRoutineRunSaveFinalizedGuard exercises the compare-and-set: once a run's DB
+// status is terminal (cancelled or done), any further Save matches zero rows,
+// returns ErrRunFinalized, and leaves the row untouched — so a worker's stale
+// in-memory copy can never revive a finalized run.
+func TestRoutineRunSaveFinalizedGuard(t *testing.T) {
+	for _, terminal := range []routine.RunStatus{routine.RunCancelled, routine.RunDone} {
+		t.Run(string(terminal), func(t *testing.T) {
+			ctx := context.Background()
+			s, repoID := newRoutineRunStore(t)
+
+			run := newRun(repoID)
+			if err := s.Create(ctx, run); err != nil {
+				t.Fatalf("Create: %v", err)
+			}
+			// pending is non-terminal, so this first Save into the terminal status
+			// succeeds and finalizes the row.
+			run.Status = terminal
+			run.LastError = "finalized"
+			if err := s.Save(ctx, run); err != nil {
+				t.Fatalf("Save to %s: %v", terminal, err)
+			}
+
+			// A worker writing running/done from its in-memory copy must be rejected.
+			revive := run
+			revive.Status = routine.RunRunning
+			revive.LastError = "revived"
+			if err := s.Save(ctx, revive); !errors.Is(err, routine.ErrRunFinalized) {
+				t.Fatalf("Save on %s run = %v, want ErrRunFinalized", terminal, err)
+			}
+
+			got, err := s.Get(ctx, run.ID)
+			if err != nil {
+				t.Fatalf("Get: %v", err)
+			}
+			if got.Status != terminal || got.LastError != "finalized" {
+				t.Fatalf("row changed after rejected Save: status=%q last_error=%q", got.Status, got.LastError)
+			}
+		})
+	}
+}
+
+// TestRoutineRunSaveRunningSucceeds verifies the guard does NOT break the
+// legitimate running->done transition: a Save on a non-terminal (running) row
+// updates normally.
+func TestRoutineRunSaveRunningSucceeds(t *testing.T) {
+	ctx := context.Background()
+	s, repoID := newRoutineRunStore(t)
+
+	run := newRun(repoID)
+	run.Status = routine.RunRunning
+	if err := s.Create(ctx, run); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	run.Status = routine.RunDone
+	if err := s.Save(ctx, run); err != nil {
+		t.Fatalf("Save running->done: %v", err)
+	}
+	got, err := s.Get(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Status != routine.RunDone {
+		t.Fatalf("status = %q, want done", got.Status)
+	}
+}
+
 func TestRoutineRunListByRepoNewestFirst(t *testing.T) {
 	ctx := context.Background()
 	s, repoID := newRoutineRunStore(t)

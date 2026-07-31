@@ -14,6 +14,14 @@ export function isRunActive(status: RoutineRunStatus): boolean {
   return status === 'pending' || status === 'running'
 }
 
+// A run is cancelable while it has not reached a terminal state (`done` or
+// `cancelled`): pending/running are aborted mid-flight, and blocked/
+// awaiting_confirmation are aborted from their resting pause. Pure so it can
+// gate the Cancel action and its tests.
+export function isRunCancelable(status: RoutineRunStatus): boolean {
+  return status !== 'done' && status !== 'cancelled'
+}
+
 // Visual mapping for a run's overall status. `spin` marks the icon that should
 // animate (the running spinner); `label` is shown as text so state is never
 // conveyed by color alone.
@@ -35,6 +43,7 @@ export const runStatusUi: Record<RoutineRunStatus, RunStatusUi> = {
     spin: false,
   },
   done: { icon: 'i-lucide-check', class: 'text-ok', label: 'Done', spin: false },
+  cancelled: { icon: 'i-lucide-ban', class: 'text-muted', label: 'Cancelled', spin: false },
 }
 
 // Visual mapping for a single step's status. Same contract as RunStatusUi.

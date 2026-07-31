@@ -486,3 +486,54 @@ func TestToRunExposesReleaseBranchInfo(t *testing.T) {
 		t.Errorf("non-release run leaked branch info: %+v", other)
 	}
 }
+
+// TestCancelRoutineOverHTTP cancels a pending run and asserts the 200 response
+// carries the updated run in the "cancelled" status, then that a re-cancel of the
+// now-terminal run is a 409 conflict.
+func TestCancelRoutineOverHTTP(t *testing.T) {
+	srv := newTestServer(t)
+	repoID := newRepoForRoutine(t, srv)
+
+	resp := postJSON(t, srv.URL+"/repos/"+repoID+"/routines/approve-and-tag", map[string]any{"mrIid": 7})
+	var run struct {
+		ID string `json:"id"`
+	}
+	decodeBody(t, resp, &run)
+
+	cancelResp := postJSON(t, srv.URL+"/routines/"+run.ID+"/cancel", nil)
+	if cancelResp.StatusCode != http.StatusOK {
+		t.Fatalf("cancel status = %d, want 200", cancelResp.StatusCode)
+	}
+	var cancelled struct {
+		ID     string `json:"id"`
+		Status string `json:"status"`
+	}
+	decodeBody(t, cancelResp, &cancelled)
+	if cancelled.ID != run.ID || cancelled.Status != "cancelled" {
+		t.Fatalf("cancelled run = %+v, want id %q status cancelled", cancelled, run.ID)
+	}
+
+	// The run is now terminal: a second cancel is a 409 conflict.
+	againResp := postJSON(t, srv.URL+"/routines/"+run.ID+"/cancel", nil)
+	againResp.Body.Close()
+	if againResp.StatusCode != http.StatusConflict {
+		t.Fatalf("re-cancel status = %d, want 409", againResp.StatusCode)
+	}
+
+	// A cancelled run is deletable (only running is refused) → 204.
+	delResp := doDelete(t, srv.URL+"/routines/"+run.ID)
+	delResp.Body.Close()
+	if delResp.StatusCode != http.StatusNoContent {
+		t.Fatalf("delete cancelled status = %d, want 204", delResp.StatusCode)
+	}
+}
+
+// TestCancelUnknownRoutineOverHTTP maps an unknown run to 404.
+func TestCancelUnknownRoutineOverHTTP(t *testing.T) {
+	srv := newTestServer(t)
+	resp := postJSON(t, srv.URL+"/routines/does-not-exist/cancel", nil)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("cancel unknown status = %d, want 404", resp.StatusCode)
+	}
+}

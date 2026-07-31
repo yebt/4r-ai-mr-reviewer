@@ -143,6 +143,15 @@ export const useRoutinesStore = defineStore('routines', () => {
     return run
   }
 
+  // cancel aborts a run on the server and upserts the returned (cancelled) run
+  // into every cache, so all views observe the terminal state at once. Rethrows
+  // (404 unknown, 409 already terminal) so the caller can toast.
+  async function cancel(id: string) {
+    const run = await api.cancelRoutine(id)
+    cacheRun(run)
+    return run
+  }
+
   // remove deletes a run on the server, then drops it from every cache it lives
   // in (the by-id map, each per-repo list, and the recent-runs order) so all
   // views forget it at once. Rethrows (404 unknown, 409 running) so the caller
@@ -175,6 +184,7 @@ export const useRoutinesStore = defineStore('routines', () => {
     refresh,
     resume,
     confirm,
+    cancel,
     remove,
   }
 })

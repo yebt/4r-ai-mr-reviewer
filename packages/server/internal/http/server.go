@@ -130,6 +130,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /routines/{id}", s.deleteRoutine)
 	mux.HandleFunc("POST /routines/{id}/resume", s.resumeRoutine)
 	mux.HandleFunc("POST /routines/{id}/confirm", s.confirmRoutine)
+	mux.HandleFunc("POST /routines/{id}/cancel", s.cancelRoutine)
 
 	mux.HandleFunc("POST /auth/login", s.authLogin)
 	mux.HandleFunc("POST /auth/logout", s.authLogout)

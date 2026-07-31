@@ -6,7 +6,14 @@ import type {
   RoutineStepName,
   RoutineStepStatus,
 } from '@shared/api/types'
-import { isRunActive, runStatusUi, runTitle, stepLabel, stepStatusUi } from '@modules/routines/format'
+import {
+  isRunActive,
+  isRunCancelable,
+  runStatusUi,
+  runTitle,
+  stepLabel,
+  stepStatusUi,
+} from '@modules/routines/format'
 
 // Minimal run factory: runTitle only reads mrIid + state.mrTitle.
 function makeRun(mrIid: number, state: RoutineRunState = {}): RoutineRun {
@@ -24,6 +31,22 @@ describe('isRunActive', () => {
     expect(isRunActive('done')).toBe(false)
     // awaiting_confirmation waits on the user, so the poller idles for it.
     expect(isRunActive('awaiting_confirmation')).toBe(false)
+    // cancelled is terminal, so the poller idles for it too.
+    expect(isRunActive('cancelled')).toBe(false)
+  })
+})
+
+describe('isRunCancelable', () => {
+  it('is true for every non-terminal status', () => {
+    expect(isRunCancelable('pending')).toBe(true)
+    expect(isRunCancelable('running')).toBe(true)
+    expect(isRunCancelable('blocked')).toBe(true)
+    expect(isRunCancelable('awaiting_confirmation')).toBe(true)
+  })
+
+  it('is false once the run is terminal', () => {
+    expect(isRunCancelable('done')).toBe(false)
+    expect(isRunCancelable('cancelled')).toBe(false)
   })
 })
 
@@ -59,6 +82,15 @@ describe('runStatusUi', () => {
     expect(runStatusUi.awaiting_confirmation.icon).not.toBe(runStatusUi.blocked.icon)
   })
 
+  it('maps cancelled to a muted ban', () => {
+    expect(runStatusUi.cancelled).toEqual({
+      icon: 'i-lucide-ban',
+      class: 'text-muted',
+      label: 'Cancelled',
+      spin: false,
+    })
+  })
+
   it('covers every run status with a lucide icon', () => {
     const statuses: RoutineRunStatus[] = [
       'pending',
@@ -66,6 +98,7 @@ describe('runStatusUi', () => {
       'blocked',
       'awaiting_confirmation',
       'done',
+      'cancelled',
     ]
     for (const status of statuses) {
       expect(runStatusUi[status].icon).toMatch(/^i-lucide-/)

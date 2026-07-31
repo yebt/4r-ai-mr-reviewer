@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { ConfirmDecision, RoutineRun } from '@shared/api/types'
-import { runTitle, stepLabel, stepStatusUi } from '@modules/routines/format'
+import { isRunCancelable, runTitle, stepLabel, stepStatusUi } from '@modules/routines/format'
 import RoutineStatusChip from '@modules/routines/components/RoutineStatusChip.vue'
 import RoutineBranchChip from '@modules/routines/components/RoutineBranchChip.vue'
 
@@ -13,12 +13,19 @@ const props = defineProps<{
   confirming?: ConfirmDecision | null
   // True while a delete request for this run is in flight (disables the button).
   deleting?: boolean
+  // True while a cancel request for this run is in flight (disables the button).
+  cancelling?: boolean
 }>()
 const emit = defineEmits<{
   resume: [id: string]
   confirm: [id: string, decision: ConfirmDecision]
   delete: [id: string]
+  cancel: [id: string]
 }>()
+
+// A run can be cancelled until it reaches a terminal state; the button hides
+// once done/cancelled and Delete takes over.
+const cancelable = computed(() => isRunCancelable(props.run.status))
 
 // The computed release summary is worth showing once the tag has been resolved.
 const hasSummary = computed(
@@ -48,6 +55,22 @@ const awaiting = computed(() => props.run.status === 'awaiting_confirmation')
           <span class="i-lucide-tag text-sm" aria-hidden="true" />
           next tag: {{ props.run.state.nextTag }}
         </span>
+        <!-- Cancel is offered while the run is still cancelable (not terminal);
+             it aborts a running/pending run or a blocked/awaiting pause. -->
+        <button
+          v-if="cancelable"
+          type="button"
+          class="btn-ghost hover:text-danger"
+          :disabled="props.cancelling"
+          :aria-label="`Cancel ${runTitle(props.run)}`"
+          @click="emit('cancel', props.run.id)"
+        >
+          <span
+            :class="props.cancelling ? 'i-lucide-loader-circle animate-spin' : 'i-lucide-ban'"
+            class="text-sm"
+            aria-hidden="true"
+          />
+        </button>
         <!-- Delete is offered only for a run that is not running; the backend 409
              is a backstop. -->
         <button

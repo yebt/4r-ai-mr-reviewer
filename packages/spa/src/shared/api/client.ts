@@ -299,6 +299,9 @@ export const api = {
   // awaiting_confirmation.
   confirmRoutine: (id: string, decision: ConfirmDecision) =>
     request<RoutineRun>('POST', `/routines/${id}/confirm`, { decision }),
+  // Cancel a routine run and get the updated (cancelled) run back. 404 when
+  // unknown, 409 when the run is already terminal (done/cancelled).
+  cancelRoutine: (id: string) => request<RoutineRun>('POST', `/routines/${id}/cancel`),
   // Delete a routine run. 404 when unknown, 409 when the run is still running
   // (a running action can't be deleted) — both throw ApiError for the caller.
   deleteRoutine: (id: string) => request<void>('DELETE', `/routines/${id}`),

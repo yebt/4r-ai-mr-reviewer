@@ -627,7 +627,11 @@ func TestApproveAndTagResumeAfterTagCreatedIsIdempotent(t *testing.T) {
 	}
 
 	// Simulate the crash window: the tag exists (1.2.4) and NextTag is persisted,
-	// but the tag step never recorded "done".
+	// but the tag step never recorded "done". At crash time the row is still
+	// RUNNING (the process died before the terminal Save), which is also how
+	// crash recovery would leave it after RequeueRunning re-claims it. Recreate the
+	// row in that state directly rather than Save-reviving the completed run, since
+	// Save is now a compare-and-set that refuses to overwrite a terminal row.
 	crashed, _ := svc.Get(ctx, run.ID)
 	for i := range crashed.Steps {
 		if crashed.Steps[i].Name == stepTag {
@@ -635,8 +639,11 @@ func TestApproveAndTagResumeAfterTagCreatedIsIdempotent(t *testing.T) {
 		}
 	}
 	crashed.Status = routine.RunRunning
-	if err := svc.runs.Save(ctx, crashed); err != nil {
-		t.Fatalf("Save (simulate crash): %v", err)
+	if err := svc.runs.Delete(ctx, run.ID); err != nil {
+		t.Fatalf("Delete (simulate crash): %v", err)
+	}
+	if err := svc.runs.Create(ctx, crashed); err != nil {
+		t.Fatalf("Create (simulate crash): %v", err)
 	}
 
 	if err := svc.execute(ctx, crashed); err != nil {
@@ -1952,5 +1959,221 @@ func TestApproveAndTagSanitizesUpstreamError(t *testing.T) {
 	}
 	if d := stepByName(t, got, "tag").Detail; strings.Contains(d, "SENSITIVE_SECRET_TOKEN_xyz") {
 		t.Errorf("tag step detail leaked the raw upstream body: %q", d)
+	}
+}
+
+// --- cancel ---
+
+// seedRun inserts a run in a given status directly into the store so Cancel's
+// status handling can be exercised without driving a real run.
+func seedRun(t *testing.T, ctx context.Context, svc *Service, repoID string, status routine.RunStatus) string {
+	t.Helper()
+	runID := string(status) + "-cancel-run"
+	run := routine.Run{
+		ID:        runID,
+		Kind:      routine.KindRelease,
+		RepoID:    repoID,
+		MRIID:     7,
+		Status:    status,
+		Params:    json.RawMessage("{}"),
+		State:     json.RawMessage("{}"),
+		Steps:     []routine.Step{{Name: stepVerify, Status: routine.StepPending}},
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+	}
+	if err := svc.runs.Create(ctx, run); err != nil {
+		t.Fatalf("seed %s run: %v", status, err)
+	}
+	return runID
+}
+
+// waitForStatus polls a run until it reaches want or the deadline elapses.
+func waitForStatus(t *testing.T, ctx context.Context, svc *Service, runID string, want routine.RunStatus) routine.Run {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		got, err := svc.Get(ctx, runID)
+		if err != nil {
+			t.Fatalf("Get: %v", err)
+		}
+		if got.Status == want {
+			return got
+		}
+		time.Sleep(time.Millisecond)
+	}
+	got, _ := svc.Get(ctx, runID)
+	t.Fatalf("run %s status = %q, want %q within deadline", runID, got.Status, want)
+	return routine.Run{}
+}
+
+// TestCancelNonRunningStatuses covers Cancel of a pending, blocked, or
+// awaiting_confirmation run: it flips to cancelled (no worker needed) and the
+// cancelled run is then deletable via the existing Delete.
+func TestCancelNonRunningStatuses(t *testing.T) {
+	for _, status := range []routine.RunStatus{routine.RunPending, routine.RunBlocked, routine.RunAwaitingConfirmation} {
+		t.Run(string(status), func(t *testing.T) {
+			ctx, svc, repoID := setupRoutinesTest(t, "https://gitlab.test")
+			runID := seedRun(t, ctx, svc, repoID, status)
+
+			cancelled, err := svc.Cancel(ctx, runID)
+			if err != nil {
+				t.Fatalf("Cancel(%s): %v", status, err)
+			}
+			if cancelled.Status != routine.RunCancelled {
+				t.Fatalf("returned status = %q, want cancelled", cancelled.Status)
+			}
+			if cancelled.LastError == "" {
+				t.Errorf("cancelled run should record a last_error detail")
+			}
+			got, _ := svc.Get(ctx, runID)
+			if got.Status != routine.RunCancelled {
+				t.Fatalf("persisted status = %q, want cancelled", got.Status)
+			}
+			// A cancelled run is terminal, so Delete accepts it (only running is refused).
+			if err := svc.Delete(ctx, runID); err != nil {
+				t.Fatalf("Delete(cancelled) = %v, want nil", err)
+			}
+		})
+	}
+}
+
+// TestCancelTerminalRunRejected covers Cancel of a done or already-cancelled run:
+// both are terminal, so Cancel returns ErrRunNotCancelable.
+func TestCancelTerminalRunRejected(t *testing.T) {
+	for _, status := range []routine.RunStatus{routine.RunDone, routine.RunCancelled} {
+		t.Run(string(status), func(t *testing.T) {
+			ctx, svc, repoID := setupRoutinesTest(t, "https://gitlab.test")
+			runID := seedRun(t, ctx, svc, repoID, status)
+			if _, err := svc.Cancel(ctx, runID); !errors.Is(err, routine.ErrRunNotCancelable) {
+				t.Fatalf("Cancel(%s) = %v, want ErrRunNotCancelable", status, err)
+			}
+		})
+	}
+}
+
+// TestCancelUnknownRun surfaces ErrRunNotFound for an unknown id.
+func TestCancelUnknownRun(t *testing.T) {
+	ctx, svc, _ := setupRoutinesTest(t, "https://gitlab.test")
+	if _, err := svc.Cancel(ctx, "does-not-exist"); !errors.Is(err, routine.ErrRunNotFound) {
+		t.Fatalf("Cancel(unknown) = %v, want ErrRunNotFound", err)
+	}
+}
+
+// TestWorkerSaveDoesNotReviveCancelledRun asserts the CAS at the service layer:
+// once a run is cancelled, a subsequent worker Save from an execute path (here the
+// terminal RunDone write) is rejected with ErrRunFinalized and must NOT flip the
+// run back to done. saveRun reports finalized so the execute loop bails cleanly.
+func TestWorkerSaveDoesNotReviveCancelledRun(t *testing.T) {
+	ctx, svc, repoID := setupRoutinesTest(t, "https://gitlab.test")
+	runID := seedRun(t, ctx, svc, repoID, routine.RunRunning)
+
+	// An out-of-band Cancel finalizes the row (running -> cancelled via the CAS).
+	if _, err := svc.Cancel(ctx, runID); err != nil {
+		t.Fatalf("Cancel(running): %v", err)
+	}
+
+	run, err := svc.Get(ctx, runID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+
+	// The raw store Save (what checkpoint closures invoke) surfaces ErrRunFinalized.
+	revive := run
+	revive.Status = routine.RunDone
+	if err := svc.runs.Save(ctx, revive); !errors.Is(err, routine.ErrRunFinalized) {
+		t.Fatalf("runs.Save on cancelled run = %v, want ErrRunFinalized", err)
+	}
+
+	// saveRun translates that into a bail signal (finalized=true, no error) so the
+	// execute loop returns nil without any further write.
+	finalized, err := svc.saveRun(ctx, revive)
+	if err != nil {
+		t.Fatalf("saveRun: %v", err)
+	}
+	if !finalized {
+		t.Fatal("saveRun should report finalized for a cancelled run")
+	}
+
+	got, _ := svc.Get(ctx, runID)
+	if got.Status != routine.RunCancelled {
+		t.Fatalf("status = %q, want cancelled (CAS must not flip it to done)", got.Status)
+	}
+	// The finalized run is still deletable (Delete only refuses running).
+	if err := svc.Delete(ctx, runID); err != nil {
+		t.Fatalf("Delete(cancelled) = %v, want nil", err)
+	}
+}
+
+// TestCancelRunningRunUnwindsStep drives a release into the merge poll (which
+// blocks because the MR never merges), then cancels it from another goroutine.
+// The registered cancel func fires the run's context so the poll returns
+// context.Canceled; the run ends cancelled (not blocked) and the merge/tag steps
+// do not proceed.
+func TestCancelRunningRunUnwindsStep(t *testing.T) {
+	st := devReleaseState()
+	st.mergedAfterGets = 0 // the MR never becomes merged, so the merge step keeps polling
+	srv := newFakeReleaseGitLab(t, st)
+	ctx, svc, repoID := setupRoutinesTest(t, srv.URL)
+	svc.mergePollInterval = time.Millisecond
+	svc.mergeWaitTimeout = 30 * time.Second // long, so the step waits in the poll until cancelled
+
+	gate := driveToGate(t, ctx, svc, repoID)
+	// "wait" never triggers a merge; the merge step only polls for an out-of-band
+	// merge that never happens, so it stays in the ctx-honoring poll loop.
+	confirmed, err := svc.Confirm(ctx, gate.ID, "wait")
+	if err != nil {
+		t.Fatalf("Confirm(wait): %v", err)
+	}
+
+	// Run the claimed run through safeExecute so the per-run cancel func is
+	// registered (mirroring the worker), then cancel it once it is in the poll.
+	done := make(chan struct{})
+	go func() {
+		svc.safeExecute(ctx, confirmed)
+		close(done)
+	}()
+
+	// Wait until the merge step is actively running (i.e. inside the poll).
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		got, _ := svc.Get(ctx, gate.ID)
+		if got.Status == routine.RunRunning && stepByName(t, got, stepMerge).Status == routine.StepRunning {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("merge step never reached running: %+v", got.Steps)
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	cancelled, err := svc.Cancel(ctx, gate.ID)
+	if err != nil {
+		t.Fatalf("Cancel(running): %v", err)
+	}
+	if cancelled.Status != routine.RunCancelled {
+		t.Fatalf("Cancel returned status = %q, want cancelled", cancelled.Status)
+	}
+
+	// The worker goroutine must unwind (the poll returned context.Canceled).
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("execute did not unwind after cancel")
+	}
+
+	// The final persisted status is cancelled — no blocked write clobbered it.
+	final := waitForStatus(t, ctx, svc, gate.ID, routine.RunCancelled)
+	if final.Status != routine.RunCancelled {
+		t.Fatalf("final status = %q, want cancelled", final.Status)
+	}
+	// The run never progressed past the cancellation: no merge, no tag.
+	st.mu.Lock()
+	mergeCount, createTagCount := st.mergeCount, st.createTagCount
+	st.mu.Unlock()
+	if mergeCount != 0 {
+		t.Errorf("mergeCount = %d, want 0 (wait decision must not merge)", mergeCount)
+	}
+	if createTagCount != 0 {
+		t.Errorf("createTagCount = %d, want 0 (tag step must not run after cancel)", createTagCount)
 	}
 }
