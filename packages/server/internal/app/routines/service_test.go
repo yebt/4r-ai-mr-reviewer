@@ -1345,7 +1345,7 @@ func TestCreateReleaseRejectsTooManyEmojis(t *testing.T) {
 // failure never fails the run.
 type errNotifier struct{ called bool }
 
-func (n *errNotifier) Notify(ctx context.Context, text string) error {
+func (n *errNotifier) Notify(ctx context.Context, repoID, text string) error {
 	n.called = true
 	return errors.New("notifier boom")
 }
@@ -1392,7 +1392,7 @@ type recordNotifier struct {
 	text   string
 }
 
-func (n *recordNotifier) Notify(ctx context.Context, text string) error {
+func (n *recordNotifier) Notify(ctx context.Context, repoID, text string) error {
 	n.called = true
 	n.text = text
 	return nil

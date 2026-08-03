@@ -76,6 +76,9 @@ export interface NotificationRule {
   event: string
   notifierKind: string
   notifierId: string
+  // repoId scopes the rule to a single repo; an empty string means the rule is
+  // global. A repo with its own rules overrides the global rules for that repo.
+  repoId: string
   enabled: boolean
   createdAt: string
 }

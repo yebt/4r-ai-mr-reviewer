@@ -50,7 +50,12 @@ func (s *Service) Events() []string {
 
 // AddRule creates an enabled rule binding event to a notifier target. It
 // validates the event and notifier kind and requires a non-empty target id.
-func (s *Service) AddRule(ctx context.Context, event, notifierKind, notifierID string) (notification.Rule, error) {
+//
+// repoID optionally scopes the rule to a single repo. An empty repoID creates a
+// GLOBAL rule. Callers that need to reject an unknown repoID must validate it
+// before calling (the HTTP layer does this); this service does not know about
+// repos.
+func (s *Service) AddRule(ctx context.Context, event, notifierKind, notifierID, repoID string) (notification.Rule, error) {
 	if !notification.ValidEvent(event) {
 		return notification.Rule{}, fmt.Errorf("notifications: unknown event %q", event)
 	}
@@ -71,15 +76,17 @@ func (s *Service) AddRule(ctx context.Context, event, notifierKind, notifierID s
 			return notification.Rule{}, ErrNotifierNotFound
 		}
 	}
-	// Reject a duplicate (same event + target): duplicates would deliver twice.
-	// The DB UNIQUE constraint is the safety net; this pre-check gives a clean
-	// error without parsing driver-specific constraint messages.
+	// Reject a duplicate (same event + scope + target): duplicates would deliver
+	// twice. Uniqueness is per (event, repoId, notifierId) so a global rule and a
+	// repo-scoped rule for the same event and target can coexist. The DB UNIQUE
+	// constraint is the safety net; this pre-check gives a clean error without
+	// parsing driver-specific constraint messages.
 	existing, err := s.rules.List(ctx)
 	if err != nil {
 		return notification.Rule{}, err
 	}
 	for _, r := range existing {
-		if r.Event == event && r.NotifierKind == notifierKind && r.NotifierID == notifierID {
+		if r.Event == event && r.RepoID == repoID && r.NotifierKind == notifierKind && r.NotifierID == notifierID {
 			return notification.Rule{}, ErrDuplicateRule
 		}
 	}
@@ -88,6 +95,7 @@ func (s *Service) AddRule(ctx context.Context, event, notifierKind, notifierID s
 		Event:        event,
 		NotifierKind: notifierKind,
 		NotifierID:   notifierID,
+		RepoID:       repoID,
 		Enabled:      true,
 		CreatedAt:    time.Now().UTC(),
 	}
@@ -123,18 +131,38 @@ func (s *Service) RemoveRulesForNotifier(ctx context.Context, kind, id string) e
 	return s.rules.DeleteByNotifier(ctx, kind, id)
 }
 
-// Notify fans out an event to every enabled rule subscribed to it. It is
-// best-effort: a single failed delivery (or a missing target) is logged and
-// skipped, and the call always returns nil so it never fails the caller (a
+// Notify fans out an event fired for repoID to its enabled rules, applying
+// OVERRIDE semantics: if any enabled rule is scoped to repoID, ONLY those
+// repo-scoped rules fire; otherwise the global (unscoped) rules fire as a
+// fallback. An empty repoID has no repo-scoped rules, so it always resolves to
+// the global set.
+//
+// It is best-effort: a single failed delivery (or a missing target) is logged
+// and skipped, and the call always returns nil so it never fails the caller (a
 // finished review must never be held up by a notification). It satisfies the
 // reviews.Notifier interface.
-func (s *Service) Notify(ctx context.Context, event, text string) error {
-	rules, err := s.rules.ListEnabledByEvent(ctx, event)
+func (s *Service) Notify(ctx context.Context, event, repoID, text string) error {
+	rules, err := s.rules.ListEnabledByEventForRepo(ctx, event, repoID)
 	if err != nil {
 		log.Printf("notifications: list rules for %q: %v", event, err)
 		return nil
 	}
+	// Partition into the repo's own rules and the global fallback. When repoID is
+	// empty, no rule matches the scoped set and every rule is global.
+	var scoped, global []notification.Rule
 	for _, rule := range rules {
+		if repoID != "" && rule.RepoID == repoID {
+			scoped = append(scoped, rule)
+		} else if rule.RepoID == "" {
+			global = append(global, rule)
+		}
+	}
+	// OVERRIDE: a repo's own rules replace the global ones for that repo.
+	targets := global
+	if len(scoped) > 0 {
+		targets = scoped
+	}
+	for _, rule := range targets {
 		if rule.NotifierKind != notification.NotifierTelegram {
 			continue
 		}

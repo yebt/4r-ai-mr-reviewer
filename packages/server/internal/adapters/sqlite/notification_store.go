@@ -22,13 +22,13 @@ func NewNotificationRuleStore(db *sql.DB) *NotificationRuleStore {
 
 var _ notification.Repository = (*NotificationRuleStore)(nil)
 
-const notificationCols = `id, event, notifier_kind, notifier_id, enabled, created_at`
+const notificationCols = `id, event, notifier_kind, notifier_id, repo_id, enabled, created_at`
 
 // Create inserts a notification rule row.
 func (r *NotificationRuleStore) Create(ctx context.Context, rule notification.Rule) error {
 	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO notification_rules(`+notificationCols+`) VALUES(?, ?, ?, ?, ?, ?)`,
-		rule.ID, rule.Event, rule.NotifierKind, rule.NotifierID, boolToInt(rule.Enabled), formatTime(rule.CreatedAt))
+		`INSERT INTO notification_rules(`+notificationCols+`) VALUES(?, ?, ?, ?, ?, ?, ?)`,
+		rule.ID, rule.Event, rule.NotifierKind, rule.NotifierID, rule.RepoID, boolToInt(rule.Enabled), formatTime(rule.CreatedAt))
 	if err != nil {
 		return fmt.Errorf("notification store: create: %w", err)
 	}
@@ -87,6 +87,30 @@ func (r *NotificationRuleStore) ListEnabledByEvent(ctx context.Context, event st
 	return out, rows.Err()
 }
 
+// ListEnabledByEventForRepo returns the enabled rules subscribed to event whose
+// repo_id is empty (global) or equal to repoID. It underpins the OVERRIDE
+// routing: the caller keeps the repo-scoped rules when any exist, else the
+// global ones.
+func (r *NotificationRuleStore) ListEnabledByEventForRepo(ctx context.Context, event, repoID string) ([]notification.Rule, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT `+notificationCols+` FROM notification_rules WHERE event = ? AND enabled = 1 AND (repo_id = '' OR repo_id = ?) ORDER BY created_at DESC`,
+		event, repoID)
+	if err != nil {
+		return nil, fmt.Errorf("notification store: list enabled by event for repo: %w", err)
+	}
+	defer rows.Close()
+
+	var out []notification.Rule
+	for rows.Next() {
+		rule, err := scanNotificationRule(rows)
+		if err != nil {
+			return nil, fmt.Errorf("notification store: scan: %w", err)
+		}
+		out = append(out, rule)
+	}
+	return out, rows.Err()
+}
+
 // SetEnabled toggles a rule on or off. Toggling a missing rule returns
 // ErrNotFound.
 func (r *NotificationRuleStore) SetEnabled(ctx context.Context, id string, enabled bool) error {
@@ -129,7 +153,7 @@ func scanNotificationRule(s scanner) (notification.Rule, error) {
 		enabled   int
 		createdAt string
 	)
-	if err := s.Scan(&rule.ID, &rule.Event, &rule.NotifierKind, &rule.NotifierID, &enabled, &createdAt); err != nil {
+	if err := s.Scan(&rule.ID, &rule.Event, &rule.NotifierKind, &rule.NotifierID, &rule.RepoID, &enabled, &createdAt); err != nil {
 		return notification.Rule{}, err
 	}
 	rule.Enabled = enabled != 0

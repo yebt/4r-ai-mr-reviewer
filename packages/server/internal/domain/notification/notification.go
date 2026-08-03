@@ -39,11 +39,18 @@ const NotifierTelegram = "telegram"
 // Rule routes an event to a notifier target. NotifierKind selects the notifier
 // backend (e.g. telegram) and NotifierID identifies the concrete target within
 // that backend (e.g. a telegram target id).
+//
+// RepoID optionally scopes the rule to a single repo. An empty RepoID means the
+// rule is GLOBAL. Routing uses OVERRIDE semantics: when an event fires for a
+// repo that has any enabled rules scoped to it, ONLY those repo-scoped rules
+// fire and the global rules are skipped for that repo; otherwise the global
+// rules fire as a fallback.
 type Rule struct {
 	ID           string
 	Event        string
 	NotifierKind string
 	NotifierID   string
+	RepoID       string
 	Enabled      bool
 	CreatedAt    time.Time
 }
@@ -55,6 +62,10 @@ type Repository interface {
 	List(ctx context.Context) ([]Rule, error)
 	// ListEnabledByEvent returns only the enabled rules subscribed to event.
 	ListEnabledByEvent(ctx context.Context, event string) ([]Rule, error)
+	// ListEnabledByEventForRepo returns the enabled rules subscribed to event
+	// whose RepoID is either empty (global) or equal to repoID. The caller
+	// partitions the result to apply the OVERRIDE semantics documented on Rule.
+	ListEnabledByEventForRepo(ctx context.Context, event, repoID string) ([]Rule, error)
 	SetEnabled(ctx context.Context, id string, enabled bool) error
 	Delete(ctx context.Context, id string) error
 	// DeleteByNotifier removes every rule targeting a given notifier target, so

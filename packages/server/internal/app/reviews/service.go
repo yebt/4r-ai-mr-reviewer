@@ -39,7 +39,7 @@ var ErrNotArchivable = errors.New("reviews: cannot archive a running review")
 // decoupled from any concrete notification backend (e.g. the notifications
 // fan-out over Telegram).
 type Notifier interface {
-	Notify(ctx context.Context, event, text string) error
+	Notify(ctx context.Context, event, repoID, text string) error
 }
 
 // Service orchestrates reviews.
@@ -174,7 +174,7 @@ func (s *Service) notifyFinished(rv review.Review, status review.Status, _ strin
 		}()
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		_ = s.notifier.Notify(ctx, notification.EventReviewFinished, text)
+		_ = s.notifier.Notify(ctx, notification.EventReviewFinished, rv.RepoID, text)
 	}()
 }
 

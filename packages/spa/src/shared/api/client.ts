@@ -192,7 +192,7 @@ export const api = {
   listNotificationEvents: () =>
     request<{ events: string[] }>('GET', '/notifications/events'),
   listNotificationRules: () => request<NotificationRule[]>('GET', '/notifications/rules'),
-  createNotificationRule: (input: { event: string; notifierId: string }) =>
+  createNotificationRule: (input: { event: string; notifierId: string; repoId?: string }) =>
     request<NotificationRule>('POST', '/notifications/rules', input),
   setNotificationRuleEnabled: (id: string, enabled: boolean) =>
     request<NotificationRule>('PATCH', `/notifications/rules/${id}`, { enabled }),

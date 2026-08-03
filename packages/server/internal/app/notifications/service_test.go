@@ -51,6 +51,14 @@ func (f *fakeSender) targets() []string {
 	return out
 }
 
+// reset clears recorded deliveries so a test can assert a second fan-out in
+// isolation.
+func (f *fakeSender) reset() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.sent = nil
+}
+
 func newService(t *testing.T, sender Sender) *Service {
 	t.Helper()
 	db, err := sqlite.Open(filepath.Join(t.TempDir(), "test.db"))
@@ -65,17 +73,17 @@ func TestAddRuleValidates(t *testing.T) {
 	ctx := context.Background()
 	s := newService(t, &fakeSender{})
 
-	if _, err := s.AddRule(ctx, "bogus.event", notification.NotifierTelegram, "tg-1"); err == nil {
+	if _, err := s.AddRule(ctx, "bogus.event", notification.NotifierTelegram, "tg-1", ""); err == nil {
 		t.Fatal("expected error for unknown event")
 	}
-	if _, err := s.AddRule(ctx, notification.EventReviewFinished, "slack", "tg-1"); err == nil {
+	if _, err := s.AddRule(ctx, notification.EventReviewFinished, "slack", "tg-1", ""); err == nil {
 		t.Fatal("expected error for unsupported notifier kind")
 	}
-	if _, err := s.AddRule(ctx, notification.EventReviewFinished, notification.NotifierTelegram, ""); err == nil {
+	if _, err := s.AddRule(ctx, notification.EventReviewFinished, notification.NotifierTelegram, "", ""); err == nil {
 		t.Fatal("expected error for empty notifierId")
 	}
 
-	rule, err := s.AddRule(ctx, notification.EventReviewFinished, notification.NotifierTelegram, "tg-1")
+	rule, err := s.AddRule(ctx, notification.EventReviewFinished, notification.NotifierTelegram, "tg-1", "")
 	if err != nil {
 		t.Fatalf("AddRule: %v", err)
 	}
@@ -88,7 +96,7 @@ func TestAddRuleRejectsMissingTarget(t *testing.T) {
 	ctx := context.Background()
 	s := newService(t, &fakeSender{missing: map[string]bool{"ghost": true}})
 
-	if _, err := s.AddRule(ctx, notification.EventReviewFinished, notification.NotifierTelegram, "ghost"); !errors.Is(err, ErrNotifierNotFound) {
+	if _, err := s.AddRule(ctx, notification.EventReviewFinished, notification.NotifierTelegram, "ghost", ""); !errors.Is(err, ErrNotifierNotFound) {
 		t.Fatalf("AddRule with missing target = %v, want ErrNotifierNotFound", err)
 	}
 }
@@ -97,10 +105,10 @@ func TestAddRuleRejectsDuplicate(t *testing.T) {
 	ctx := context.Background()
 	s := newService(t, &fakeSender{})
 
-	if _, err := s.AddRule(ctx, notification.EventReviewFinished, notification.NotifierTelegram, "tg-1"); err != nil {
+	if _, err := s.AddRule(ctx, notification.EventReviewFinished, notification.NotifierTelegram, "tg-1", ""); err != nil {
 		t.Fatalf("first AddRule: %v", err)
 	}
-	if _, err := s.AddRule(ctx, notification.EventReviewFinished, notification.NotifierTelegram, "tg-1"); !errors.Is(err, ErrDuplicateRule) {
+	if _, err := s.AddRule(ctx, notification.EventReviewFinished, notification.NotifierTelegram, "tg-1", ""); !errors.Is(err, ErrDuplicateRule) {
 		t.Fatalf("duplicate AddRule = %v, want ErrDuplicateRule", err)
 	}
 }
@@ -111,14 +119,14 @@ func TestNotifyFansOutToEnabledRules(t *testing.T) {
 	s := newService(t, sender)
 
 	// Two enabled rules for the event, one disabled, one for another event.
-	first, _ := s.AddRule(ctx, notification.EventReviewFinished, notification.NotifierTelegram, "tg-1")
-	second, _ := s.AddRule(ctx, notification.EventReviewFinished, notification.NotifierTelegram, "tg-2")
-	disabled, _ := s.AddRule(ctx, notification.EventReviewFinished, notification.NotifierTelegram, "tg-3")
+	first, _ := s.AddRule(ctx, notification.EventReviewFinished, notification.NotifierTelegram, "tg-1", "")
+	second, _ := s.AddRule(ctx, notification.EventReviewFinished, notification.NotifierTelegram, "tg-2", "")
+	disabled, _ := s.AddRule(ctx, notification.EventReviewFinished, notification.NotifierTelegram, "tg-3", "")
 	if err := s.SetRuleEnabled(ctx, disabled.ID, false); err != nil {
 		t.Fatalf("SetRuleEnabled: %v", err)
 	}
 
-	if err := s.Notify(ctx, notification.EventReviewFinished, "review done"); err != nil {
+	if err := s.Notify(ctx, notification.EventReviewFinished, "", "review done"); err != nil {
 		t.Fatalf("Notify: %v", err)
 	}
 
@@ -135,12 +143,12 @@ func TestNotifyIsBestEffort(t *testing.T) {
 	sender := &fakeSender{err: context.DeadlineExceeded}
 	s := newService(t, sender)
 
-	if _, err := s.AddRule(ctx, notification.EventReviewFinished, notification.NotifierTelegram, "tg-1"); err != nil {
+	if _, err := s.AddRule(ctx, notification.EventReviewFinished, notification.NotifierTelegram, "tg-1", ""); err != nil {
 		t.Fatalf("AddRule: %v", err)
 	}
 
 	// A failing sender must never surface as a Notify error.
-	if err := s.Notify(ctx, notification.EventReviewFinished, "boom"); err != nil {
+	if err := s.Notify(ctx, notification.EventReviewFinished, "", "boom"); err != nil {
 		t.Fatalf("Notify must be best-effort, got %v", err)
 	}
 }
@@ -150,12 +158,12 @@ func TestSetRuleEnabledDisables(t *testing.T) {
 	sender := &fakeSender{}
 	s := newService(t, sender)
 
-	rule, _ := s.AddRule(ctx, notification.EventReviewFinished, notification.NotifierTelegram, "tg-1")
+	rule, _ := s.AddRule(ctx, notification.EventReviewFinished, notification.NotifierTelegram, "tg-1", "")
 	if err := s.SetRuleEnabled(ctx, rule.ID, false); err != nil {
 		t.Fatalf("SetRuleEnabled: %v", err)
 	}
 
-	if err := s.Notify(ctx, notification.EventReviewFinished, "review done"); err != nil {
+	if err := s.Notify(ctx, notification.EventReviewFinished, "", "review done"); err != nil {
 		t.Fatalf("Notify: %v", err)
 	}
 	if len(sender.targets()) != 0 {
@@ -163,14 +171,51 @@ func TestSetRuleEnabledDisables(t *testing.T) {
 	}
 }
 
+// TestNotifyRepoScopeOverridesGlobal proves the OVERRIDE routing: a repo with
+// its own enabled rule receives ONLY that rule (the global rule is skipped for
+// it), while a repo without a scoped rule falls back to the global rule.
+func TestNotifyRepoScopeOverridesGlobal(t *testing.T) {
+	ctx := context.Background()
+	sender := &fakeSender{}
+	s := newService(t, sender)
+
+	// A global rule and a repo-scoped rule (repo "X") for the same event. They
+	// coexist because uniqueness is per (event, repoId, notifierId).
+	global, err := s.AddRule(ctx, notification.EventReviewFinished, notification.NotifierTelegram, "tg-global", "")
+	if err != nil {
+		t.Fatalf("AddRule global: %v", err)
+	}
+	scoped, err := s.AddRule(ctx, notification.EventReviewFinished, notification.NotifierTelegram, "tg-repo-x", "X")
+	if err != nil {
+		t.Fatalf("AddRule scoped: %v", err)
+	}
+
+	// Event for repo X: only the repo-scoped target fires; the global is overridden.
+	if err := s.Notify(ctx, notification.EventReviewFinished, "X", "for x"); err != nil {
+		t.Fatalf("Notify X: %v", err)
+	}
+	if got := sender.targets(); len(got) != 1 || got[0] != scoped.NotifierID {
+		t.Fatalf("repo X targets = %v, want only %s (repo-scoped overrides global)", got, scoped.NotifierID)
+	}
+
+	// Event for repo Y (no scoped rule): falls back to the global target.
+	sender.reset()
+	if err := s.Notify(ctx, notification.EventReviewFinished, "Y", "for y"); err != nil {
+		t.Fatalf("Notify Y: %v", err)
+	}
+	if got := sender.targets(); len(got) != 1 || got[0] != global.NotifierID {
+		t.Fatalf("repo Y targets = %v, want only %s (global fallback)", got, global.NotifierID)
+	}
+}
+
 func TestRemoveRulesForNotifier(t *testing.T) {
 	ctx := context.Background()
 	s := newService(t, &fakeSender{})
 
-	if _, err := s.AddRule(ctx, notification.EventReviewFinished, notification.NotifierTelegram, "tg-1"); err != nil {
+	if _, err := s.AddRule(ctx, notification.EventReviewFinished, notification.NotifierTelegram, "tg-1", ""); err != nil {
 		t.Fatalf("AddRule: %v", err)
 	}
-	keep, _ := s.AddRule(ctx, notification.EventReviewFinished, notification.NotifierTelegram, "tg-2")
+	keep, _ := s.AddRule(ctx, notification.EventReviewFinished, notification.NotifierTelegram, "tg-2", "")
 
 	if err := s.RemoveRulesForNotifier(ctx, notification.NotifierTelegram, "tg-1"); err != nil {
 		t.Fatalf("RemoveRulesForNotifier: %v", err)

@@ -26,7 +26,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
     }
   }
 
-  async function add(input: { event: string; notifierId: string }) {
+  async function add(input: { event: string; notifierId: string; repoId?: string }) {
     const created = await api.createNotificationRule(input)
     rules.value = [...rules.value, created]
     return created

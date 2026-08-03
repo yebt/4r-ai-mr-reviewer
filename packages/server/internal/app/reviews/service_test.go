@@ -548,7 +548,7 @@ func newFakeNotifier() *fakeNotifier {
 	return &fakeNotifier{calls: make(chan notifiedEvent, 8)}
 }
 
-func (f *fakeNotifier) Notify(_ context.Context, event, text string) error {
+func (f *fakeNotifier) Notify(_ context.Context, event, _, text string) error {
 	f.calls <- notifiedEvent{event: event, text: text}
 	return nil
 }

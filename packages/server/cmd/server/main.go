@@ -140,10 +140,10 @@ type releaseNotifier struct {
 	svc *notifications.Service
 }
 
-// Notify fans the release summary out to every rule subscribed to
-// release.finished.
-func (n releaseNotifier) Notify(ctx context.Context, text string) error {
-	return n.svc.Notify(ctx, notification.EventReleaseFinished, text)
+// Notify fans the release summary out to the rules subscribed to
+// release.finished for repoID (a repo's own rules override the global ones).
+func (n releaseNotifier) Notify(ctx context.Context, repoID, text string) error {
+	return n.svc.Notify(ctx, notification.EventReleaseFinished, repoID, text)
 }
 
 // unlockVault initializes the secret vault on first run, or unlocks it, and

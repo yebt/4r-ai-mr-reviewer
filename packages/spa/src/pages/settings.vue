@@ -10,10 +10,12 @@ import DependencyAlert from '@shared/components/ui/DependencyAlert.vue'
 import type { NotificationRule } from '@shared/api/types'
 import { useNotificationsStore } from '@modules/notifications/store'
 import { useTelegramStore } from '@modules/telegram/store'
+import { useReposStore } from '@modules/repos/store'
 import { isEventRouted } from '@modules/notifications/events'
 
 const store = useNotificationsStore()
 const telegram = useTelegramStore()
+const repos = useReposStore()
 
 // Friendly labels for known events; unknown events fall back to their raw key.
 const EVENT_LABELS: Record<string, string> = {
@@ -28,8 +30,17 @@ function targetName(notifierId: string): string | null {
   return telegram.items.find((t) => t.id === notifierId)?.name ?? null
 }
 
+// A rule's scope label: "All repos" when global (empty repoId), otherwise the
+// repo's name (falling back to a "(deleted repo)" marker if it no longer exists).
+function scopeLabel(repoId: string): string {
+  if (repoId === '') return 'All repos'
+  return repos.items.find((r) => r.id === repoId)?.name ?? '(deleted repo)'
+}
+
 const newEvent = ref('')
 const newTarget = ref('')
+// '' = global scope ("All repositories"); otherwise a repo id.
+const newRepo = ref('')
 const busyId = ref<string | null>(null)
 
 const hasTargets = computed(() => telegram.items.length > 0)
@@ -50,9 +61,10 @@ const eventStatuses = computed(() =>
 async function addRule() {
   if (!canAdd.value) return
   try {
-    await store.add({ event: newEvent.value, notifierId: newTarget.value })
+    await store.add({ event: newEvent.value, notifierId: newTarget.value, repoId: newRepo.value })
     newEvent.value = ''
     newTarget.value = ''
+    newRepo.value = ''
     toast.success('Notification rule added')
   } catch (e) {
     toast.error(errorMessage(e))
@@ -94,6 +106,8 @@ onMounted(() => {
   // Always refetch targets so a name resolved here can't go stale (e.g. a target
   // deleted in another tab) and silently show a name for a deleted notifier.
   telegram.fetchAll()
+  // Repos back the optional per-repo scope selector and its row labels.
+  repos.fetchAll()
 })
 </script>
 
@@ -130,6 +144,13 @@ onMounted(() => {
             <option v-for="t in telegram.items" :key="t.id" :value="t.id">{{ t.name }}</option>
           </select>
         </div>
+        <div class="min-w-40 flex-1">
+          <label class="field-label" for="nt-repo">Scope</label>
+          <select id="nt-repo" v-model="newRepo" class="field-underline">
+            <option value="">All repositories</option>
+            <option v-for="r in repos.items" :key="r.id" :value="r.id">{{ r.name }}</option>
+          </select>
+        </div>
         <button class="btn-line shrink-0 text-xs" :disabled="!canAdd" @click="addRule">Add</button>
       </div>
 
@@ -153,6 +174,14 @@ onMounted(() => {
                 {{ targetName(rule.notifierId) }}
               </span>
               <span v-else class="text-muted italic">(deleted target)</span>
+            </div>
+            <div class="text-muted mt-0.5 flex items-center gap-1 text-xs">
+              <span
+                :class="rule.repoId === '' ? 'i-lucide-globe' : 'i-lucide-folder-git-2'"
+                class="shrink-0 text-xs"
+                aria-hidden="true"
+              />
+              <span class="truncate">{{ scopeLabel(rule.repoId) }}</span>
             </div>
           </div>
           <div class="flex shrink-0 items-center gap-1">

@@ -90,7 +90,7 @@ var errNothingToRelease = errors.New("routines: no releasable commits")
 // routine finishes. It is optional: a nil notifier disables notification (the
 // notify step just logs). Real routing (e.g. Telegram) is wired in a later slice.
 type ReleaseNotifier interface {
-	Notify(ctx context.Context, text string) error
+	Notify(ctx context.Context, repoID, text string) error
 }
 
 // Service computes routine preflights and drives routine runs for tracked repos.
@@ -1578,7 +1578,7 @@ func (s *Service) runReleaseStep(ctx context.Context, gl *gitlab.Client, project
 			s.logger.Printf("routines: release %s notification skipped (no notifier configured)", state.NextTag+tagSuffix(params.Flow))
 			return "No notifier configured", nil
 		}
-		if err := s.notifier.Notify(ctx, summary); err != nil {
+		if err := s.notifier.Notify(ctx, run.RepoID, summary); err != nil {
 			s.logger.Printf("routines: notify failed for MR !%d: %v", mrIID, err)
 			return "Notification failed (ignored)", nil
 		}

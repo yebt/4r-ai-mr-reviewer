@@ -7,6 +7,7 @@ import (
 
 	"github.com/webcloster-dev/ai-reviewer/internal/app/notifications"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/notification"
+	"github.com/webcloster-dev/ai-reviewer/internal/domain/repo"
 )
 
 // --- notifications ---
@@ -36,6 +37,7 @@ func (s *Server) createNotificationRule(w http.ResponseWriter, r *http.Request) 
 		Event        string `json:"event"`
 		NotifierID   string `json:"notifierId"`
 		NotifierKind string `json:"notifierKind"`
+		RepoID       string `json:"repoId"`
 	}
 	if err := decode(r, &in); err != nil {
 		writeErr(w, err, http.StatusBadRequest)
@@ -45,7 +47,20 @@ func (s *Server) createNotificationRule(w http.ResponseWriter, r *http.Request) 
 	if kind == "" {
 		kind = notification.NotifierTelegram
 	}
-	rule, err := s.notifications.AddRule(r.Context(), in.Event, kind, in.NotifierID)
+	// A non-empty repoId scopes the rule to one repo; reject an unknown repo so a
+	// rule can never point at a repo that does not exist. An empty repoId is a
+	// global rule and skips this check.
+	if in.RepoID != "" {
+		if _, err := s.repos.Get(r.Context(), in.RepoID); err != nil {
+			if errors.Is(err, repo.ErrNotFound) {
+				writeErr(w, err, http.StatusNotFound)
+				return
+			}
+			writeErr(w, err, http.StatusInternalServerError)
+			return
+		}
+	}
+	rule, err := s.notifications.AddRule(r.Context(), in.Event, kind, in.NotifierID, in.RepoID)
 	if err != nil {
 		// A duplicate is a conflict; every other validation failure is a 400.
 		if errors.Is(err, notifications.ErrDuplicateRule) {
@@ -90,17 +105,19 @@ func (s *Server) deleteNotificationRule(w http.ResponseWriter, r *http.Request) 
 // --- response DTO ---
 
 type notificationRuleResp struct {
-	ID           string    `json:"id"`
-	Event        string    `json:"event"`
-	NotifierKind string    `json:"notifierKind"`
-	NotifierID   string    `json:"notifierId"`
-	Enabled      bool      `json:"enabled"`
-	CreatedAt    time.Time `json:"createdAt"`
+	ID           string `json:"id"`
+	Event        string `json:"event"`
+	NotifierKind string `json:"notifierKind"`
+	NotifierID   string `json:"notifierId"`
+	// RepoID is the repo the rule is scoped to, or "" for a global rule.
+	RepoID    string    `json:"repoId"`
+	Enabled   bool      `json:"enabled"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 func toNotificationRule(rule notification.Rule) notificationRuleResp {
 	return notificationRuleResp{
 		ID: rule.ID, Event: rule.Event, NotifierKind: rule.NotifierKind,
-		NotifierID: rule.NotifierID, Enabled: rule.Enabled, CreatedAt: rule.CreatedAt,
+		NotifierID: rule.NotifierID, RepoID: rule.RepoID, Enabled: rule.Enabled, CreatedAt: rule.CreatedAt,
 	}
 }

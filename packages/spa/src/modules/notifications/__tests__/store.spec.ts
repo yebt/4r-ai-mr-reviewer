@@ -28,6 +28,7 @@ const rule = (id: string, enabled = true) => ({
   event: 'review.finished',
   notifierKind: 'telegram',
   notifierId: `tg-${id}`,
+  repoId: '',
   enabled,
   createdAt: '',
 })
@@ -64,10 +65,11 @@ describe('notifications store', () => {
     mocked.createNotificationRule.mockResolvedValue(created)
     const store = useNotificationsStore()
     store.rules = [rule('1')]
-    await store.add({ event: 'review.finished', notifierId: 'tg-3' })
+    await store.add({ event: 'review.finished', notifierId: 'tg-3', repoId: 'repo-x' })
     expect(mocked.createNotificationRule).toHaveBeenCalledWith({
       event: 'review.finished',
       notifierId: 'tg-3',
+      repoId: 'repo-x',
     })
     expect(store.rules.map((r) => r.id)).toEqual(['1', '3'])
   })

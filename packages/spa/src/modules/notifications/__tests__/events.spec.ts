@@ -7,6 +7,7 @@ const rule = (event: string, enabled = true): NotificationRule => ({
   event,
   notifierKind: 'telegram',
   notifierId: 'tg-1',
+  repoId: '',
   enabled,
   createdAt: '',
 })
