@@ -555,6 +555,88 @@ func TestResumeRejectsNonBlockedRun(t *testing.T) {
 	}
 }
 
+// seedBlockedWithFailedStep inserts a blocked run whose named step is failed and
+// all steps before it are done, mirroring what execute leaves after a block.
+func seedBlockedWithFailedStep(t *testing.T, ctx context.Context, svc *Service, repoID, failedStep string) string {
+	t.Helper()
+	steps := make([]routine.Step, 0, 3)
+	for _, name := range []string{stepReact, stepApprove, stepTag} {
+		s := routine.Step{Name: name, Status: routine.StepDone}
+		if name == failedStep {
+			s.Status = routine.StepFailed
+			s.Detail = "boom"
+		}
+		steps = append(steps, s)
+	}
+	runID := "blocked-" + failedStep
+	run := routine.Run{
+		ID:        runID,
+		Kind:      routine.KindRelease,
+		RepoID:    repoID,
+		MRIID:     7,
+		Status:    routine.RunBlocked,
+		LastError: "boom",
+		Params:    json.RawMessage("{}"),
+		State:     json.RawMessage("{}"),
+		Steps:     steps,
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+	}
+	if err := svc.runs.Create(ctx, run); err != nil {
+		t.Fatalf("seed blocked run: %v", err)
+	}
+	return runID
+}
+
+func TestSkipMarksSafeStepAndRequeues(t *testing.T) {
+	ctx, svc, repoID := setupRoutinesTest(t, "https://gitlab.test")
+	runID := seedBlockedWithFailedStep(t, ctx, svc, repoID, stepReact)
+
+	got, err := svc.Skip(ctx, runID)
+	if err != nil {
+		t.Fatalf("Skip(react) = %v, want nil", err)
+	}
+	if got.Status != routine.RunPending {
+		t.Fatalf("status = %q, want pending", got.Status)
+	}
+	if got.LastError != "" {
+		t.Errorf("last_error = %q, want cleared", got.LastError)
+	}
+	if stepByName(t, got, stepReact).Status != routine.StepSkipped {
+		t.Fatalf("react step = %q, want skipped", stepByName(t, got, stepReact).Status)
+	}
+}
+
+func TestSkipRejectsEssentialStep(t *testing.T) {
+	ctx, svc, repoID := setupRoutinesTest(t, "https://gitlab.test")
+	runID := seedBlockedWithFailedStep(t, ctx, svc, repoID, stepTag)
+
+	if _, err := svc.Skip(ctx, runID); !errors.Is(err, routine.ErrStepNotSkippable) {
+		t.Fatalf("Skip(tag) = %v, want ErrStepNotSkippable", err)
+	}
+	// The run must remain blocked, untouched.
+	got, _ := svc.Get(ctx, runID)
+	if got.Status != routine.RunBlocked {
+		t.Fatalf("status = %q, want still blocked", got.Status)
+	}
+}
+
+func TestSkipRejectsNonBlockedRun(t *testing.T) {
+	ctx, svc, repoID := setupRoutinesTest(t, "https://gitlab.test")
+	run := routine.Run{
+		ID: "pending-run", Kind: routine.KindRelease, RepoID: repoID, MRIID: 7,
+		Status: routine.RunPending, Params: json.RawMessage("{}"), State: json.RawMessage("{}"),
+		Steps:     []routine.Step{{Name: stepReact, Status: routine.StepPending}},
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}
+	if err := svc.runs.Create(ctx, run); err != nil {
+		t.Fatalf("seed pending run: %v", err)
+	}
+	if _, err := svc.Skip(ctx, run.ID); !errors.Is(err, routine.ErrNotResumable) {
+		t.Fatalf("Skip(pending) = %v, want ErrNotResumable", err)
+	}
+}
+
 func TestCreateApproveAndTagRejectsBadBump(t *testing.T) {
 	st := &fakeGitLabState{targetBranch: "main"}
 	srv := newFakeApproveGitLab(t, st)

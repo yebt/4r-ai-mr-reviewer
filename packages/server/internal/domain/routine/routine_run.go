@@ -98,6 +98,12 @@ var ErrRunFinalized = errors.New("routine: run is finalized")
 // ErrNotResumable is returned when a run cannot be resumed (it is not blocked).
 var ErrNotResumable = errors.New("routine: run is not resumable")
 
+// ErrStepNotSkippable is returned when Skip targets a blocked run whose failed
+// step is essential (e.g. compute_tag, merge, tag) and cannot be safely skipped.
+// Only cosmetic/non-critical steps (react, approve, notify) may be skipped. The
+// HTTP layer maps it to 409 Conflict.
+var ErrStepNotSkippable = errors.New("routine: the failed step cannot be skipped")
+
 // ErrRunNotCancelable is returned when a run cannot be cancelled because it has
 // already reached a terminal status (done or cancelled). The HTTP layer maps it
 // to 409 Conflict.

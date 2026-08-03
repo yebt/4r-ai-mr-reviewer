@@ -252,6 +252,27 @@ func (s *Server) resumeRoutine(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, toRun(run))
 }
 
+// skipRoutine marks a blocked run's failed step as skipped and re-queues it. A
+// non-blocked run or an essential (non-skippable) failed step → 409; an unknown
+// run → 404; any other error → 500.
+func (s *Server) skipRoutine(w http.ResponseWriter, r *http.Request) {
+	run, err := s.routines.Skip(r.Context(), r.PathValue("id"))
+	if err != nil {
+		switch {
+		case errors.Is(err, routine.ErrNotResumable),
+			errors.Is(err, routine.ErrStepNotSkippable),
+			errors.Is(err, routine.ErrRunFinalized):
+			writeErr(w, err, http.StatusConflict)
+		case errors.Is(err, routine.ErrRunNotFound):
+			writeErr(w, err, http.StatusNotFound)
+		default:
+			writeErr(w, err, http.StatusInternalServerError)
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, toRun(run))
+}
+
 // cancelRoutine aborts a routine run and returns the updated run. A terminal run
 // (done or cancelled) → 409; an unknown run → 404; any other error → 500.
 func (s *Server) cancelRoutine(w http.ResponseWriter, r *http.Request) {

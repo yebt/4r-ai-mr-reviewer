@@ -789,6 +789,65 @@ func (s *Service) Resume(ctx context.Context, runID string) (routine.Run, error)
 	return run, nil
 }
 
+// skippableSteps are the steps a blocked run may skip: cosmetic or non-critical
+// actions whose omission does not break a downstream invariant. Essential steps
+// (verify, compute_tag, create_mr, confirm, wait_pipeline, merge, tag) are NOT
+// skippable — skipping them would merge unverified code, tag a wrong version, or
+// leave the release half-done.
+var skippableSteps = map[string]bool{
+	stepReact:   true,
+	stepComment: true,
+	stepApprove: true,
+	stepNotify:  true,
+}
+
+// Skip marks a blocked run's FAILED step as skipped and re-queues the run so the
+// worker proceeds to the next step. It is the "skip this step" counterpart to
+// Resume (which retries the failed step). Only a blocked run whose failed step is
+// in skippableSteps may be skipped:
+//   - a non-blocked run returns routine.ErrNotResumable;
+//   - a blocked run whose failed step is essential returns
+//     routine.ErrStepNotSkippable.
+//
+// The failed step exists because a blocked run always has exactly one step in
+// StepFailed (the step that blocked it). Marking it StepSkipped makes the execute
+// loop skip it (like a done step) on the next pass.
+func (s *Service) Skip(ctx context.Context, runID string) (routine.Run, error) {
+	run, err := s.runs.Get(ctx, runID)
+	if err != nil {
+		return routine.Run{}, err
+	}
+	if run.Status != routine.RunBlocked {
+		return routine.Run{}, routine.ErrNotResumable
+	}
+	idx := -1
+	for i := range run.Steps {
+		if run.Steps[i].Status == routine.StepFailed {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		// A blocked run without a failed step is a contract violation; treat it as
+		// not resumable rather than skipping an arbitrary step.
+		return routine.Run{}, routine.ErrNotResumable
+	}
+	if !skippableSteps[run.Steps[idx].Name] {
+		return routine.Run{}, routine.ErrStepNotSkippable
+	}
+
+	run.Steps[idx].Status = routine.StepSkipped
+	run.Steps[idx].Detail = "skipped by user"
+	run.Steps[idx].UpdatedAt = time.Now().UTC()
+	run.Status = routine.RunPending
+	run.LastError = ""
+	if err := s.runs.Save(ctx, run); err != nil {
+		return routine.Run{}, err
+	}
+	s.wake()
+	return run, nil
+}
+
 // Cancel aborts a routine run and returns its updated state. The transition to
 // cancelled is an ATOMIC compare-and-set on the DB row, so it is race-free
 // against both ClaimPending and the worker's per-step Saves:

@@ -61,17 +61,23 @@ func (c *Client) AwardEmoji(ctx context.Context, projectID string, iid int, name
 }
 
 // alreadyAwarded reports whether an award_emoji APIError means the reaction was
-// already present. GitLab answers a duplicate award with 404 or 409 and a body
-// mentioning it is "already" awarded/taken.
+// already present. GitLab answers a duplicate award inconsistently across
+// versions — 400, 404 or 409 — with a body mentioning the emoji is "already"
+// awarded or "has already been taken". Any of those statuses paired with such a
+// body is treated as an already-present reaction (success), so a re-run does not
+// fail on a reaction a previous pass set.
 func alreadyAwarded(err error) bool {
 	var apiErr *APIError
 	if !errors.As(err, &apiErr) {
 		return false
 	}
-	if apiErr.Status != http.StatusNotFound && apiErr.Status != http.StatusConflict {
+	switch apiErr.Status {
+	case http.StatusBadRequest, http.StatusNotFound, http.StatusConflict:
+	default:
 		return false
 	}
-	return strings.Contains(strings.ToLower(apiErr.Body), "already")
+	body := strings.ToLower(apiErr.Body)
+	return strings.Contains(body, "already") || strings.Contains(body, "has already been taken")
 }
 
 // ApproveMergeRequest records the caller's approval on a merge request. It is

@@ -152,6 +152,30 @@ func TestAwardEmojiAlreadyAwardedIsSuccess(t *testing.T) {
 	}
 }
 
+// TestAwardEmojiAlready400IsSuccess: some GitLab versions answer a duplicate
+// award with 400 "has already been taken" (not 404/409). That must still be
+// treated as an already-present reaction (success), so the react step does not
+// block when a previous pass already reacted.
+func TestAwardEmojiAlready400IsSuccess(t *testing.T) {
+	srv := cannedServer(t, http.StatusBadRequest, `{"message":{"name":["has already been taken"]}}`)
+	c := NewClient(srv.URL, "tok")
+	if err := c.AwardEmoji(context.Background(), "g/p", 7, "thumbsup"); err != nil {
+		t.Fatalf("already-taken 400 should be nil, got %v", err)
+	}
+}
+
+// TestAwardEmojiBadRequestWithoutAlreadyIsError: a 400 that is NOT about a
+// duplicate must surface, not be swallowed as idempotency.
+func TestAwardEmojiBadRequestWithoutAlreadyIsError(t *testing.T) {
+	srv := cannedServer(t, http.StatusBadRequest, `{"message":"400 Bad Request"}`)
+	c := NewClient(srv.URL, "tok")
+	err := c.AwardEmoji(context.Background(), "g/p", 7, "thumbsup")
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.Status != http.StatusBadRequest {
+		t.Fatalf("400 without 'already' must surface as APIError, got %v", err)
+	}
+}
+
 // TestAwardEmojiForbiddenIsError: a 403 is a real failure (no token permission)
 // and must NOT be swallowed as if it were a duplicate award.
 func TestAwardEmojiForbiddenIsError(t *testing.T) {
