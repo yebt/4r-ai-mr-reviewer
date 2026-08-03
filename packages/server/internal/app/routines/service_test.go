@@ -1423,13 +1423,29 @@ func TestReleaseNotifyStepSendsInformativeSummary(t *testing.T) {
 		t.Fatal("notifier was not called")
 	}
 	// The repo created by setupRoutinesTest is named "web"; the dev flow tags a
-	// "-dev" prerelease and drives MR !7.
-	if !strings.HasPrefix(n.text, "Release ") {
-		t.Errorf("summary %q, want it to start with %q", n.text, "Release ")
+	// "-dev" prerelease and drives MR !7. The summary is a structured, multi-line
+	// message naming the tag, repo, flow, and merged MR.
+	if !strings.Contains(n.text, "Release ") {
+		t.Errorf("summary %q, want it to mention %q", n.text, "Release ")
 	}
-	for _, want := range []string{"completed for web", "(development flow)", "MR !7 merged", "-dev"} {
+	for _, want := range []string{"web", "dev release", "MR !7 merged", "-dev"} {
 		if !strings.Contains(n.text, want) {
 			t.Errorf("summary %q, want it to contain %q", n.text, want)
+		}
+	}
+}
+
+func TestReleaseSummaryFormat(t *testing.T) {
+	got := releaseSummary("v1.2.3", "my-repo", flowDevelopment, 42, 1, 0)
+	want := "🚀 Release v1.2.3\n📦 my-repo · dev release\n🔀 MR !42 merged\n📝 1 feature, 0 fixes"
+	if got != want {
+		t.Errorf("releaseSummary =\n%q\nwant\n%q", got, want)
+	}
+	// Main flow uses the "main release" noun; pluralization switches at 1.
+	main := releaseSummary("v2.0.0", "svc", flowMain, 7, 3, 2)
+	for _, want := range []string{"🚀 Release v2.0.0", "svc · main release", "MR !7 merged", "3 features, 2 fixes"} {
+		if !strings.Contains(main, want) {
+			t.Errorf("main summary %q, want it to contain %q", main, want)
 		}
 	}
 }

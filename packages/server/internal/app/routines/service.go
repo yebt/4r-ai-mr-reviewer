@@ -228,6 +228,35 @@ func tagSuffix(flow string) string {
 	return "-dev"
 }
 
+// flowNoun is a human label for a release flow, used in messages ("main
+// release" / "dev release").
+func flowNoun(flow string) string {
+	if flow == flowMain {
+		return "main release"
+	}
+	return "dev release"
+}
+
+// countPhrase renders a pluralized "N thing" phrase ("1 feature", "0 fixes").
+func countPhrase(n int, one, many string) string {
+	if n == 1 {
+		return fmt.Sprintf("%d %s", n, one)
+	}
+	return fmt.Sprintf("%d %s", n, many)
+}
+
+// releaseSummary builds the human-facing release notification: a compact,
+// structured, multi-line message (the tag, repo, flow, merged MR and a
+// feat/fix count) that reads cleanly in a chat client.
+func releaseSummary(tag, repoName, flow string, mrIID, featCount, fixCount int) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "🚀 Release %s\n", tag)
+	fmt.Fprintf(&b, "📦 %s · %s\n", repoName, flowNoun(flow))
+	fmt.Fprintf(&b, "🔀 MR !%d merged\n", mrIID)
+	fmt.Fprintf(&b, "📝 %s, %s", countPhrase(featCount, "feature", "features"), countPhrase(fixCount, "fix", "fixes"))
+	return b.String()
+}
+
 // Preflight probes a repo's GitLab project and reports which routine actions the
 // account's token and access level permit. It returns repo.ErrNotFound when the
 // repo is unknown.
@@ -1438,14 +1467,14 @@ func (s *Service) runReleaseStep(ctx context.Context, gl *gitlab.Client, project
 				return "", fmt.Errorf("award emoji %q: %w", emoji, err)
 			}
 		}
-		return "reacted", nil
+		return countPhrase(len(params.Emojis), "reaction added", "reactions added"), nil
 
 	case stepApprove:
 		// ApproveMergeRequest is idempotent (already-approved is swallowed).
 		if err := gl.ApproveMergeRequest(ctx, projectID, mrIID); err != nil {
 			return "", fmt.Errorf("approve merge request: %w", err)
 		}
-		return "approved", nil
+		return "Merge request approved", nil
 
 	case stepComputeTag:
 		if params.Flow == flowMain {
@@ -1487,7 +1516,7 @@ func (s *Service) runReleaseStep(ctx context.Context, gl *gitlab.Client, project
 				return "", fmt.Errorf("checkpoint computed tag: %w", err)
 			}
 		}
-		return fmt.Sprintf("next release %s (feat %d, fix %d)", state.NextTag, state.FeatCount, state.FixCount), nil
+		return fmt.Sprintf("Next version %s — %s, %s", state.NextTag, countPhrase(state.FeatCount, "feature", "features"), countPhrase(state.FixCount, "fix", "fixes")), nil
 
 	case stepCreateMR:
 		return s.runCreateMRStep(ctx, gl, projectID, params, state, checkpoint)
@@ -1522,12 +1551,12 @@ func (s *Service) runReleaseStep(ctx context.Context, gl *gitlab.Client, project
 			existing = append(existing, t.Name)
 		}
 		if tagExists(existing, finalName) {
-			return fmt.Sprintf("tag %s already exists", finalName), nil
+			return fmt.Sprintf("%s already tagged", finalName), nil
 		}
 		if err := gl.CreateTag(ctx, projectID, finalName, state.MergeSHA, ""); err != nil {
 			return "", fmt.Errorf("create tag %s: %w", finalName, err)
 		}
-		return fmt.Sprintf("created tag %s", finalName), nil
+		return fmt.Sprintf("Tagged %s", finalName), nil
 
 	case stepNotify:
 		// Best-effort: a notify failure must NEVER fail the run.
@@ -1544,16 +1573,16 @@ func (s *Service) runReleaseStep(ctx context.Context, gl *gitlab.Client, project
 		if rp, err := s.repos.Get(ctx, run.RepoID); err == nil && rp.Name != "" {
 			repoName = rp.Name
 		}
-		summary := fmt.Sprintf("Release %s completed for %s (%s flow), MR !%d merged", state.NextTag+tagSuffix(params.Flow), repoName, flow, mrIID)
+		summary := releaseSummary(state.NextTag+tagSuffix(params.Flow), repoName, flow, mrIID, state.FeatCount, state.FixCount)
 		if s.notifier == nil {
-			s.logger.Printf("routines: %s (no notifier configured)", summary)
-			return "notify skipped (no notifier)", nil
+			s.logger.Printf("routines: release %s notification skipped (no notifier configured)", state.NextTag+tagSuffix(params.Flow))
+			return "No notifier configured", nil
 		}
 		if err := s.notifier.Notify(ctx, summary); err != nil {
 			s.logger.Printf("routines: notify failed for MR !%d: %v", mrIID, err)
-			return "notify failed (ignored)", nil
+			return "Notification failed (ignored)", nil
 		}
-		return "notified", nil
+		return "Notification sent", nil
 
 	default:
 		return "", fmt.Errorf("unknown step %q", name)
