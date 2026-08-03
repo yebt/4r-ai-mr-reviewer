@@ -1,0 +1,1 @@
+ALTER TABLE reviews ADD COLUMN raw_output TEXT NOT NULL DEFAULT '';

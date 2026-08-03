@@ -69,6 +69,11 @@ async function humanizeAll() {
 const reviewId = computed(() => (route.params as { id: string }).id)
 const review = computed(() => store.current)
 
+// On a failed review the backend may have captured the raw model output (when
+// the failure was an unparseable response). Collapsed by default — it can be
+// long — and only shown when present.
+const rawOutputOpen = ref(false)
+
 // Tab title: the reviewed MR plus its repo (e.g. "Review !42 · my-repo"), so a
 // Review tab is identifiable at a glance. Falls back to the generic label from
 // definePage while the review is still loading.
@@ -512,6 +517,33 @@ async function remove() {
 
       <div v-else-if="review.status === 'error'" class="flex flex-col items-start gap-3">
         <p class="text-danger text-sm">{{ review.error || 'Review failed.' }}</p>
+
+        <!-- Raw model output: captured when the failure was an unparseable
+             response. Additional to the error message above; collapsed by
+             default since it can be long. -->
+        <div v-if="review.rawOutput" class="border-line/50 w-full border">
+          <button
+            type="button"
+            class="text-ink flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm"
+            :aria-expanded="rawOutputOpen"
+            @click="rawOutputOpen = !rawOutputOpen"
+          >
+            <span class="flex items-center gap-2">
+              <span class="i-lucide-file-code text-muted text-sm" aria-hidden="true" />
+              Raw model output
+            </span>
+            <span
+              class="i-lucide-chevron-down text-muted text-sm transition-transform"
+              :class="rawOutputOpen ? 'rotate-180' : ''"
+              aria-hidden="true"
+            />
+          </button>
+          <pre
+            v-show="rawOutputOpen"
+            class="text-muted bg-surface border-line/50 max-h-96 overflow-auto border-t px-3 py-2 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap"
+          >{{ review.rawOutput }}</pre>
+        </div>
+
         <button class="btn-line" @click="retry">
           <span class="i-lucide-refresh-cw text-sm" aria-hidden="true" />
           Retry (clones the review)

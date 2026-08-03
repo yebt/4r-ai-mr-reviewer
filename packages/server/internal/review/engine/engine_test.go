@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -151,5 +152,25 @@ func TestRunMalformedOutputIsError(t *testing.T) {
 	fc := &fakeClient{content: "I could not produce JSON, sorry."}
 	if _, err := e.Run(context.Background(), fc, RunParams{Model: "m", In: sampleInput()}); err == nil {
 		t.Fatal("expected parse error for non-JSON output")
+	}
+}
+
+// TestParseResponseParseError asserts a decode failure yields a *ParseError that
+// carries the full raw model output, discoverable via errors.As even when the
+// caller wraps it.
+func TestParseResponseParseError(t *testing.T) {
+	const junk = "not json"
+	_, _, err := parseResponse(junk)
+	if err == nil {
+		t.Fatal("expected an error for non-JSON output")
+	}
+	// Wrap it the way multipass/engine do to prove errors.As still unwraps it.
+	wrapped := fmt.Errorf("engine: risk pass: %w", err)
+	var pe *ParseError
+	if !errors.As(wrapped, &pe) {
+		t.Fatalf("errors.As did not find *ParseError in %v", wrapped)
+	}
+	if pe.Raw != junk {
+		t.Fatalf("ParseError.Raw = %q, want %q", pe.Raw, junk)
 	}
 }

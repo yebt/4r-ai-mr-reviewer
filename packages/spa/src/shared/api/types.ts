@@ -340,6 +340,9 @@ export interface Review {
   recommendation: Recommendation
   score: number
   error?: string
+  // Raw model output captured when a review failed to parse the model's
+  // response. Present only on the detail response and only for failed reviews.
+  rawOutput?: string
   inputTokens: number
   outputTokens: number
   findings: Finding[]

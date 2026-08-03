@@ -359,3 +359,31 @@ func TestReviewListByRepoNewestFirst(t *testing.T) {
 		t.Fatalf("expected newest first, got %+v", list)
 	}
 }
+
+// TestReviewSetRawOutput asserts the captured raw model output round-trips
+// through Get, and that setting it on a missing review returns ErrNotFound.
+func TestReviewSetRawOutput(t *testing.T) {
+	ctx := context.Background()
+	s, repoID := newReviewStore(t)
+
+	rv := review.Review{ID: id.New(), RepoID: repoID, MRIID: 7, Status: review.StatusError}
+	if err := s.Create(ctx, rv); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	const raw = "I could not produce JSON, sorry."
+	if err := s.SetRawOutput(ctx, rv.ID, raw); err != nil {
+		t.Fatalf("SetRawOutput: %v", err)
+	}
+	got, err := s.Get(ctx, rv.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.RawOutput != raw {
+		t.Fatalf("RawOutput = %q, want %q", got.RawOutput, raw)
+	}
+
+	if err := s.SetRawOutput(ctx, "missing-id", raw); !errors.Is(err, review.ErrNotFound) {
+		t.Fatalf("SetRawOutput(missing) = %v, want ErrNotFound", err)
+	}
+}

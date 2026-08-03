@@ -738,3 +738,58 @@ func TestRetryClonesReview(t *testing.T) {
 		t.Fatalf("expected original + clone = 2 reviews, got %d", len(list))
 	}
 }
+
+// TestReviewCapturesRawOutputOnParseFailure drives a review whose provider
+// returns unparseable (non-JSON) content: the review must end in StatusError
+// AND the persisted review must carry the raw model output so the UI can
+// surface exactly what the model returned.
+func TestReviewCapturesRawOutputOnParseFailure(t *testing.T) {
+	ctx := context.Background()
+
+	gl := gitlabStub(t)
+	defer gl.Close()
+	const junk = "I could not produce JSON, sorry — here is prose instead."
+	aiSrv := aiStub(t, junk)
+	defer aiSrv.Close()
+
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer db.Close()
+
+	salt, _ := crypto.NewSalt()
+	key, _ := crypto.DeriveKey("pw", salt)
+	cipher, _ := crypto.NewCipher(key)
+	secrets := sqlite.NewSecretStore(db, cipher)
+	accountSvc := accounts.NewService(sqlite.NewAccountRepo(db), secrets)
+	providerSvc := providers.NewService(sqlite.NewProviderRepo(db), secrets)
+	repoSvc := appRepos.NewService(sqlite.NewRepoStore(db), sqlite.NewAccountRepo(db), sqlite.NewProviderRepo(db))
+	reviewStore := sqlite.NewReviewStore(db)
+
+	acc, _ := accountSvc.Add(ctx, "acc", gl.URL, "token")
+	prov, _ := providerSvc.Add(ctx, providers.AddInput{Name: "p", Kind: provider.KindOpenAICompat, BaseURL: aiSrv.URL, Model: "m", APIKey: "k"})
+	rp, _ := repoSvc.Add(ctx, appRepos.AddInput{Name: "web", URL: "https://gitlab.test/group/project", AccountID: acc.ID, ProviderID: prov.ID})
+
+	set, _ := skills.Load("")
+	svc := NewService(reviewStore, sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.New(set), 0)
+	runner := jobs.NewRunner(sqlite.NewJobStore(db), svc.Handle, jobs.WithLogger(log.New(io.Discard, "", 0)))
+	svc.AttachRunner(runner)
+
+	rv, err := svc.Create(ctx, rp.ID, 7, review.ModeFast, "", "")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	runner.Drain(ctx)
+
+	got, err := reviewStore.Get(ctx, rv.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Status != review.StatusError {
+		t.Fatalf("status = %s, want error", got.Status)
+	}
+	if !strings.Contains(got.RawOutput, junk) {
+		t.Fatalf("RawOutput = %q, want it to contain the model's junk output", got.RawOutput)
+	}
+}

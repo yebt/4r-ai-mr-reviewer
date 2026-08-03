@@ -24,6 +24,8 @@ type Repository interface {
 	ListArchivedByRepo(ctx context.Context, repoID string) ([]Review, error)
 	// SetStatus updates only the status and error fields.
 	SetStatus(ctx context.Context, id string, status Status, errMsg string) error
+	// SetRawOutput persists the raw model output captured on a parse failure.
+	SetRawOutput(ctx context.Context, id string, raw string) error
 	// SetPhase updates only the progress phase (called frequently while running).
 	SetPhase(ctx context.Context, id string, phase string) error
 	// SetReasoning upserts the captured chain-of-thought for one phase of a

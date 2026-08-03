@@ -125,10 +125,13 @@ type Review struct {
 	Recommendation Recommendation
 	Score          int
 	Error          string
-	InputTokens    int
-	OutputTokens   int
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	// RawOutput is the raw model output captured when a review failed to parse
+	// the model's response; empty otherwise.
+	RawOutput    string
+	InputTokens  int
+	OutputTokens int
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 // Score weights per finding, subtracted from a perfect 100.

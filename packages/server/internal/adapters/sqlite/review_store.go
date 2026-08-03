@@ -137,7 +137,17 @@ func (r *ReviewStore) Get(ctx context.Context, id string) (review.Review, error)
 		rs.UpdatedAt = ut
 		rv.Reasonings = append(rv.Reasonings, rs)
 	}
-	return rv, rrows.Err()
+	if err := rrows.Err(); err != nil {
+		return review.Review{}, err
+	}
+
+	// raw_output is intentionally excluded from the lean list columns; load it
+	// only on the detail path so a parse failure can surface the model's output.
+	if err := r.db.QueryRowContext(ctx,
+		`SELECT raw_output FROM reviews WHERE id = ?`, id).Scan(&rv.RawOutput); err != nil {
+		return review.Review{}, fmt.Errorf("review store: get raw output: %w", err)
+	}
+	return rv, nil
 }
 
 // ListByRepo returns a repo's active (non-archived) reviews without findings,
@@ -238,6 +248,20 @@ func (r *ReviewStore) SetArchived(ctx context.Context, id string, archived bool)
 		boolToInt(archived), formatTime(time.Now().UTC()), id)
 	if err != nil {
 		return fmt.Errorf("review store: set archived: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return review.ErrNotFound
+	}
+	return nil
+}
+
+// SetRawOutput persists the raw model output captured on a parse failure.
+func (r *ReviewStore) SetRawOutput(ctx context.Context, id string, raw string) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE reviews SET raw_output = ?, updated_at = ? WHERE id = ?`,
+		raw, formatTime(time.Now().UTC()), id)
+	if err != nil {
+		return fmt.Errorf("review store: set raw output: %w", err)
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return review.ErrNotFound

@@ -654,6 +654,7 @@ type reviewResp struct {
 	Recommendation   string          `json:"recommendation"`
 	Score            int             `json:"score"`
 	Error            string          `json:"error,omitempty"`
+	RawOutput        string          `json:"rawOutput,omitempty"`
 	InputTokens      int             `json:"inputTokens"`
 	OutputTokens     int             `json:"outputTokens"`
 	Findings         []findingResp   `json:"findings"`
@@ -678,7 +679,7 @@ func toReview(rv review.Review) reviewResp {
 	return reviewResp{
 		ID: rv.ID, RepoID: rv.RepoID, MRIID: rv.MRIID, ContextMode: string(rv.ContextMode),
 		Status: string(rv.Status), Phase: rv.Phase, Archived: rv.Archived, SummaryPublished: rv.SummaryPublished, Summary: rv.Summary, Recommendation: string(rv.Recommendation),
-		Score: rv.Score, Error: rv.Error, InputTokens: rv.InputTokens, OutputTokens: rv.OutputTokens,
+		Score: rv.Score, Error: rv.Error, RawOutput: rv.RawOutput, InputTokens: rv.InputTokens, OutputTokens: rv.OutputTokens,
 		Findings: findings, Reasonings: reasonings, CreatedAt: rv.CreatedAt, UpdatedAt: rv.UpdatedAt,
 	}
 }

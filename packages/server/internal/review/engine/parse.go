@@ -25,6 +25,17 @@ type findingDTO struct {
 	Blocking  bool   `json:"blocking"`
 }
 
+// ParseError is returned when the model's output cannot be decoded into the
+// review contract. It carries the raw model output so callers can persist and
+// surface exactly what the model returned.
+type ParseError struct {
+	Raw string // the raw model output that failed to parse
+	Err error  // the underlying decode error
+}
+
+func (e *ParseError) Error() string { return e.Err.Error() }
+func (e *ParseError) Unwrap() error { return e.Err }
+
 // parseResponse extracts and decodes the model's JSON, mapping it to domain
 // findings. It tolerates responses wrapped in markdown code fences or padded
 // with surrounding prose.
@@ -33,7 +44,7 @@ func parseResponse(content string) (summary string, findings []review.Finding, e
 
 	var dto responseDTO
 	if err := json.Unmarshal([]byte(raw), &dto); err != nil {
-		return "", nil, fmt.Errorf("decode model output: %w", err)
+		return "", nil, &ParseError{Raw: content, Err: fmt.Errorf("decode model output: %w", err)}
 	}
 
 	out := make([]review.Finding, 0, len(dto.Findings))
