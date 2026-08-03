@@ -2,7 +2,7 @@
 definePage({ meta: { title: 'Review' } })
 import { computed, onUnmounted, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useIntervalFn, useLocalStorage } from '@vueuse/core'
+import { useIntervalFn, useLocalStorage, useTitle } from '@vueuse/core'
 import { useIsPhone } from '@shared/composables/useIsPhone'
 import { errorMessage } from '@shared/api/client'
 import { confirm } from '@shared/composables/useConfirm'
@@ -68,6 +68,18 @@ async function humanizeAll() {
 
 const reviewId = computed(() => (route.params as { id: string }).id)
 const review = computed(() => store.current)
+
+// Tab title: the reviewed MR plus its repo (e.g. "Review !42 · my-repo"), so a
+// Review tab is identifiable at a glance. Falls back to the generic label from
+// definePage while the review is still loading.
+useTitle(
+  computed(() => {
+    const rv = review.value
+    if (!rv) return 'Review - AI Review'
+    const repo = repos.items.find((r) => r.id === rv.repoId)
+    return `Review !${rv.mrIid}${repo ? ` · ${repo.name}` : ''} - AI Review`
+  }),
+)
 
 const crumbs = computed(() => {
   const items: { label: string; to?: string }[] = [{ label: 'Repositories', to: '/repos' }]

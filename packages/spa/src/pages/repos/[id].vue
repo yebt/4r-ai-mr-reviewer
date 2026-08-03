@@ -1,6 +1,7 @@
 <script setup lang="ts">
 definePage({ meta: { title: 'Repository' } })
 import { computed, onMounted, ref, watchEffect } from 'vue'
+import { useTitle } from '@vueuse/core'
 import { useRoute, useRouter } from 'vue-router'
 import { api, errorMessage } from '@shared/api/client'
 import type { Preflight } from '@shared/api/types'
@@ -45,6 +46,11 @@ const creatingIid = ref<number | null>(null)
 const archivingIds = ref<string[]>([])
 
 const repo = computed(() => repos.items.find((r) => r.id === repoId) ?? null)
+
+// Tab title: the repository name (e.g. "my-repo - AI Review"), so a Repository
+// tab is identifiable at a glance. Falls back to the generic label from
+// definePage while the repo list is still loading.
+useTitle(computed(() => (repo.value ? `${repo.value.name} - AI Review` : 'Repository - AI Review')))
 
 // Reviews depend on an AI provider. Guard only after the store settles
 // (providers.fetchAll flips `loading` synchronously on mount) so it never flashes.

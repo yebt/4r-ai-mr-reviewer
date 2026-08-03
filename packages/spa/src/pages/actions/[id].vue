@@ -2,7 +2,7 @@
 definePage({ meta: { title: 'Action' } })
 import { computed, onUnmounted, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useIntervalFn } from '@vueuse/core'
+import { useIntervalFn, useTitle } from '@vueuse/core'
 import { ApiError, errorMessage } from '@shared/api/client'
 import { setBreadcrumbs } from '@shared/composables/useBreadcrumbs'
 import { confirm } from '@shared/composables/useConfirm'
@@ -21,6 +21,17 @@ const repos = useReposStore()
 
 const runId = computed(() => (route.params as { id: string }).id)
 const run = computed(() => store.runById(runId.value))
+
+// Tab title: the routine kind plus the MR it acts on (e.g. "Release · !42"), so
+// an Action tab is identifiable at a glance. Falls back to the generic label
+// from definePage while the run is still loading.
+useTitle(
+  computed(() =>
+    run.value
+      ? `${routineKindLabel[run.value.kind]} · ${runTitle(run.value)} - AI Review`
+      : 'Action - AI Review',
+  ),
+)
 
 // Load lifecycle for the fetch-by-id: `loading` only spins when the run is not
 // already cached (e.g. arriving from the list vs. a cold deep link); `notFound`
