@@ -206,6 +206,28 @@ func (s *Service) Create(ctx context.Context, repoID string, mrIID int, mode rev
 	return rv, nil
 }
 
+// TriggerFromWebhook creates and enqueues a review for a merge request in
+// response to a GitLab webhook, guarding against duplicates: if a pending or
+// running review already exists for this repo + MR it returns (zero, false, nil)
+// so repeated webhook deliveries (or rapid pushes) do not pile up a storm of
+// reviews. Otherwise it creates a fast-mode review resolving provider/model from
+// the repo and returns (review, true, nil). The bool reports whether a review
+// was actually created.
+func (s *Service) TriggerFromWebhook(ctx context.Context, repoID string, mrIID int) (review.Review, bool, error) {
+	active, err := s.reviews.HasActiveForMR(ctx, repoID, mrIID)
+	if err != nil {
+		return review.Review{}, false, err
+	}
+	if active {
+		return review.Review{}, false, nil
+	}
+	rv, err := s.Create(ctx, repoID, mrIID, "", "", "")
+	if err != nil {
+		return review.Review{}, false, err
+	}
+	return rv, true, nil
+}
+
 // List returns a repo's active (non-archived) reviews (without findings),
 // newest first.
 func (s *Service) List(ctx context.Context, repoID string) ([]review.Review, error) {

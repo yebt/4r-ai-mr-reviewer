@@ -101,6 +101,10 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /telegram/{id}/test", s.testTelegram)
 	mux.HandleFunc("POST /telegram/webhook", s.telegramWebhook)
 
+	// Per-repo GitLab webhook (self-secured by the repo's secret token). The
+	// path carries the repo id, so the auth middleware exempts it by prefix.
+	mux.HandleFunc("POST /webhooks/gitlab/{id}", s.gitlabWebhook)
+
 	mux.HandleFunc("GET /notifications/events", s.listNotificationEvents)
 	mux.HandleFunc("GET /notifications/rules", s.listNotificationRules)
 	mux.HandleFunc("POST /notifications/rules", s.createNotificationRule)
@@ -117,6 +121,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /repos", s.createRepo)
 	mux.HandleFunc("GET /repos", s.listRepos)
 	mux.HandleFunc("PATCH /repos/{id}/assign", s.assignRepo)
+	mux.HandleFunc("PATCH /repos/{id}/webhook", s.setRepoWebhook)
 	mux.HandleFunc("DELETE /repos/{id}", s.deleteRepo)
 	mux.HandleFunc("GET /repos/{id}/merge-requests", s.listMergeRequests)
 	mux.HandleFunc("GET /repos/{id}/preflight", s.repoPreflight)

@@ -52,6 +52,13 @@ func (s *Server) requireAuth(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		// The per-repo GitLab webhook carries the repo id in its path, so it
+		// cannot be matched by the exact-path map. It is self-secured by the
+		// repo's secret token (validated in the handler), so exempt it by prefix.
+		if r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/webhooks/gitlab/") {
+			next.ServeHTTP(w, r)
+			return
+		}
 		if c, err := r.Cookie(sessionCookie); err == nil && s.auth.Verify(c.Value) {
 			next.ServeHTTP(w, r)
 			return

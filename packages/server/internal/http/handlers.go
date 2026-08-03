@@ -301,6 +301,25 @@ func (s *Server) assignRepo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, toRepo(rp))
 }
 
+// setRepoWebhook enables or disables the per-repo GitLab auto-review webhook.
+// Enabling generates a secret token on first use; the response carries it (and
+// the webhook path) so the UI can show the user what to paste into GitLab.
+func (s *Server) setRepoWebhook(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := decode(r, &in); err != nil {
+		writeErr(w, err, http.StatusBadRequest)
+		return
+	}
+	rp, err := s.repos.SetWebhook(r.Context(), r.PathValue("id"), in.Enabled)
+	if err != nil {
+		writeErr(w, err, http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, http.StatusOK, toRepo(rp))
+}
+
 func (s *Server) deleteRepo(w http.ResponseWriter, r *http.Request) {
 	if err := s.repos.Remove(r.Context(), r.PathValue("id")); err != nil {
 		writeErr(w, err, http.StatusBadRequest)
@@ -590,19 +609,31 @@ func toProfile(p profile.Profile) profileResp {
 }
 
 type repoResp struct {
-	ID         string    `json:"id"`
-	Name       string    `json:"name"`
-	URL        string    `json:"url"`
-	AccountID  string    `json:"accountId"`
-	ProviderID string    `json:"providerId"`
-	Model      string    `json:"model"`
-	CreatedAt  time.Time `json:"createdAt"`
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	URL        string `json:"url"`
+	AccountID  string `json:"accountId"`
+	ProviderID string `json:"providerId"`
+	Model      string `json:"model"`
+	// WebhookEnabled toggles the per-repo GitLab auto-review webhook.
+	WebhookEnabled bool `json:"webhookEnabled"`
+	// WebhookSecret is the GitLab "Secret token" for this repo's webhook. It is
+	// returned so the single user of this self-hosted tool can copy it into
+	// GitLab; empty until the webhook is first enabled.
+	WebhookSecret string `json:"webhookSecret"`
+	// WebhookPath is the path GitLab should POST events to (combine with the
+	// browser origin to form the full URL).
+	WebhookPath string    `json:"webhookPath"`
+	CreatedAt   time.Time `json:"createdAt"`
 }
 
 func toRepo(rp domainrepo.Repo) repoResp {
 	return repoResp{
 		ID: rp.ID, Name: rp.Name, URL: rp.URL, AccountID: rp.AccountID,
-		ProviderID: rp.ProviderID, Model: rp.Model, CreatedAt: rp.CreatedAt,
+		ProviderID: rp.ProviderID, Model: rp.Model,
+		WebhookEnabled: rp.WebhookEnabled, WebhookSecret: rp.WebhookSecret,
+		WebhookPath: "/webhooks/gitlab/" + rp.ID,
+		CreatedAt:   rp.CreatedAt,
 	}
 }
 

@@ -182,6 +182,18 @@ func (r *ReviewStore) listByRepo(ctx context.Context, repoID string, archived bo
 	return out, rows.Err()
 }
 
+// HasActiveForMR reports whether a pending or running review already exists for
+// the repo + MR IID, so a webhook trigger can skip creating a duplicate.
+func (r *ReviewStore) HasActiveForMR(ctx context.Context, repoID string, mrIID int) (bool, error) {
+	var exists int
+	if err := r.db.QueryRowContext(ctx,
+		`SELECT EXISTS(SELECT 1 FROM reviews WHERE repo_id = ? AND mr_iid = ? AND status IN ('pending','running'))`,
+		repoID, mrIID).Scan(&exists); err != nil {
+		return false, fmt.Errorf("review store: has active for mr: %w", err)
+	}
+	return exists != 0, nil
+}
+
 // MarkFindingsPublished flags the findings at the given positions as published.
 func (r *ReviewStore) MarkFindingsPublished(ctx context.Context, reviewID string, positions []int) error {
 	if len(positions) == 0 {

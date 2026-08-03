@@ -32,6 +32,7 @@ const providers = useProvidersStore()
 const tabs: TabItem[] = [
   { id: 'reviews', label: 'Reviews', icon: 'i-lucide-scan-search' },
   { id: 'routines', label: 'Routines', icon: 'i-lucide-workflow' },
+  { id: 'webhook', label: 'Webhook', icon: 'i-lucide-webhook' },
 ]
 // Local-only tab selection, but deep-linkable via ?tab= so an Action detail page
 // can jump straight to this repo's Routines tab. Unknown values fall back safely.
@@ -163,6 +164,39 @@ async function unarchiveReview(id: string) {
     archivingIds.value = archivingIds.value.filter((x) => x !== id)
   }
 }
+
+// --- Webhook settings ---
+
+// Full URL GitLab should POST events to: the browser origin + the server-issued
+// webhook path. Empty until the repo has loaded.
+const webhookUrl = computed(() =>
+  repo.value ? window.location.origin + repo.value.webhookPath : '',
+)
+const webhookBusy = ref(false)
+
+async function toggleWebhook(enabled: boolean) {
+  if (webhookBusy.value) return
+  webhookBusy.value = true
+  try {
+    await repos.setWebhook(repoId, enabled)
+    toast.success(enabled ? 'Webhook enabled' : 'Webhook disabled')
+  } catch (e) {
+    toast.error(errorMessage(e))
+  } finally {
+    webhookBusy.value = false
+  }
+}
+
+// Copy helper for the URL/secret fields. Clipboard access needs a secure context
+// (https/localhost), so a failure is surfaced rather than swallowed.
+async function copyText(text: string, label: string) {
+  try {
+    await navigator.clipboard.writeText(text)
+    toast.success(`${label} copied`)
+  } catch {
+    toast.error('Copy failed — clipboard needs a secure context (https/localhost)')
+  }
+}
 </script>
 
 <template>
@@ -285,6 +319,96 @@ async function unarchiveReview(id: string) {
 
       <section>
         <RoutinesSection :repo-id="repoId" :merge-requests="mrs" />
+      </section>
+    </div>
+
+    <!-- Webhook tab: enable auto-review on MR events and reveal the URL + secret. -->
+    <div
+      v-show="activeTab === 'webhook'"
+      id="panel-webhook"
+      role="tabpanel"
+      aria-labelledby="tab-webhook"
+      tabindex="0"
+      class="outline-none"
+    >
+      <section class="mb-10">
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <h2 class="section-title flex items-center gap-2">
+            <span class="bg-accent inline-block h-3.5 w-0.5" aria-hidden="true" />
+            Auto-review webhook
+          </h2>
+          <button
+            type="button"
+            class="btn-line text-xs"
+            :disabled="webhookBusy || !repo"
+            @click="toggleWebhook(!(repo?.webhookEnabled ?? false))"
+          >
+            <span
+              :class="
+                webhookBusy
+                  ? 'i-lucide-loader-circle animate-spin'
+                  : repo?.webhookEnabled
+                    ? 'i-lucide-toggle-right'
+                    : 'i-lucide-toggle-left'
+              "
+              class="text-sm"
+              aria-hidden="true"
+            />
+            {{ repo?.webhookEnabled ? 'Disable' : 'Enable' }}
+          </button>
+        </div>
+
+        <p class="text-muted mb-4 text-xs">
+          When enabled, a review is created and run automatically whenever a merge request is opened
+          or receives new commits.
+        </p>
+
+        <template v-if="repo?.webhookEnabled">
+          <div class="mb-4">
+            <span class="field-label">Payload URL</span>
+            <div class="flex items-center gap-2">
+              <code
+                class="border-line text-ink block flex-1 overflow-x-auto border-b px-0 py-2 font-mono text-xs"
+              >
+                {{ webhookUrl }}
+              </code>
+              <button
+                type="button"
+                class="btn-ghost text-xs"
+                aria-label="Copy webhook URL"
+                @click="copyText(webhookUrl, 'URL')"
+              >
+                <span class="i-lucide-copy text-sm" aria-hidden="true" />
+                Copy
+              </button>
+            </div>
+          </div>
+
+          <div class="mb-4">
+            <span class="field-label">Secret token</span>
+            <div class="flex items-center gap-2">
+              <code
+                class="border-line text-ink block flex-1 overflow-x-auto border-b px-0 py-2 font-mono text-xs"
+              >
+                {{ repo.webhookSecret }}
+              </code>
+              <button
+                type="button"
+                class="btn-ghost text-xs"
+                aria-label="Copy secret token"
+                @click="copyText(repo.webhookSecret, 'Secret token')"
+              >
+                <span class="i-lucide-copy text-sm" aria-hidden="true" />
+                Copy
+              </button>
+            </div>
+          </div>
+
+          <p class="text-muted text-xs">
+            Add this URL and Secret Token as a Merge request events webhook in GitLab → Settings →
+            Webhooks.
+          </p>
+        </template>
       </section>
     </div>
   </div>

@@ -22,6 +22,10 @@ type Repository interface {
 	// ListArchivedByRepo returns a repo's archived reviews (without findings)
 	// newest first.
 	ListArchivedByRepo(ctx context.Context, repoID string) ([]Review, error)
+	// HasActiveForMR reports whether an in-flight (pending or running) review
+	// already exists for the given repo + merge-request IID. Used to guard
+	// webhook-triggered reviews against a storm of duplicates.
+	HasActiveForMR(ctx context.Context, repoID string, mrIID int) (bool, error)
 	// SetStatus updates only the status and error fields.
 	SetStatus(ctx context.Context, id string, status Status, errMsg string) error
 	// SetRawOutput persists the raw model output captured on a parse failure.

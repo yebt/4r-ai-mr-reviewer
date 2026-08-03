@@ -50,6 +50,49 @@ func TestReviewCreateGet(t *testing.T) {
 	}
 }
 
+// TestReviewHasActiveForMR asserts a pending or running review makes the MR
+// "active", while a terminal (done/error/cancelled) review or no review at all
+// does not.
+func TestReviewHasActiveForMR(t *testing.T) {
+	ctx := context.Background()
+	s, repoID := newReviewStore(t)
+
+	// No review yet → not active.
+	if active, err := s.HasActiveForMR(ctx, repoID, 7); err != nil || active {
+		t.Fatalf("HasActiveForMR (none) = (%v, %v), want (false, nil)", active, err)
+	}
+
+	// Pending → active.
+	pending := review.Review{ID: id.New(), RepoID: repoID, MRIID: 7, Status: review.StatusPending}
+	if err := s.Create(ctx, pending); err != nil {
+		t.Fatalf("Create pending: %v", err)
+	}
+	if active, err := s.HasActiveForMR(ctx, repoID, 7); err != nil || !active {
+		t.Fatalf("HasActiveForMR (pending) = (%v, %v), want (true, nil)", active, err)
+	}
+
+	// A different MR is unaffected.
+	if active, err := s.HasActiveForMR(ctx, repoID, 8); err != nil || active {
+		t.Fatalf("HasActiveForMR (other MR) = (%v, %v), want (false, nil)", active, err)
+	}
+
+	// Running → active.
+	if err := s.SetStatus(ctx, pending.ID, review.StatusRunning, ""); err != nil {
+		t.Fatalf("SetStatus running: %v", err)
+	}
+	if active, err := s.HasActiveForMR(ctx, repoID, 7); err != nil || !active {
+		t.Fatalf("HasActiveForMR (running) = (%v, %v), want (true, nil)", active, err)
+	}
+
+	// Terminal (done) → not active.
+	if err := s.SetStatus(ctx, pending.ID, review.StatusDone, ""); err != nil {
+		t.Fatalf("SetStatus done: %v", err)
+	}
+	if active, err := s.HasActiveForMR(ctx, repoID, 7); err != nil || active {
+		t.Fatalf("HasActiveForMR (done) = (%v, %v), want (false, nil)", active, err)
+	}
+}
+
 func TestReviewProviderModelRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	s, repoID := newReviewStore(t)

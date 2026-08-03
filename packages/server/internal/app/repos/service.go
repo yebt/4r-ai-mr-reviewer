@@ -4,6 +4,8 @@ package repos
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -86,6 +88,39 @@ func (s *Service) Assign(ctx context.Context, id, providerID, model string) (rep
 		return repo.Repo{}, err
 	}
 	return x, nil
+}
+
+// SetWebhook enables or disables the per-repo GitLab webhook. Enabling a repo
+// that has no secret yet generates a strong random one; the secret is kept when
+// disabling so re-enabling reuses it (the URL the user pasted into GitLab keeps
+// working). Returns ErrNotFound when the repo does not exist.
+func (s *Service) SetWebhook(ctx context.Context, id string, enabled bool) (repo.Repo, error) {
+	x, err := s.repos.Get(ctx, id)
+	if err != nil {
+		return repo.Repo{}, err
+	}
+	secret := x.WebhookSecret
+	if enabled && secret == "" {
+		secret = newWebhookSecret()
+	}
+	if err := s.repos.SetWebhook(ctx, id, enabled, secret); err != nil {
+		return repo.Repo{}, err
+	}
+	x.WebhookEnabled = enabled
+	x.WebhookSecret = secret
+	return x, nil
+}
+
+// newWebhookSecret returns a strong random token (32 random bytes, hex-encoded)
+// used as the per-repo GitLab webhook secret token.
+func newWebhookSecret() string {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		// crypto/rand.Read never fails on supported platforms; if it does, there
+		// is no safe way to continue generating a secret.
+		panic("repos: entropy source failed: " + err.Error())
+	}
+	return hex.EncodeToString(b)
 }
 
 // Remove deletes a repo.

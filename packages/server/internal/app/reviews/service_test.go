@@ -21,6 +21,7 @@ import (
 	appRepos "github.com/webcloster-dev/ai-reviewer/internal/app/repos"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/notification"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/provider"
+	"github.com/webcloster-dev/ai-reviewer/internal/domain/repo"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/review"
 	"github.com/webcloster-dev/ai-reviewer/internal/jobs"
 	"github.com/webcloster-dev/ai-reviewer/internal/review/engine"
@@ -155,6 +156,101 @@ func TestReasoningBudgetGatesCapture(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestTriggerFromWebhook asserts the webhook trigger creates a review the first
+// time and then skips (created=false, no new review) while one is already active
+// for the same MR, guarding against a review storm on repeated deliveries.
+func TestTriggerFromWebhook(t *testing.T) {
+	ctx := context.Background()
+
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer db.Close()
+
+	salt, _ := crypto.NewSalt()
+	key, _ := crypto.DeriveKey("pw", salt)
+	cipher, _ := crypto.NewCipher(key)
+	secrets := sqlite.NewSecretStore(db, cipher)
+	accountSvc := accounts.NewService(sqlite.NewAccountRepo(db), secrets)
+	providerSvc := providers.NewService(sqlite.NewProviderRepo(db), secrets)
+	repoSvc := appRepos.NewService(sqlite.NewRepoStore(db), sqlite.NewAccountRepo(db), sqlite.NewProviderRepo(db))
+	reviewStore := sqlite.NewReviewStore(db)
+
+	acc, _ := accountSvc.Add(ctx, "acc", "https://gitlab.test", "token")
+	prov, _ := providerSvc.Add(ctx, providers.AddInput{Name: "p", Kind: provider.KindOpenAICompat, BaseURL: "https://ai.test", Model: "m", APIKey: "k"})
+	rp, _ := repoSvc.Add(ctx, appRepos.AddInput{Name: "web", URL: "https://gitlab.test/group/project", AccountID: acc.ID, ProviderID: prov.ID})
+
+	set, _ := skills.Load("")
+	svc := NewService(reviewStore, sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.New(set), 0)
+	// Never drained: the created review stays pending, so the second trigger sees
+	// it as active. A no-op runner is enough to satisfy Create's Enqueue.
+	runner := jobs.NewRunner(sqlite.NewJobStore(db), svc.Handle, jobs.WithLogger(log.New(io.Discard, "", 0)))
+	svc.AttachRunner(runner)
+
+	// First trigger creates a review.
+	rv, created, err := svc.TriggerFromWebhook(ctx, rp.ID, 7)
+	if err != nil {
+		t.Fatalf("TriggerFromWebhook: %v", err)
+	}
+	if !created || rv.ID == "" {
+		t.Fatalf("first trigger = (created=%v, id=%q), want a created review", created, rv.ID)
+	}
+	if rv.Status != review.StatusPending {
+		t.Fatalf("created review status = %s, want pending", rv.Status)
+	}
+
+	// Second trigger while the first is still pending is skipped, no new review.
+	_, created2, err := svc.TriggerFromWebhook(ctx, rp.ID, 7)
+	if err != nil {
+		t.Fatalf("TriggerFromWebhook (2nd): %v", err)
+	}
+	if created2 {
+		t.Fatal("second trigger created a duplicate review; want it skipped")
+	}
+	list, _ := reviewStore.ListByRepo(ctx, rp.ID)
+	if len(list) != 1 {
+		t.Fatalf("reviews for repo = %d, want 1 (no duplicate)", len(list))
+	}
+
+	// A different MR still gets its own review.
+	_, created3, err := svc.TriggerFromWebhook(ctx, rp.ID, 8)
+	if err != nil {
+		t.Fatalf("TriggerFromWebhook (MR 8): %v", err)
+	}
+	if !created3 {
+		t.Fatal("trigger for a different MR should create a review")
+	}
+}
+
+// TestTriggerFromWebhookUnknownRepo asserts the trigger surfaces the not-found
+// error for an unknown repo (Create validates the repo exists).
+func TestTriggerFromWebhookUnknownRepo(t *testing.T) {
+	ctx := context.Background()
+
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer db.Close()
+
+	salt, _ := crypto.NewSalt()
+	key, _ := crypto.DeriveKey("pw", salt)
+	cipher, _ := crypto.NewCipher(key)
+	secrets := sqlite.NewSecretStore(db, cipher)
+	accountSvc := accounts.NewService(sqlite.NewAccountRepo(db), secrets)
+	providerSvc := providers.NewService(sqlite.NewProviderRepo(db), secrets)
+	reviewStore := sqlite.NewReviewStore(db)
+	set, _ := skills.Load("")
+	svc := NewService(reviewStore, sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.New(set), 0)
+	runner := jobs.NewRunner(sqlite.NewJobStore(db), svc.Handle, jobs.WithLogger(log.New(io.Discard, "", 0)))
+	svc.AttachRunner(runner)
+
+	if _, _, err := svc.TriggerFromWebhook(ctx, "nope", 7); !errors.Is(err, repo.ErrNotFound) {
+		t.Fatalf("TriggerFromWebhook unknown repo = %v, want repo.ErrNotFound", err)
+	}
 }
 
 func TestReviewEndToEnd(t *testing.T) {

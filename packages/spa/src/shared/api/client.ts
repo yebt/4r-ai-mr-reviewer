@@ -219,6 +219,11 @@ export const api = {
   }) => request<Repo>('POST', '/repos', input),
   assignRepo: (id: string, input: { providerId: string; model: string }) =>
     request<Repo>('PATCH', `/repos/${id}/assign`, input),
+  // Enable/disable the per-repo GitLab auto-review webhook. Enabling generates a
+  // secret token server-side on first use; the updated repo (with webhookSecret
+  // and webhookPath) comes back so the UI can show what to paste into GitLab.
+  setRepoWebhook: (id: string, enabled: boolean) =>
+    request<Repo>('PATCH', `/repos/${id}/webhook`, { enabled }),
   // Preflight the repo's token scopes and project access to learn which
   // automated actions are permitted before running any routine. Non-2xx (404
   // unknown repo, 502 upstream GitLab error) throws ApiError.

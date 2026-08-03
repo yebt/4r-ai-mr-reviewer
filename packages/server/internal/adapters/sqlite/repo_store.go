@@ -21,13 +21,14 @@ func NewRepoStore(db *sql.DB) *RepoStore {
 
 var _ repo.Repository = (*RepoStore)(nil)
 
-const repoCols = `id, name, url, account_id, provider_id, model, created_at`
+const repoCols = `id, name, url, account_id, provider_id, model, created_at, webhook_secret, webhook_enabled`
 
 // Create inserts a repo row.
 func (r *RepoStore) Create(ctx context.Context, x repo.Repo) error {
 	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO repos(`+repoCols+`) VALUES(?, ?, ?, ?, ?, ?, ?)`,
-		x.ID, x.Name, x.URL, x.AccountID, nullString(x.ProviderID), x.Model, formatTime(x.CreatedAt))
+		`INSERT INTO repos(`+repoCols+`) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		x.ID, x.Name, x.URL, x.AccountID, nullString(x.ProviderID), x.Model, formatTime(x.CreatedAt),
+		x.WebhookSecret, boolToInt(x.WebhookEnabled))
 	if err != nil {
 		return fmt.Errorf("repo store: create: %w", err)
 	}
@@ -92,16 +93,37 @@ func (r *RepoStore) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
+// SetWebhook updates only the webhook enable flag and secret, leaving every
+// other field untouched. Returns ErrNotFound when the repo does not exist.
+func (r *RepoStore) SetWebhook(ctx context.Context, id string, enabled bool, secret string) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE repos SET webhook_enabled = ?, webhook_secret = ? WHERE id = ?`,
+		boolToInt(enabled), secret, id)
+	if err != nil {
+		return fmt.Errorf("repo store: set webhook: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return repo.ErrNotFound
+	}
+	return nil
+}
+
 func scanRepo(s scanner) (repo.Repo, error) {
 	var (
-		x          repo.Repo
-		providerID sql.NullString
-		createdAt  string
+		x              repo.Repo
+		providerID     sql.NullString
+		createdAt      string
+		webhookEnabled int
 	)
-	if err := s.Scan(&x.ID, &x.Name, &x.URL, &x.AccountID, &providerID, &x.Model, &createdAt); err != nil {
+	if err := s.Scan(&x.ID, &x.Name, &x.URL, &x.AccountID, &providerID, &x.Model, &createdAt, &x.WebhookSecret, &webhookEnabled); err != nil {
 		return repo.Repo{}, err
 	}
 	x.ProviderID = providerID.String
+	x.WebhookEnabled = webhookEnabled != 0
 	t, err := parseTime(createdAt)
 	if err != nil {
 		return repo.Repo{}, err

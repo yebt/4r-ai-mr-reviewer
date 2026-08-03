@@ -22,6 +22,12 @@ type Repo struct {
 	ProviderID string // "" means use the default provider
 	Model      string // "" means use the provider's default model
 	CreatedAt  time.Time
+	// WebhookSecret gates the per-repo GitLab webhook (compared against the
+	// X-Gitlab-Token header). Empty means no secret has been generated yet.
+	WebhookSecret string
+	// WebhookEnabled toggles the auto-review receiver on for this repo. When
+	// false the endpoint is inert even if it receives events.
+	WebhookEnabled bool
 }
 
 // Repository persists tracked repos.
@@ -31,4 +37,7 @@ type Repository interface {
 	List(ctx context.Context) ([]Repo, error)
 	Update(ctx context.Context, r Repo) error
 	Delete(ctx context.Context, id string) error
+	// SetWebhook updates only the webhook enable flag and secret. Returns
+	// ErrNotFound if the repo does not exist.
+	SetWebhook(ctx context.Context, id string, enabled bool, secret string) error
 }

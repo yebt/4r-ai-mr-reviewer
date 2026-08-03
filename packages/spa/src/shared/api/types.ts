@@ -108,6 +108,13 @@ export interface Repo {
   accountId: string
   providerId: string
   model: string
+  // Per-repo GitLab webhook that auto-runs a review when an MR is opened or
+  // updated. webhookEnabled toggles it; webhookSecret is the GitLab "Secret
+  // token" (returned so the user can paste it into GitLab, empty until first
+  // enabled); webhookPath is combined with the browser origin for the full URL.
+  webhookEnabled: boolean
+  webhookSecret: string
+  webhookPath: string
   createdAt: string
 }
 

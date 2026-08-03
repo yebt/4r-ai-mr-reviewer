@@ -7,6 +7,7 @@ vi.mock('@shared/api/client', () => ({
     listRepos: vi.fn(),
     createRepo: vi.fn(),
     assignRepo: vi.fn(),
+    setRepoWebhook: vi.fn(),
     deleteRepo: vi.fn(),
   },
 }))
@@ -18,6 +19,7 @@ const mocked = api as unknown as {
   listRepos: ReturnType<typeof vi.fn>
   createRepo: ReturnType<typeof vi.fn>
   assignRepo: ReturnType<typeof vi.fn>
+  setRepoWebhook: ReturnType<typeof vi.fn>
   deleteRepo: ReturnType<typeof vi.fn>
 }
 
@@ -28,6 +30,9 @@ const repo = (id: string, over: Partial<Record<string, unknown>> = {}) => ({
   accountId: 'acc',
   providerId: '',
   model: '',
+  webhookEnabled: false,
+  webhookSecret: '',
+  webhookPath: `/webhooks/gitlab/${id}`,
   createdAt: '',
   ...over,
 })
@@ -60,6 +65,18 @@ describe('repos store', () => {
     await store.assign('1', { providerId: 'p9', model: 'm9' })
     expect(store.items[0]!.providerId).toBe('p9')
     expect(store.items[0]!.model).toBe('m9')
+  })
+
+  it('setWebhook replaces the repo in place with the returned webhook fields', async () => {
+    mocked.setRepoWebhook.mockResolvedValue(
+      repo('1', { webhookEnabled: true, webhookSecret: 'tok-123' }),
+    )
+    const store = useReposStore()
+    store.items = [repo('1')]
+    await store.setWebhook('1', true)
+    expect(mocked.setRepoWebhook).toHaveBeenCalledWith('1', true)
+    expect(store.items[0]!.webhookEnabled).toBe(true)
+    expect(store.items[0]!.webhookSecret).toBe('tok-123')
   })
 
   it('remove drops the repo', async () => {
