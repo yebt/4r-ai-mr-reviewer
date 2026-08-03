@@ -31,7 +31,10 @@ export default defineConfigWithVueTs(
   skipFormatting,
 
   {
-    files: ['src/pages/**/*.vue'],
+    // Route pages are named by their file (single word is fine), and the shared
+    // UI/chart primitives are a design system whose single-word names (Modal,
+    // Tabs, Alert, Breadcrumbs, Sparkline) are intentional and idiomatic.
+    files: ['src/pages/**/*.vue', 'src/shared/components/**/*.vue'],
     rules: {
       'vue/multi-word-component-names': 'off',
     },
