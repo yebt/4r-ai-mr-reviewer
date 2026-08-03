@@ -8,6 +8,8 @@ import RoutineBranchChip from '@modules/routines/components/RoutineBranchChip.vu
 const props = defineProps<{
   run: RoutineRun
   resuming?: boolean
+  // True while a skip request for this run's failed step is in flight.
+  skipping?: boolean
   // The confirmation decision currently in flight (so only the clicked button
   // spins), or null when no confirm is pending.
   confirming?: ConfirmDecision | null
@@ -18,6 +20,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
   resume: [id: string]
+  skip: [id: string]
   confirm: [id: string, decision: ConfirmDecision]
   delete: [id: string]
   cancel: [id: string]
@@ -36,6 +39,16 @@ const featCount = computed(() => props.run.state.featCount ?? 0)
 const fixCount = computed(() => props.run.state.fixCount ?? 0)
 
 const awaiting = computed(() => props.run.status === 'awaiting_confirmation')
+
+// Steps that can be skipped client-side; the server has the final say (409 for
+// essential steps). Skip is only offered on a blocked run whose failed step is
+// one of these non-critical steps.
+const SKIPPABLE_STEPS = new Set(['react', 'comment', 'approve', 'notify'])
+const skippableFailedStep = computed(() => {
+  if (props.run.status !== 'blocked') return null
+  const failed = props.run.steps.find((s) => s.status === 'failed')
+  return failed && SKIPPABLE_STEPS.has(failed.name) ? failed : null
+})
 </script>
 
 <template>
@@ -197,7 +210,7 @@ const awaiting = computed(() => props.run.status === 'awaiting_confirmation')
       </li>
     </ul>
 
-    <div v-if="props.run.status === 'blocked'" class="mt-4">
+    <div v-if="props.run.status === 'blocked'" class="mt-4 flex flex-wrap items-center gap-3">
       <button
         type="button"
         class="btn-line text-xs"
@@ -210,6 +223,23 @@ const awaiting = computed(() => props.run.status === 'awaiting_confirmation')
           aria-hidden="true"
         />
         {{ props.resuming ? 'Resuming…' : 'Resume' }}
+      </button>
+      <!-- Skip is offered only when the blocked run's failed step is a
+           non-critical, client-side-skippable step; the backend 409 is a
+           backstop for essential steps. -->
+      <button
+        v-if="skippableFailedStep"
+        type="button"
+        class="btn-line text-xs"
+        :disabled="props.skipping"
+        @click="emit('skip', props.run.id)"
+      >
+        <span
+          :class="props.skipping ? 'i-lucide-loader-circle animate-spin' : 'i-lucide-skip-forward'"
+          class="text-sm"
+          aria-hidden="true"
+        />
+        {{ props.skipping ? 'Skipping…' : 'Skip step' }}
       </button>
     </div>
   </div>

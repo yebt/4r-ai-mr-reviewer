@@ -1,4 +1,5 @@
 <script setup lang="ts">
+definePage({ meta: { title: 'Overview' } })
 import { computed, onMounted } from 'vue'
 import PageHeader from '@shared/components/ui/PageHeader.vue'
 import ScoreMeter from '@shared/components/charts/ScoreMeter.vue'

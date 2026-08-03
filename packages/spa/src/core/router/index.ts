@@ -7,6 +7,8 @@ import { useAuthStore } from '@modules/auth/store'
 declare module 'vue-router' {
   interface RouteMeta {
     public?: boolean
+    // Page name used to build the browser tab title ("<title> - AI Review").
+    title?: string
   }
 }
 
@@ -35,6 +37,12 @@ router.beforeEach(async (to) => {
     return { path: '/' }
   }
   return true
+})
+
+// Keep the browser tab title in sync with the active page's meta.title.
+router.afterEach((to) => {
+  const t = to.meta.title as string | undefined
+  document.title = t ? `${t} - AI Review` : 'AI Review'
 })
 
 // Session expired mid-session: an authenticated API call returned 401. The auth

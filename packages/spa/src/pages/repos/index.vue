@@ -1,4 +1,5 @@
 <script setup lang="ts">
+definePage({ meta: { title: 'Repositories' } })
 import { computed, ref } from 'vue'
 import type { Repo } from '@shared/api/types'
 import PageHeader from '@shared/components/ui/PageHeader.vue'

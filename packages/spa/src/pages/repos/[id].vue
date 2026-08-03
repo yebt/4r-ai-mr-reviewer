@@ -1,4 +1,5 @@
 <script setup lang="ts">
+definePage({ meta: { title: 'Repository' } })
 import { computed, onMounted, ref, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, errorMessage } from '@shared/api/client'

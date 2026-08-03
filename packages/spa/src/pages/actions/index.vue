@@ -1,4 +1,5 @@
 <script setup lang="ts">
+definePage({ meta: { title: 'Actions' } })
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useIntervalFn } from '@vueuse/core'
 import { errorMessage } from '@shared/api/client'

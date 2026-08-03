@@ -1,4 +1,5 @@
 <script setup lang="ts">
+definePage({ meta: { title: 'More' } })
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import PageHeader from '@shared/components/ui/PageHeader.vue'

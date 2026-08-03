@@ -1,4 +1,5 @@
 <script setup lang="ts">
+definePage({ meta: { title: 'Settings' } })
 import { computed, onMounted, ref } from 'vue'
 import { errorMessage } from '@shared/api/client'
 import { confirm } from '@shared/composables/useConfirm'

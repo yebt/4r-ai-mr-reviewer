@@ -10,6 +10,7 @@ vi.mock('@shared/api/client', () => ({
     createMainRelease: vi.fn(),
     getRoutineRun: vi.fn(),
     resumeRoutine: vi.fn(),
+    skipRoutine: vi.fn(),
     confirmRoutine: vi.fn(),
     cancelRoutine: vi.fn(),
     deleteRoutine: vi.fn(),
@@ -27,6 +28,7 @@ const mocked = api as unknown as {
   createMainRelease: ReturnType<typeof vi.fn>
   getRoutineRun: ReturnType<typeof vi.fn>
   resumeRoutine: ReturnType<typeof vi.fn>
+  skipRoutine: ReturnType<typeof vi.fn>
   confirmRoutine: ReturnType<typeof vi.fn>
   cancelRoutine: ReturnType<typeof vi.fn>
   deleteRoutine: ReturnType<typeof vi.fn>
@@ -144,6 +146,25 @@ describe('routines store', () => {
     await store.resume('a')
     expect(mocked.resumeRoutine).toHaveBeenCalledWith('a')
     expect(store.runById('a')?.status).toBe('running')
+  })
+
+  it('skip calls the api and adopts the returned run', async () => {
+    const store = useRoutinesStore()
+    store.runsByRepo = { r1: [run('a', 'blocked')] }
+    store.runsById = { a: run('a', 'blocked') }
+    mocked.skipRoutine.mockResolvedValue(run('a', 'running'))
+    await store.skip('a')
+    expect(mocked.skipRoutine).toHaveBeenCalledWith('a')
+    expect(store.runById('a')?.status).toBe('running')
+  })
+
+  it('skip propagates a 409 when the step is not skippable', async () => {
+    mocked.skipRoutine.mockRejectedValue(new Error('step is not skippable'))
+    const store = useRoutinesStore()
+    store.runsByRepo = { r1: [run('a', 'blocked')] }
+    store.runsById = { a: run('a', 'blocked') }
+    await expect(store.skip('a')).rejects.toThrow('step is not skippable')
+    expect(store.runById('a')?.status).toBe('blocked')
   })
 
   it('confirm sends the decision and adopts the returned run', async () => {

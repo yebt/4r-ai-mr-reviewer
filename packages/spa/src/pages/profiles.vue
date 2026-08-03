@@ -1,4 +1,5 @@
 <script setup lang="ts">
+definePage({ meta: { title: 'Profiles' } })
 import { computed, ref } from 'vue'
 import type { Profile } from '@shared/api/types'
 import PageHeader from '@shared/components/ui/PageHeader.vue'

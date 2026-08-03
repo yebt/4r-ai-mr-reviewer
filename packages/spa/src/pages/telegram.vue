@@ -1,4 +1,5 @@
 <script setup lang="ts">
+definePage({ meta: { title: 'Telegram' } })
 import { computed, ref } from 'vue'
 import type { TelegramTarget } from '@shared/api/types'
 import PageHeader from '@shared/components/ui/PageHeader.vue'

@@ -295,6 +295,9 @@ export const api = {
   listRecentRoutines: (limit?: number) =>
     request<RoutineRun[]>('GET', `/routines${limit != null ? `?limit=${limit}` : ''}`),
   resumeRoutine: (id: string) => request<RoutineRun>('POST', `/routines/${id}/resume`),
+  // Skip a blocked run's failed (non-critical) step and re-queue it. 409 when
+  // the step is essential / the run is not blocked.
+  skipRoutine: (id: string) => request<RoutineRun>('POST', `/routines/${id}/skip`),
   // Answer a release run's confirmation gate. 409 when the run is not
   // awaiting_confirmation.
   confirmRoutine: (id: string, decision: ConfirmDecision) =>

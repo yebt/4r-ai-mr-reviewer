@@ -1,4 +1,5 @@
 <script setup lang="ts">
+definePage({ meta: { title: 'Review' } })
 import { computed, onUnmounted, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useIntervalFn, useLocalStorage } from '@vueuse/core'

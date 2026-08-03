@@ -1,4 +1,5 @@
 <script setup lang="ts">
+definePage({ meta: { title: 'Reviews' } })
 import { computed, onMounted, ref } from 'vue'
 import PageHeader from '@shared/components/ui/PageHeader.vue'
 import EmptyState from '@shared/components/ui/EmptyState.vue'

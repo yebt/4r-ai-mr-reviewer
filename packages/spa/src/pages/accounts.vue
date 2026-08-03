@@ -1,4 +1,5 @@
 <script setup lang="ts">
+definePage({ meta: { title: 'GitLab accounts' } })
 import { ref } from 'vue'
 import PageHeader from '@shared/components/ui/PageHeader.vue'
 import Modal from '@shared/components/ui/Modal.vue'

@@ -134,6 +134,15 @@ export const useRoutinesStore = defineStore('routines', () => {
     return run
   }
 
+  // skip drops a blocked run's failed (non-critical) step and re-queues it.
+  // Rethrows (409 when the step is essential / the run is not blocked) so the
+  // caller can toast.
+  async function skip(id: string) {
+    const run = await api.skipRoutine(id)
+    cacheRun(run)
+    return run
+  }
+
   // confirm answers a release run's confirmation gate. The run flips back to
   // running (decision 'merge') or continues to its resting state, so the caller
   // restarts polling. Rethrows (409 when the run is not awaiting_confirmation).
@@ -183,6 +192,7 @@ export const useRoutinesStore = defineStore('routines', () => {
     createMainRelease,
     refresh,
     resume,
+    skip,
     confirm,
     cancel,
     remove,

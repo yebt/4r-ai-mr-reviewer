@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch, watchEffect } from 'vue'
+definePage({ meta: { title: 'Action' } })
+import { computed, onUnmounted, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useIntervalFn } from '@vueuse/core'
 import { ApiError, errorMessage } from '@shared/api/client'
@@ -83,6 +84,25 @@ async function onResume(id: string) {
     toast.error(errorMessage(e))
   } finally {
     resuming.value = false
+  }
+}
+
+// --- Skip a blocked run's failed step ---
+// Offered by RoutineRunDetail only when the failed step is non-critical. On
+// success the step is re-queued and the run flips back to running, so resume
+// polling. A 409 means the step is essential / the run is no longer blocked; the
+// server's message is surfaced as a friendly toast.
+const skipping = ref(false)
+async function onSkip(id: string) {
+  skipping.value = true
+  try {
+    await store.skip(id)
+    startPolling()
+    toast.success('Step skipped')
+  } catch (e) {
+    toast.error(errorMessage(e))
+  } finally {
+    skipping.value = false
   }
 }
 
@@ -210,10 +230,12 @@ onUnmounted(pause)
       <RoutineRunDetail
         :run="run"
         :resuming="resuming"
+        :skipping="skipping"
         :confirming="confirmingDecision"
         :deleting="deleting"
         :cancelling="cancelling"
         @resume="onResume"
+        @skip="onSkip"
         @confirm="onConfirm"
         @delete="onDelete"
         @cancel="onCancel"

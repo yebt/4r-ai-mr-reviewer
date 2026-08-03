@@ -1,4 +1,5 @@
 <script setup lang="ts">
+definePage({ meta: { title: '4R skills' } })
 import { computed, onMounted, ref } from 'vue'
 import { api, errorMessage } from '@shared/api/client'
 import PageHeader from '@shared/components/ui/PageHeader.vue'
