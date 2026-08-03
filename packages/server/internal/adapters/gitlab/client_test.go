@@ -184,3 +184,58 @@ func TestInjectUsername(t *testing.T) {
 		}
 	}
 }
+
+// TestListTagsPaginates proves ListTags follows GitLab's X-Next-Page cursor and
+// concatenates every page. A first page that fills to 100 with more to come must
+// NOT be the whole result: otherwise the highest tag (here v2.0.0 on page 2)
+// would be lost and the versioner would base its next release off a wrong tag.
+func TestListTagsPaginates(t *testing.T) {
+	var hits []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/repository/tags") {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		page := r.URL.Query().Get("page")
+		hits = append(hits, page)
+		w.Header().Set("Content-Type", "application/json")
+		switch page {
+		case "1":
+			// A full first page (100 tags) with a next page announced.
+			var b strings.Builder
+			b.WriteByte('[')
+			for i := 0; i < 100; i++ {
+				if i > 0 {
+					b.WriteByte(',')
+				}
+				fmt.Fprintf(&b, `{"name":"v1.0.%d"}`, i)
+			}
+			b.WriteByte(']')
+			w.Header().Set("X-Next-Page", "2")
+			fmt.Fprint(w, b.String())
+		case "2":
+			// The real highest tag lives here — only a paginating client sees it.
+			w.Header().Set("X-Next-Page", "")
+			fmt.Fprint(w, `[{"name":"v2.0.0"}]`)
+		default:
+			t.Errorf("unexpected page %q", page)
+			fmt.Fprint(w, `[]`)
+		}
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "tok")
+	tags, err := c.ListTags(context.Background(), "group/project")
+	if err != nil {
+		t.Fatalf("ListTags: %v", err)
+	}
+	if len(tags) != 101 {
+		t.Fatalf("len = %d, want 101 (both pages)", len(tags))
+	}
+	if tags[100].Name != "v2.0.0" {
+		t.Errorf("last tag = %q, want v2.0.0 (from page 2)", tags[100].Name)
+	}
+	if len(hits) != 2 || hits[0] != "1" || hits[1] != "2" {
+		t.Errorf("requested pages = %v, want [1 2]", hits)
+	}
+}

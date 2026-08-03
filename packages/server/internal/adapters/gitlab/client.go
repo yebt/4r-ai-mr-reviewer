@@ -162,16 +162,36 @@ type Tag struct {
 	Target  string `json:"target"`
 }
 
-// ListTags returns a project's tags, newest version first.
+// ListTags returns ALL of a project's tags, newest version first. GitLab
+// paginates tags (100 per page max), so this follows the X-Next-Page cursor and
+// concatenates every page. Fetching only the first page would, on a repo with
+// more than 100 tags, hide the highest tag and make the versioner compute its
+// next release off a wrong (lower) base — creating a "strange" tag that ignores
+// the real latest release.
 func (c *Client) ListTags(ctx context.Context, projectID string) ([]Tag, error) {
 	path := fmt.Sprintf("/projects/%s/repository/tags", url.PathEscape(projectID))
-	q := url.Values{"order_by": {"version"}, "sort": {"desc"}, "per_page": {"100"}}
 
-	var tags []Tag
-	if err := c.getJSON(ctx, path, q, &tags); err != nil {
-		return nil, err
+	var all []Tag
+	for page := 1; ; page++ {
+		q := url.Values{
+			"order_by": {"version"},
+			"sort":     {"desc"},
+			"per_page": {"100"},
+			"page":     {strconv.Itoa(page)},
+		}
+		var tags []Tag
+		hdr, err := c.getJSONResp(ctx, path, q, &tags)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, tags...)
+		// Stop when GitLab reports no next page, or defensively when a short page
+		// arrives (last page, or a proxy stripped the pagination header).
+		if hdr.Get("X-Next-Page") == "" || len(tags) < 100 {
+			break
+		}
 	}
-	return tags, nil
+	return all, nil
 }
 
 // Pipeline is a CI pipeline attached to a merge request.
@@ -328,6 +348,14 @@ func (c *Client) ProtectedTags(ctx context.Context, projectID string) ([]Protect
 }
 
 func (c *Client) getJSON(ctx context.Context, path string, query url.Values, out any) error {
+	_, err := c.getJSONResp(ctx, path, query, out)
+	return err
+}
+
+// getJSONResp is getJSON that also returns the response headers, so paginated
+// callers can read GitLab's X-Next-Page cursor. The headers are returned even on
+// error so a caller can inspect them if it wants.
+func (c *Client) getJSONResp(ctx context.Context, path string, query url.Values, out any) (http.Header, error) {
 	endpoint := c.baseURL + "/api/v4" + path
 	if len(query) > 0 {
 		endpoint += "?" + query.Encode()
@@ -335,7 +363,7 @@ func (c *Client) getJSON(ctx context.Context, path string, query url.Values, out
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		return fmt.Errorf("gitlab: build request: %w", err)
+		return nil, fmt.Errorf("gitlab: build request: %w", err)
 	}
 	req.Header.Set("PRIVATE-TOKEN", c.token)
 	req.Header.Set("Accept", "application/json")
@@ -343,19 +371,19 @@ func (c *Client) getJSON(ctx context.Context, path string, query url.Values, out
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("gitlab: request %s: %w", path, err)
+		return nil, fmt.Errorf("gitlab: request %s: %w", path, err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if err != nil {
-		return fmt.Errorf("gitlab: read body: %w", err)
+		return resp.Header, fmt.Errorf("gitlab: read body: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return &APIError{Status: resp.StatusCode, Body: strings.TrimSpace(string(body))}
+		return resp.Header, &APIError{Status: resp.StatusCode, Body: strings.TrimSpace(string(body))}
 	}
 	if err := json.Unmarshal(body, out); err != nil {
-		return fmt.Errorf("gitlab: decode %s: %w", path, err)
+		return resp.Header, fmt.Errorf("gitlab: decode %s: %w", path, err)
 	}
-	return nil
+	return resp.Header, nil
 }
