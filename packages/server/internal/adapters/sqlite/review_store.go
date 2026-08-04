@@ -24,7 +24,7 @@ func NewReviewStore(db *sql.DB) *ReviewStore {
 
 var _ review.Repository = (*ReviewStore)(nil)
 
-const reviewCols = `id, repo_id, mr_iid, context_mode, provider_id, model, status, phase, archived, summary_published, summary, recommendation, score, error, input_tokens, output_tokens, created_at, updated_at`
+const reviewCols = `id, repo_id, mr_iid, context_mode, provider_id, model, status, phase, archived, summary_published, summary, recommendation, score, error, input_tokens, output_tokens, source_branch, target_branch, created_at, updated_at`
 
 // Create inserts a new review row (findings, if any, are written too).
 func (r *ReviewStore) Create(ctx context.Context, rv review.Review) error {
@@ -33,9 +33,9 @@ func (r *ReviewStore) Create(ctx context.Context, rv review.Review) error {
 		rv.ContextMode = review.ModeFast
 	}
 	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO reviews(`+reviewCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		`INSERT INTO reviews(`+reviewCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		rv.ID, rv.RepoID, rv.MRIID, string(rv.ContextMode), rv.ProviderID, rv.Model, string(rv.Status), rv.Phase, boolToInt(rv.Archived), boolToInt(rv.SummaryPublished), rv.Summary, string(rv.Recommendation),
-		rv.Score, rv.Error, rv.InputTokens, rv.OutputTokens, now, now)
+		rv.Score, rv.Error, rv.InputTokens, rv.OutputTokens, rv.SourceBranch, rv.TargetBranch, now, now)
 	if err != nil {
 		return fmt.Errorf("review store: create: %w", err)
 	}
@@ -53,10 +53,10 @@ func (r *ReviewStore) Save(ctx context.Context, rv review.Review) error {
 	res, err := tx.ExecContext(ctx, `
 		UPDATE reviews SET
 			status = ?, phase = ?, summary = ?, recommendation = ?, score = ?, error = ?,
-			input_tokens = ?, output_tokens = ?, updated_at = ?
+			input_tokens = ?, output_tokens = ?, source_branch = ?, target_branch = ?, updated_at = ?
 		WHERE id = ?`,
 		string(rv.Status), rv.Phase, rv.Summary, string(rv.Recommendation), rv.Score, rv.Error,
-		rv.InputTokens, rv.OutputTokens, formatTime(time.Now().UTC()), rv.ID)
+		rv.InputTokens, rv.OutputTokens, rv.SourceBranch, rv.TargetBranch, formatTime(time.Now().UTC()), rv.ID)
 	if err != nil {
 		return fmt.Errorf("review store: save: update: %w", err)
 	}
@@ -349,7 +349,7 @@ func scanReview(s scanner) (review.Review, error) {
 		createdAt, updated         string
 	)
 	if err := s.Scan(&rv.ID, &rv.RepoID, &rv.MRIID, &mode, &rv.ProviderID, &rv.Model, &status, &rv.Phase, &archived, &summaryPublished, &rv.Summary, &rec,
-		&rv.Score, &rv.Error, &rv.InputTokens, &rv.OutputTokens, &createdAt, &updated); err != nil {
+		&rv.Score, &rv.Error, &rv.InputTokens, &rv.OutputTokens, &rv.SourceBranch, &rv.TargetBranch, &createdAt, &updated); err != nil {
 		return review.Review{}, err
 	}
 	rv.ContextMode = review.ContextMode(mode)

@@ -25,6 +25,10 @@ type Input struct {
 	Title       string
 	Description string
 	Diff        string
+	// SourceBranch and TargetBranch are the MR's branches (source → target),
+	// captured by the ContextStrategy from the fetched changes.
+	SourceBranch string
+	TargetBranch string
 }
 
 // RunParams carries everything a Strategy needs for one review run. It bundles
@@ -118,6 +122,8 @@ func (e *Engine) Run(ctx context.Context, client llm.Client, p RunParams) (revie
 	return review.Review{
 		RepoID:         in.RepoID,
 		MRIID:          in.MRIID,
+		SourceBranch:   in.SourceBranch,
+		TargetBranch:   in.TargetBranch,
 		Status:         review.StatusDone,
 		Summary:        summary,
 		Findings:       findings,

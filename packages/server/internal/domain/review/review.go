@@ -107,6 +107,11 @@ type Review struct {
 	RepoID      string
 	MRIID       int
 	ContextMode ContextMode
+	// SourceBranch and TargetBranch are the MR's branches (source → target),
+	// captured when the review runs. Empty until a review reaches the context
+	// build step (a pending or build-failed review keeps them empty).
+	SourceBranch string
+	TargetBranch string
 	// ProviderID and Model optionally pin the review to a specific provider and
 	// model chosen at launch. Empty means resolve from the repo, then the default
 	// provider (the default, backward-compatible behavior).

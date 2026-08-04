@@ -135,6 +135,39 @@ func TestReviewProviderModelRoundTrip(t *testing.T) {
 	}
 }
 
+func TestReviewBranchRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	s, repoID := newReviewStore(t)
+
+	// Create defaults to empty branches (a review only learns them once it runs).
+	rv := review.Review{ID: id.New(), RepoID: repoID, MRIID: 7, Status: review.StatusPending}
+	if err := s.Create(ctx, rv); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	got, err := s.Get(ctx, rv.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.SourceBranch != "" || got.TargetBranch != "" {
+		t.Fatalf("branches should default empty: %+v", got)
+	}
+
+	// Save persists the branches captured at run time.
+	rv.Status = review.StatusDone
+	rv.SourceBranch = "feature/login"
+	rv.TargetBranch = "main"
+	if err := s.Save(ctx, rv); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	got, err = s.Get(ctx, rv.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.SourceBranch != "feature/login" || got.TargetBranch != "main" {
+		t.Fatalf("branches not persisted: source=%q target=%q", got.SourceBranch, got.TargetBranch)
+	}
+}
+
 func TestReviewSaveWithFindings(t *testing.T) {
 	ctx := context.Background()
 	s, repoID := newReviewStore(t)

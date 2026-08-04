@@ -95,6 +95,8 @@ func (m *MultiPass) Run(ctx context.Context, client llm.Client, rp RunParams) (r
 	return review.Review{
 		RepoID:         in.RepoID,
 		MRIID:          in.MRIID,
+		SourceBranch:   in.SourceBranch,
+		TargetBranch:   in.TargetBranch,
 		Status:         review.StatusDone,
 		Summary:        localSummary(findings),
 		Findings:       findings,

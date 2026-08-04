@@ -708,6 +708,8 @@ type reviewResp struct {
 	RepoID           string          `json:"repoId"`
 	MRIID            int             `json:"mrIid"`
 	ContextMode      string          `json:"contextMode"`
+	SourceBranch     string          `json:"sourceBranch,omitempty"`
+	TargetBranch     string          `json:"targetBranch,omitempty"`
 	Status           string          `json:"status"`
 	Phase            string          `json:"phase"`
 	Archived         bool            `json:"archived"`
@@ -740,6 +742,7 @@ func toReview(rv review.Review) reviewResp {
 	}
 	return reviewResp{
 		ID: rv.ID, RepoID: rv.RepoID, MRIID: rv.MRIID, ContextMode: string(rv.ContextMode),
+		SourceBranch: rv.SourceBranch, TargetBranch: rv.TargetBranch,
 		Status: string(rv.Status), Phase: rv.Phase, Archived: rv.Archived, SummaryPublished: rv.SummaryPublished, Summary: rv.Summary, Recommendation: string(rv.Recommendation),
 		Score: rv.Score, Error: rv.Error, RawOutput: rv.RawOutput, InputTokens: rv.InputTokens, OutputTokens: rv.OutputTokens,
 		Findings: findings, Reasonings: reasonings, CreatedAt: rv.CreatedAt, UpdatedAt: rv.UpdatedAt,

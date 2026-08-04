@@ -161,6 +161,12 @@ const isPhone = useIsPhone()
 const humanizeOpen = ref(false)
 const filtersOpen = ref(false)
 
+// Desktop toolbar visibility, persisted so a collapsed toolbar stays collapsed
+// across navigation/reload. Hiding the toolbar never touches the active filters,
+// so the visible findings slice keeps its filtering while the controls are away.
+// The phone layout keeps using `filtersOpen` (a transient bottom-sheet modal).
+const filtersShown = useLocalStorage('reviews:filtersShown', true)
+
 // Count of active filter dimensions for the phone Filters toggle badge.
 const activeFilterCount = computed(
   () =>
@@ -465,6 +471,18 @@ async function remove() {
       :view-transition-name="review ? `review-${review.id}` : undefined"
     >
       <template #actions>
+        <span
+          v-if="review && review.sourceBranch && review.targetBranch"
+          class="text-muted mr-1 hidden min-w-0 items-center gap-1.5 sm:flex"
+          :title="`${review.sourceBranch} → ${review.targetBranch}`"
+        >
+          <span class="i-lucide-git-branch shrink-0 text-sm" aria-hidden="true" />
+          <span class="min-w-0 truncate font-mono text-xs">
+            {{ review.sourceBranch }}
+            <span class="text-muted/60" aria-hidden="true">→</span>
+            {{ review.targetBranch }}
+          </span>
+        </span>
         <ReviewStatusChip v-if="review" :status="review.status" />
         <button
           v-if="review"
@@ -881,9 +899,10 @@ async function remove() {
               </button>
             </div>
 
-            <!-- Desktop: inline toolbar, rendered exactly as before. -->
+            <!-- Desktop: inline toolbar, now collapsible via the Filters toggle in
+                 the row below. Hidden state persists; filters stay applied. -->
             <FindingsToolbar
-              v-if="!isPhone"
+              v-if="!isPhone && filtersShown"
               id="triage-filters"
               :counts="triage.counts.value"
               :filters="triage.filters"
@@ -920,6 +939,22 @@ async function remove() {
             </Modal>
 
             <div class="text-muted mb-3 hidden flex-wrap items-center gap-3 text-xs sm:flex">
+              <button
+                type="button"
+                class="btn-line text-xs"
+                :aria-expanded="filtersShown"
+                aria-controls="triage-filters"
+                @click="filtersShown = !filtersShown"
+              >
+                <span class="i-lucide-sliders-horizontal text-sm" aria-hidden="true" />
+                {{ filtersShown ? 'Hide filters' : 'Filters' }}
+                <span
+                  v-if="activeFilterCount"
+                  class="border-accent/40 bg-accent/15 text-accent border px-1 font-mono"
+                >
+                  {{ activeFilterCount }}
+                </span>
+              </button>
               <span>
                 Showing {{ triage.visible.value.length }} of {{ review.findings.length }}
               </span>

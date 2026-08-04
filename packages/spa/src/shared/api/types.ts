@@ -351,6 +351,10 @@ export interface Review {
   repoId: string
   mrIid: number
   contextMode: ContextMode
+  // The MR's branches (source → target), captured when the review runs. Absent
+  // until a review reaches the context build step; empty strings are omitted.
+  sourceBranch?: string
+  targetBranch?: string
   status: ReviewStatus
   phase: string
   archived: boolean

@@ -47,10 +47,12 @@ func (s FastStrategy) Build(ctx context.Context, t Target) (engine.Input, func()
 		return engine.Input{}, noop, err
 	}
 	return engine.Input{
-		MRIID:       t.MRIID,
-		Title:       ch.Title,
-		Description: ch.Description,
-		Diff:        renderDiff(ch),
+		MRIID:        t.MRIID,
+		Title:        ch.Title,
+		Description:  ch.Description,
+		Diff:         renderDiff(ch),
+		SourceBranch: ch.SourceBranch,
+		TargetBranch: ch.TargetBranch,
 	}, noop, nil
 }
 
@@ -100,10 +102,12 @@ func (s DeepStrategy) Build(ctx context.Context, t Target) (engine.Input, func()
 	}
 
 	return engine.Input{
-		MRIID:       t.MRIID,
-		Title:       ch.Title,
-		Description: ch.Description,
-		Diff:        b.String(),
+		MRIID:        t.MRIID,
+		Title:        ch.Title,
+		Description:  ch.Description,
+		Diff:         b.String(),
+		SourceBranch: ch.SourceBranch,
+		TargetBranch: ch.TargetBranch,
 	}, cleanup, nil
 }
 
