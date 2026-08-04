@@ -182,12 +182,14 @@ func (r *ReviewStore) listByRepo(ctx context.Context, repoID string, archived bo
 	return out, rows.Err()
 }
 
-// HasActiveForMR reports whether a pending or running review already exists for
-// the repo + MR IID, so a webhook trigger can skip creating a duplicate.
+// HasActiveForMR reports whether an in-flight review already exists for the
+// repo + MR IID, so a webhook trigger can skip creating a duplicate. An
+// awaiting_approval review counts as in-flight too: it is held for the user and
+// a repeated delivery must not pile up a second held review for the same MR.
 func (r *ReviewStore) HasActiveForMR(ctx context.Context, repoID string, mrIID int) (bool, error) {
 	var exists int
 	if err := r.db.QueryRowContext(ctx,
-		`SELECT EXISTS(SELECT 1 FROM reviews WHERE repo_id = ? AND mr_iid = ? AND status IN ('pending','running'))`,
+		`SELECT EXISTS(SELECT 1 FROM reviews WHERE repo_id = ? AND mr_iid = ? AND status IN ('pending','running','awaiting_approval'))`,
 		repoID, mrIID).Scan(&exists); err != nil {
 		return false, fmt.Errorf("review store: has active for mr: %w", err)
 	}

@@ -31,6 +31,7 @@ const repo = (id: string, over: Partial<Record<string, unknown>> = {}) => ({
   providerId: '',
   model: '',
   webhookEnabled: false,
+  webhookRequireConfirmation: false,
   webhookSecret: '',
   webhookPath: `/webhooks/gitlab/${id}`,
   createdAt: '',
@@ -74,7 +75,7 @@ describe('repos store', () => {
     const store = useReposStore()
     store.items = [repo('1')]
     await store.setWebhook('1', true)
-    expect(mocked.setRepoWebhook).toHaveBeenCalledWith('1', true)
+    expect(mocked.setRepoWebhook).toHaveBeenCalledWith('1', true, false)
     expect(store.items[0]!.webhookEnabled).toBe(true)
     expect(store.items[0]!.webhookSecret).toBe('tok-123')
   })

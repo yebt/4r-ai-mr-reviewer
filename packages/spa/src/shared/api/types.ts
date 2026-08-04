@@ -113,6 +113,9 @@ export interface Repo {
   // token" (returned so the user can paste it into GitLab, empty until first
   // enabled); webhookPath is combined with the browser origin for the full URL.
   webhookEnabled: boolean
+  // When true, a webhook-triggered review is created but HELD for manual
+  // approval (awaiting_approval) instead of running immediately.
+  webhookRequireConfirmation: boolean
   webhookSecret: string
   webhookPath: string
   createdAt: string
@@ -324,7 +327,13 @@ export interface CreateReviewInput {
   model?: string
 }
 
-export type ReviewStatus = 'pending' | 'running' | 'done' | 'error' | 'cancelled'
+export type ReviewStatus =
+  | 'awaiting_approval' // webhook-triggered review held until the user approves it
+  | 'pending'
+  | 'running'
+  | 'done'
+  | 'error'
+  | 'cancelled'
 export type ContextMode = 'fast' | 'deep'
 export type Recommendation = 'approve' | 'request_changes' | 'comment'
 

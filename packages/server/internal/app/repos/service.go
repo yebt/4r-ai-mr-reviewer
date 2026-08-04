@@ -90,11 +90,12 @@ func (s *Service) Assign(ctx context.Context, id, providerID, model string) (rep
 	return x, nil
 }
 
-// SetWebhook enables or disables the per-repo GitLab webhook. Enabling a repo
-// that has no secret yet generates a strong random one; the secret is kept when
-// disabling so re-enabling reuses it (the URL the user pasted into GitLab keeps
-// working). Returns ErrNotFound when the repo does not exist.
-func (s *Service) SetWebhook(ctx context.Context, id string, enabled bool) (repo.Repo, error) {
+// SetWebhook enables or disables the per-repo GitLab webhook and sets whether a
+// webhook-triggered review must be manually confirmed before it runs. Enabling a
+// repo that has no secret yet generates a strong random one; the secret is kept
+// when disabling so re-enabling reuses it (the URL the user pasted into GitLab
+// keeps working). Returns ErrNotFound when the repo does not exist.
+func (s *Service) SetWebhook(ctx context.Context, id string, enabled, requireConfirmation bool) (repo.Repo, error) {
 	x, err := s.repos.Get(ctx, id)
 	if err != nil {
 		return repo.Repo{}, err
@@ -103,11 +104,12 @@ func (s *Service) SetWebhook(ctx context.Context, id string, enabled bool) (repo
 	if enabled && secret == "" {
 		secret = newWebhookSecret()
 	}
-	if err := s.repos.SetWebhook(ctx, id, enabled, secret); err != nil {
+	if err := s.repos.SetWebhook(ctx, id, enabled, secret, requireConfirmation); err != nil {
 		return repo.Repo{}, err
 	}
 	x.WebhookEnabled = enabled
 	x.WebhookSecret = secret
+	x.WebhookRequireConfirmation = requireConfirmation
 	return x, nil
 }
 
@@ -121,7 +123,7 @@ func (s *Service) RotateWebhookSecret(ctx context.Context, id string) (repo.Repo
 		return repo.Repo{}, err
 	}
 	secret := newWebhookSecret()
-	if err := s.repos.SetWebhook(ctx, id, x.WebhookEnabled, secret); err != nil {
+	if err := s.repos.SetWebhook(ctx, id, x.WebhookEnabled, secret, x.WebhookRequireConfirmation); err != nil {
 		return repo.Repo{}, err
 	}
 	x.WebhookSecret = secret

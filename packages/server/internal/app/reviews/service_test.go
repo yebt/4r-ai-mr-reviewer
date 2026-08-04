@@ -225,6 +225,124 @@ func TestTriggerFromWebhook(t *testing.T) {
 	}
 }
 
+// TestTriggerFromWebhookRequireConfirmation asserts that when the repo requires
+// manual confirmation, a webhook trigger creates a HELD (awaiting_approval)
+// review and does NOT enqueue any job; Approve then promotes it to pending and
+// enqueues it so it runs; and Approve on a non-held review is ErrNotApprovable.
+func TestTriggerFromWebhookRequireConfirmation(t *testing.T) {
+	ctx := context.Background()
+
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer db.Close()
+
+	salt, _ := crypto.NewSalt()
+	key, _ := crypto.DeriveKey("pw", salt)
+	cipher, _ := crypto.NewCipher(key)
+	secrets := sqlite.NewSecretStore(db, cipher)
+	accountSvc := accounts.NewService(sqlite.NewAccountRepo(db), secrets)
+	providerSvc := providers.NewService(sqlite.NewProviderRepo(db), secrets)
+	repoSvc := appRepos.NewService(sqlite.NewRepoStore(db), sqlite.NewAccountRepo(db), sqlite.NewProviderRepo(db))
+	reviewStore := sqlite.NewReviewStore(db)
+	jobStore := sqlite.NewJobStore(db)
+
+	acc, _ := accountSvc.Add(ctx, "acc", "https://gitlab.test", "token")
+	prov, _ := providerSvc.Add(ctx, providers.AddInput{Name: "p", Kind: provider.KindOpenAICompat, BaseURL: "https://ai.test", Model: "m", APIKey: "k"})
+	rp, _ := repoSvc.Add(ctx, appRepos.AddInput{Name: "web", URL: "https://gitlab.test/group/project", AccountID: acc.ID, ProviderID: prov.ID})
+	// Turn the confirmation gate on.
+	if _, err := repoSvc.SetWebhook(ctx, rp.ID, true, true); err != nil {
+		t.Fatalf("SetWebhook: %v", err)
+	}
+
+	set, _ := skills.Load("")
+	svc := NewService(reviewStore, sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.New(set), 0)
+	runner := jobs.NewRunner(jobStore, svc.Handle, jobs.WithLogger(log.New(io.Discard, "", 0)))
+	svc.AttachRunner(runner)
+
+	rv, created, err := svc.TriggerFromWebhook(ctx, rp.ID, 7)
+	if err != nil {
+		t.Fatalf("TriggerFromWebhook: %v", err)
+	}
+	if !created || rv.ID == "" {
+		t.Fatalf("trigger = (created=%v, id=%q), want a created review", created, rv.ID)
+	}
+	if rv.Status != review.StatusAwaitingApproval {
+		t.Fatalf("held review status = %s, want awaiting_approval", rv.Status)
+	}
+	// No job must have been enqueued for a held review.
+	if _, ok, err := jobStore.Claim(ctx); err != nil || ok {
+		t.Fatalf("a held review must not enqueue a job (claimed=%v, err=%v)", ok, err)
+	}
+
+	// Approving promotes it to pending and enqueues it.
+	approved, err := svc.Approve(ctx, rv.ID)
+	if err != nil {
+		t.Fatalf("Approve: %v", err)
+	}
+	if approved.Status != review.StatusPending {
+		t.Fatalf("approved status = %s, want pending", approved.Status)
+	}
+	got, err := reviewStore.Get(ctx, rv.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Status != review.StatusPending {
+		t.Fatalf("persisted status = %s, want pending after approve", got.Status)
+	}
+	if _, ok, err := jobStore.Claim(ctx); err != nil || !ok {
+		t.Fatalf("Approve must enqueue a job (claimed=%v, err=%v)", ok, err)
+	}
+
+	// Approving a review that is not awaiting approval is ErrNotApprovable.
+	if _, err := svc.Approve(ctx, rv.ID); !errors.Is(err, ErrNotApprovable) {
+		t.Fatalf("Approve on non-held review = %v, want ErrNotApprovable", err)
+	}
+}
+
+// TestTriggerFromWebhookAutoRuns asserts that without the confirmation gate a
+// webhook trigger creates a pending review and enqueues it as before.
+func TestTriggerFromWebhookAutoRuns(t *testing.T) {
+	ctx := context.Background()
+
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer db.Close()
+
+	salt, _ := crypto.NewSalt()
+	key, _ := crypto.DeriveKey("pw", salt)
+	cipher, _ := crypto.NewCipher(key)
+	secrets := sqlite.NewSecretStore(db, cipher)
+	accountSvc := accounts.NewService(sqlite.NewAccountRepo(db), secrets)
+	providerSvc := providers.NewService(sqlite.NewProviderRepo(db), secrets)
+	repoSvc := appRepos.NewService(sqlite.NewRepoStore(db), sqlite.NewAccountRepo(db), sqlite.NewProviderRepo(db))
+	reviewStore := sqlite.NewReviewStore(db)
+	jobStore := sqlite.NewJobStore(db)
+
+	acc, _ := accountSvc.Add(ctx, "acc", "https://gitlab.test", "token")
+	prov, _ := providerSvc.Add(ctx, providers.AddInput{Name: "p", Kind: provider.KindOpenAICompat, BaseURL: "https://ai.test", Model: "m", APIKey: "k"})
+	rp, _ := repoSvc.Add(ctx, appRepos.AddInput{Name: "web", URL: "https://gitlab.test/group/project", AccountID: acc.ID, ProviderID: prov.ID})
+
+	set, _ := skills.Load("")
+	svc := NewService(reviewStore, sqlite.NewRepoStore(db), accountSvc, providerSvc, engine.New(set), 0)
+	runner := jobs.NewRunner(jobStore, svc.Handle, jobs.WithLogger(log.New(io.Discard, "", 0)))
+	svc.AttachRunner(runner)
+
+	rv, created, err := svc.TriggerFromWebhook(ctx, rp.ID, 7)
+	if err != nil {
+		t.Fatalf("TriggerFromWebhook: %v", err)
+	}
+	if !created || rv.Status != review.StatusPending {
+		t.Fatalf("trigger = (created=%v, status=%s), want (true, pending)", created, rv.Status)
+	}
+	if _, ok, err := jobStore.Claim(ctx); err != nil || !ok {
+		t.Fatalf("auto-run trigger must enqueue a job (claimed=%v, err=%v)", ok, err)
+	}
+}
+
 // TestTriggerFromWebhookUnknownRepo asserts the trigger surfaces the not-found
 // error for an unknown repo (Create validates the repo exists).
 func TestTriggerFromWebhookUnknownRepo(t *testing.T) {

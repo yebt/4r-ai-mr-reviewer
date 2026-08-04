@@ -50,6 +50,31 @@ func TestReviewCreateGet(t *testing.T) {
 	}
 }
 
+// TestReviewAwaitingApprovalPersistsAndIsActive asserts a held (awaiting_approval)
+// review round-trips through the store and counts as in-flight for the webhook
+// duplicate guard, so a repeated delivery does not pile up a second held review.
+func TestReviewAwaitingApprovalPersistsAndIsActive(t *testing.T) {
+	ctx := context.Background()
+	s, repoID := newReviewStore(t)
+
+	rv := review.Review{ID: id.New(), RepoID: repoID, MRIID: 7, Status: review.StatusAwaitingApproval}
+	if err := s.Create(ctx, rv); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	got, err := s.Get(ctx, rv.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Status != review.StatusAwaitingApproval {
+		t.Fatalf("status = %s, want awaiting_approval", got.Status)
+	}
+
+	// A held review makes the MR active (guards against duplicate held reviews).
+	if active, err := s.HasActiveForMR(ctx, repoID, 7); err != nil || !active {
+		t.Fatalf("HasActiveForMR (awaiting_approval) = (%v, %v), want (true, nil)", active, err)
+	}
+}
+
 // TestReviewHasActiveForMR asserts a pending or running review makes the MR
 // "active", while a terminal (done/error/cancelled) review or no review at all
 // does not.

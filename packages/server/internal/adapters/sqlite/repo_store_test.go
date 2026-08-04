@@ -43,8 +43,8 @@ func TestRepoWebhookDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	if got.WebhookEnabled || got.WebhookSecret != "" {
-		t.Fatalf("new repo webhook = (enabled=%v, secret=%q), want (false, \"\")", got.WebhookEnabled, got.WebhookSecret)
+	if got.WebhookEnabled || got.WebhookSecret != "" || got.WebhookRequireConfirmation {
+		t.Fatalf("new repo webhook = (enabled=%v, secret=%q, requireConfirmation=%v), want (false, \"\", false)", got.WebhookEnabled, got.WebhookSecret, got.WebhookRequireConfirmation)
 	}
 }
 
@@ -59,15 +59,15 @@ func TestRepoSetWebhookRoundTrip(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	if err := s.SetWebhook(ctx, rp.ID, true, "s3cr3t-token"); err != nil {
+	if err := s.SetWebhook(ctx, rp.ID, true, "s3cr3t-token", true); err != nil {
 		t.Fatalf("SetWebhook: %v", err)
 	}
 	got, err := s.Get(ctx, rp.ID)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	if !got.WebhookEnabled || got.WebhookSecret != "s3cr3t-token" {
-		t.Fatalf("after enable: (enabled=%v, secret=%q), want (true, \"s3cr3t-token\")", got.WebhookEnabled, got.WebhookSecret)
+	if !got.WebhookEnabled || got.WebhookSecret != "s3cr3t-token" || !got.WebhookRequireConfirmation {
+		t.Fatalf("after enable: (enabled=%v, secret=%q, requireConfirmation=%v), want (true, \"s3cr3t-token\", true)", got.WebhookEnabled, got.WebhookSecret, got.WebhookRequireConfirmation)
 	}
 
 	// It must not disturb the other fields.
@@ -75,16 +75,16 @@ func TestRepoSetWebhookRoundTrip(t *testing.T) {
 		t.Fatalf("SetWebhook mutated other fields: %+v", got)
 	}
 
-	// Disabling keeps the secret.
-	if err := s.SetWebhook(ctx, rp.ID, false, "s3cr3t-token"); err != nil {
+	// Disabling keeps the secret and can clear the confirmation gate.
+	if err := s.SetWebhook(ctx, rp.ID, false, "s3cr3t-token", false); err != nil {
 		t.Fatalf("SetWebhook disable: %v", err)
 	}
 	got2, err := s.Get(ctx, rp.ID)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	if got2.WebhookEnabled || got2.WebhookSecret != "s3cr3t-token" {
-		t.Fatalf("after disable: (enabled=%v, secret=%q), want (false, kept secret)", got2.WebhookEnabled, got2.WebhookSecret)
+	if got2.WebhookEnabled || got2.WebhookSecret != "s3cr3t-token" || got2.WebhookRequireConfirmation {
+		t.Fatalf("after disable: (enabled=%v, secret=%q, requireConfirmation=%v), want (false, kept secret, false)", got2.WebhookEnabled, got2.WebhookSecret, got2.WebhookRequireConfirmation)
 	}
 }
 
@@ -92,7 +92,7 @@ func TestRepoSetWebhookRoundTrip(t *testing.T) {
 func TestRepoSetWebhookUnknown(t *testing.T) {
 	ctx := context.Background()
 	s, _ := newRepoStore(t)
-	if err := s.SetWebhook(ctx, "does-not-exist", true, "x"); !errors.Is(err, repo.ErrNotFound) {
+	if err := s.SetWebhook(ctx, "does-not-exist", true, "x", false); !errors.Is(err, repo.ErrNotFound) {
 		t.Fatalf("SetWebhook unknown = %v, want repo.ErrNotFound", err)
 	}
 }

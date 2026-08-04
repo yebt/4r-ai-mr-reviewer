@@ -14,6 +14,7 @@ import {
   shortId,
 } from '@modules/reviews/format'
 import { toast } from '@shared/composables/useToast'
+import { confirm } from '@shared/composables/useConfirm'
 import { errorMessage } from '@shared/api/client'
 
 const repos = useReposStore()
@@ -47,6 +48,36 @@ async function unarchiveReview(id: string, repoId: string) {
     // reappears in the active list.
     await reviews.fetchReviews(repoId)
     toast.success('Review unarchived')
+  } catch (e) {
+    toast.error(errorMessage(e))
+  } finally {
+    busyIds.value = busyIds.value.filter((x) => x !== id)
+  }
+}
+
+async function approveReview(id: string) {
+  busyIds.value = [...busyIds.value, id]
+  try {
+    await reviews.approve(id)
+    toast.success('Review approved — running now')
+  } catch (e) {
+    toast.error(errorMessage(e))
+  } finally {
+    busyIds.value = busyIds.value.filter((x) => x !== id)
+  }
+}
+
+async function discardReview(id: string, mrIid: number) {
+  const ok = await confirm({
+    title: 'Discard review',
+    message: `Discard the held review for !${mrIid}? This cannot be undone.`,
+    danger: true,
+  })
+  if (!ok) return
+  busyIds.value = [...busyIds.value, id]
+  try {
+    await reviews.remove(id)
+    toast.success('Review discarded')
   } catch (e) {
     toast.error(errorMessage(e))
   } finally {
@@ -122,7 +153,35 @@ const archived = computed(() => reviews.allArchived)
             </div>
             <div class="label-mono mt-0.5">score {{ rv.score }}</div>
           </div>
+          <template v-if="rv.status === 'awaiting_approval'">
+            <button
+              class="btn-line text-xs"
+              :disabled="busyIds.includes(rv.id)"
+              :aria-label="`Approve review !${rv.mrIid}`"
+              title="Approve and run"
+              @click="approveReview(rv.id)"
+            >
+              <span
+                :class="
+                  busyIds.includes(rv.id) ? 'i-lucide-loader-circle animate-spin' : 'i-lucide-play'
+                "
+                class="text-sm"
+                aria-hidden="true"
+              />
+              Approve
+            </button>
+            <button
+              class="btn-ghost text-danger text-xs"
+              :disabled="busyIds.includes(rv.id)"
+              :aria-label="`Discard review !${rv.mrIid}`"
+              title="Discard"
+              @click="discardReview(rv.id, rv.mrIid)"
+            >
+              <span class="i-lucide-trash-2 text-sm" aria-hidden="true" />
+            </button>
+          </template>
           <button
+            v-else
             class="btn-ghost text-xs"
             :disabled="busyIds.includes(rv.id) || !isTerminal(rv.status)"
             :aria-label="`Archive review !${rv.mrIid}`"

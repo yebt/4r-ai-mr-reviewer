@@ -355,6 +355,23 @@ async function retry() {
   }
 }
 
+const approving = ref(false)
+
+// approve promotes a held (awaiting_approval) webhook review to pending and
+// enqueues it, then keeps polling so the UI follows it to completion.
+async function approve() {
+  approving.value = true
+  try {
+    await store.approve(reviewId.value)
+    toast.success('Review approved — running now')
+    if (review.value && !isTerminal(review.value.status)) resume()
+  } catch (e) {
+    store.currentError = errorMessage(e)
+  } finally {
+    approving.value = false
+  }
+}
+
 const cancelling = ref(false)
 
 async function cancel() {
@@ -456,7 +473,34 @@ async function remove() {
     <p v-else-if="store.currentError" class="text-danger text-sm">{{ store.currentError }}</p>
 
     <template v-else-if="review">
-      <div v-if="review.status === 'pending' || review.status === 'running'">
+      <div v-if="review.status === 'awaiting_approval'" class="flex flex-col items-start gap-3">
+        <p class="text-muted text-sm">
+          This review was triggered by a webhook and is held for your confirmation. Approve it to
+          run the review, or discard it.
+        </p>
+        <div class="flex flex-wrap items-center gap-2">
+          <button class="btn-accent text-xs" :disabled="approving" @click="approve">
+            <span
+              v-if="approving"
+              class="i-lucide-loader-circle animate-spin text-sm"
+              aria-hidden="true"
+            />
+            <span v-else class="i-lucide-play text-sm" aria-hidden="true" />
+            Approve and run
+          </button>
+          <button class="btn-ghost text-danger text-xs" :disabled="deleting" @click="remove">
+            <span
+              v-if="deleting"
+              class="i-lucide-loader-circle animate-spin text-sm"
+              aria-hidden="true"
+            />
+            <span v-else class="i-lucide-trash-2 text-sm" aria-hidden="true" />
+            Discard
+          </button>
+        </div>
+      </div>
+
+      <div v-else-if="review.status === 'pending' || review.status === 'running'">
         <div class="text-muted flex items-center gap-2 text-sm">
           <span class="i-lucide-loader-circle animate-spin" aria-hidden="true" />
           <template v-if="phase">

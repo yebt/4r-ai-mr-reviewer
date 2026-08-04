@@ -165,6 +165,36 @@ async function unarchiveReview(id: string) {
   }
 }
 
+async function approveReview(id: string) {
+  archivingIds.value = [...archivingIds.value, id]
+  try {
+    await reviews.approve(id)
+    toast.success('Review approved — running now')
+  } catch (e) {
+    toast.error(errorMessage(e))
+  } finally {
+    archivingIds.value = archivingIds.value.filter((x) => x !== id)
+  }
+}
+
+async function discardReview(id: string, mrIid: number) {
+  const ok = await confirm({
+    title: 'Discard review',
+    message: `Discard the held review for !${mrIid}? This cannot be undone.`,
+    danger: true,
+  })
+  if (!ok) return
+  archivingIds.value = [...archivingIds.value, id]
+  try {
+    await reviews.remove(id)
+    toast.success('Review discarded')
+  } catch (e) {
+    toast.error(errorMessage(e))
+  } finally {
+    archivingIds.value = archivingIds.value.filter((x) => x !== id)
+  }
+}
+
 // --- Webhook settings ---
 
 // Full URL GitLab should POST events to: the browser origin + the server-issued
@@ -191,8 +221,26 @@ async function toggleWebhook(enabled: boolean) {
   if (webhookBusy.value) return
   webhookBusy.value = true
   try {
-    await repos.setWebhook(repoId, enabled)
+    // Preserve the current confirmation gate when flipping the enable switch.
+    await repos.setWebhook(repoId, enabled, repo.value?.webhookRequireConfirmation ?? false)
     toast.success(enabled ? 'Webhook enabled' : 'Webhook disabled')
+  } catch (e) {
+    toast.error(errorMessage(e))
+  } finally {
+    webhookBusy.value = false
+  }
+}
+
+// toggleRequireConfirmation flips the manual-confirmation gate while keeping the
+// webhook enabled: held reviews wait in the Reviews list until the user approves.
+async function toggleRequireConfirmation(requireConfirmation: boolean) {
+  if (webhookBusy.value) return
+  webhookBusy.value = true
+  try {
+    await repos.setWebhook(repoId, true, requireConfirmation)
+    toast.success(
+      requireConfirmation ? 'Confirmation required before running' : 'Reviews will run automatically',
+    )
   } catch (e) {
     toast.error(errorMessage(e))
   } finally {
@@ -271,6 +319,8 @@ async function copyText(text: string, label: string) {
           :error="reviews.listError"
           :busy-ids="archivingIds"
           @archive="archiveReview"
+          @approve="approveReview"
+          @discard="discardReview"
         />
 
         <template v-if="showArchived">
@@ -427,10 +477,38 @@ async function copyText(text: string, label: string) {
             </div>
           </div>
 
-          <p class="text-muted text-xs">
+          <p class="text-muted mb-4 text-xs">
             Add this URL and Secret Token as a Merge request events webhook in GitLab → Settings →
             Webhooks. Rotating the token invalidates the old one — update it in GitLab afterwards.
           </p>
+
+          <div class="border-line border-t pt-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <span class="field-label mb-0">Require confirmation before running</span>
+              <button
+                type="button"
+                class="btn-line text-xs"
+                :disabled="webhookBusy"
+                @click="toggleRequireConfirmation(!(repo?.webhookRequireConfirmation ?? false))"
+              >
+                <span
+                  :class="
+                    webhookBusy
+                      ? 'i-lucide-loader-circle animate-spin'
+                      : repo?.webhookRequireConfirmation
+                        ? 'i-lucide-toggle-right'
+                        : 'i-lucide-toggle-left'
+                  "
+                  class="text-sm"
+                  aria-hidden="true"
+                />
+                {{ repo?.webhookRequireConfirmation ? 'On' : 'Off' }}
+              </button>
+            </div>
+            <p class="text-muted mt-2 text-xs">
+              Held reviews wait in the Reviews list until you approve them.
+            </p>
+          </div>
         </template>
       </section>
     </div>

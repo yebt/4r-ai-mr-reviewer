@@ -38,8 +38,8 @@ export const useReposStore = defineStore('repos', () => {
     return updated
   }
 
-  async function setWebhook(id: string, enabled: boolean) {
-    const updated = await api.setRepoWebhook(id, enabled)
+  async function setWebhook(id: string, enabled: boolean, requireConfirmation = false) {
+    const updated = await api.setRepoWebhook(id, enabled, requireConfirmation)
     items.value = items.value.map((r) => (r.id === id ? updated : r))
     return updated
   }

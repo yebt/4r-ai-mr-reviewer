@@ -317,6 +317,15 @@ export const useReviewsStore = defineStore('reviews', () => {
     return api.retryReview(id)
   }
 
+  // approve promotes a held (awaiting_approval) webhook review to pending and
+  // enqueues it, then caches the updated review so the UI observes the flip.
+  async function approve(id: string) {
+    const updated = await api.approveReview(id)
+    current.value = updated
+    cacheReview(updated)
+    return updated
+  }
+
   // cancel requests cooperative cancellation of a pending/running review, then
   // refreshes so the UI observes the flip to the cancelled terminal state.
   async function cancel(id: string) {
@@ -423,6 +432,7 @@ export const useReviewsStore = defineStore('reviews', () => {
     load,
     refresh,
     retry,
+    approve,
     cancel,
     remove,
     archive,

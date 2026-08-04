@@ -1,11 +1,23 @@
 import type { Dimension, Recommendation, ReviewStatus, Severity } from '@shared/api/types'
 
 export const statusClass: Record<ReviewStatus, string> = {
+  awaiting_approval: 'text-warn',
   pending: 'text-muted',
   running: 'text-accent',
   done: 'text-ok',
   error: 'text-danger',
   cancelled: 'text-muted',
+}
+
+// Human-readable label for a review status. Most statuses read fine as their raw
+// key; awaiting_approval is spelled out so the chip never shows raw snake_case.
+export const statusLabel: Record<ReviewStatus, string> = {
+  awaiting_approval: 'Awaiting approval',
+  pending: 'pending',
+  running: 'running',
+  done: 'done',
+  error: 'error',
+  cancelled: 'cancelled',
 }
 
 export const severityClass: Record<Severity, string> = {

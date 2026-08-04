@@ -21,14 +21,14 @@ func NewRepoStore(db *sql.DB) *RepoStore {
 
 var _ repo.Repository = (*RepoStore)(nil)
 
-const repoCols = `id, name, url, account_id, provider_id, model, created_at, webhook_secret, webhook_enabled`
+const repoCols = `id, name, url, account_id, provider_id, model, created_at, webhook_secret, webhook_enabled, webhook_require_confirmation`
 
 // Create inserts a repo row.
 func (r *RepoStore) Create(ctx context.Context, x repo.Repo) error {
 	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO repos(`+repoCols+`) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO repos(`+repoCols+`) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		x.ID, x.Name, x.URL, x.AccountID, nullString(x.ProviderID), x.Model, formatTime(x.CreatedAt),
-		x.WebhookSecret, boolToInt(x.WebhookEnabled))
+		x.WebhookSecret, boolToInt(x.WebhookEnabled), boolToInt(x.WebhookRequireConfirmation))
 	if err != nil {
 		return fmt.Errorf("repo store: create: %w", err)
 	}
@@ -93,12 +93,13 @@ func (r *RepoStore) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// SetWebhook updates only the webhook enable flag and secret, leaving every
-// other field untouched. Returns ErrNotFound when the repo does not exist.
-func (r *RepoStore) SetWebhook(ctx context.Context, id string, enabled bool, secret string) error {
+// SetWebhook updates only the webhook enable flag, secret and require-confirmation
+// gate, leaving every other field untouched. Returns ErrNotFound when the repo
+// does not exist.
+func (r *RepoStore) SetWebhook(ctx context.Context, id string, enabled bool, secret string, requireConfirmation bool) error {
 	res, err := r.db.ExecContext(ctx,
-		`UPDATE repos SET webhook_enabled = ?, webhook_secret = ? WHERE id = ?`,
-		boolToInt(enabled), secret, id)
+		`UPDATE repos SET webhook_enabled = ?, webhook_secret = ?, webhook_require_confirmation = ? WHERE id = ?`,
+		boolToInt(enabled), secret, boolToInt(requireConfirmation), id)
 	if err != nil {
 		return fmt.Errorf("repo store: set webhook: %w", err)
 	}
@@ -114,16 +115,18 @@ func (r *RepoStore) SetWebhook(ctx context.Context, id string, enabled bool, sec
 
 func scanRepo(s scanner) (repo.Repo, error) {
 	var (
-		x              repo.Repo
-		providerID     sql.NullString
-		createdAt      string
-		webhookEnabled int
+		x                  repo.Repo
+		providerID         sql.NullString
+		createdAt          string
+		webhookEnabled     int
+		webhookRequireConf int
 	)
-	if err := s.Scan(&x.ID, &x.Name, &x.URL, &x.AccountID, &providerID, &x.Model, &createdAt, &x.WebhookSecret, &webhookEnabled); err != nil {
+	if err := s.Scan(&x.ID, &x.Name, &x.URL, &x.AccountID, &providerID, &x.Model, &createdAt, &x.WebhookSecret, &webhookEnabled, &webhookRequireConf); err != nil {
 		return repo.Repo{}, err
 	}
 	x.ProviderID = providerID.String
 	x.WebhookEnabled = webhookEnabled != 0
+	x.WebhookRequireConfirmation = webhookRequireConf != 0
 	t, err := parseTime(createdAt)
 	if err != nil {
 		return repo.Repo{}, err

@@ -28,6 +28,11 @@ type Repo struct {
 	// WebhookEnabled toggles the auto-review receiver on for this repo. When
 	// false the endpoint is inert even if it receives events.
 	WebhookEnabled bool
+	// WebhookRequireConfirmation holds a webhook-triggered review for manual
+	// approval instead of running it immediately: when true the review is created
+	// in the awaiting_approval state and only runs once the user approves it in
+	// the app. When false (the default) webhook reviews auto-run as before.
+	WebhookRequireConfirmation bool
 }
 
 // Repository persists tracked repos.
@@ -37,7 +42,7 @@ type Repository interface {
 	List(ctx context.Context) ([]Repo, error)
 	Update(ctx context.Context, r Repo) error
 	Delete(ctx context.Context, id string) error
-	// SetWebhook updates only the webhook enable flag and secret. Returns
-	// ErrNotFound if the repo does not exist.
-	SetWebhook(ctx context.Context, id string, enabled bool, secret string) error
+	// SetWebhook updates only the webhook enable flag, secret and the
+	// require-confirmation gate. Returns ErrNotFound if the repo does not exist.
+	SetWebhook(ctx context.Context, id string, enabled bool, secret string, requireConfirmation bool) error
 }

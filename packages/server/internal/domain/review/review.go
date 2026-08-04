@@ -46,6 +46,12 @@ const (
 type Status string
 
 const (
+	// StatusAwaitingApproval is a webhook-triggered review held for manual
+	// confirmation: it is created but never enqueued, and only the user's explicit
+	// approval transitions it to pending. It is NOT terminal, but it is never
+	// auto-run by the runner nor recovered by crash-recovery requeue.
+	StatusAwaitingApproval Status = "awaiting_approval"
+
 	StatusPending   Status = "pending"
 	StatusRunning   Status = "running"
 	StatusDone      Status = "done"

@@ -34,6 +34,11 @@ var ErrNotCancelable = errors.New("reviews: review is not cancelable")
 // the worker keeps writing to it). The HTTP layer maps it to 409 Conflict.
 var ErrNotArchivable = errors.New("reviews: cannot archive a running review")
 
+// ErrNotApprovable is returned when Approve is called on a review that is not in
+// the awaiting_approval state (only a held, webhook-triggered review can be
+// approved). The HTTP layer maps it to 409 Conflict.
+var ErrNotApprovable = errors.New("reviews: review is not awaiting approval")
+
 // Notifier sends a best-effort notification for a fired event when a review
 // finishes. It is kept as a minimal interface so the reviews package stays
 // decoupled from any concrete notification backend (e.g. the notifications
@@ -206,13 +211,17 @@ func (s *Service) Create(ctx context.Context, repoID string, mrIID int, mode rev
 	return rv, nil
 }
 
-// TriggerFromWebhook creates and enqueues a review for a merge request in
-// response to a GitLab webhook, guarding against duplicates: if a pending or
-// running review already exists for this repo + MR it returns (zero, false, nil)
-// so repeated webhook deliveries (or rapid pushes) do not pile up a storm of
-// reviews. Otherwise it creates a fast-mode review resolving provider/model from
-// the repo and returns (review, true, nil). The bool reports whether a review
-// was actually created.
+// TriggerFromWebhook creates a review for a merge request in response to a
+// GitLab webhook, guarding against duplicates: if an in-flight review (pending,
+// running or awaiting_approval) already exists for this repo + MR it returns
+// (zero, false, nil) so repeated webhook deliveries (or rapid pushes) do not pile
+// up a storm of reviews.
+//
+// When the repo requires manual confirmation the review is created in the
+// awaiting_approval state and HELD (never enqueued) until the user approves it.
+// Otherwise it is created pending and enqueued to run immediately. In both cases
+// a created review resolves provider/model from the repo and returns
+// (review, true, nil). The bool reports whether a review was actually created.
 func (s *Service) TriggerFromWebhook(ctx context.Context, repoID string, mrIID int) (review.Review, bool, error) {
 	active, err := s.reviews.HasActiveForMR(ctx, repoID, mrIID)
 	if err != nil {
@@ -221,11 +230,60 @@ func (s *Service) TriggerFromWebhook(ctx context.Context, repoID string, mrIID i
 	if active {
 		return review.Review{}, false, nil
 	}
+	rp, err := s.repos.Get(ctx, repoID)
+	if err != nil {
+		return review.Review{}, false, err
+	}
+	if rp.WebhookRequireConfirmation {
+		rv, err := s.createHeld(ctx, repoID, mrIID)
+		if err != nil {
+			return review.Review{}, false, err
+		}
+		return rv, true, nil
+	}
 	rv, err := s.Create(ctx, repoID, mrIID, "", "", "")
 	if err != nil {
 		return review.Review{}, false, err
 	}
 	return rv, true, nil
+}
+
+// createHeld records a fast-mode review in the awaiting_approval state WITHOUT
+// enqueuing it: the review is held until the user approves it (see Approve). It
+// resolves provider/model from the repo at run time, exactly like Create.
+func (s *Service) createHeld(ctx context.Context, repoID string, mrIID int) (review.Review, error) {
+	rv := review.Review{
+		ID:          id.New(),
+		RepoID:      repoID,
+		MRIID:       mrIID,
+		ContextMode: review.ModeFast,
+		Status:      review.StatusAwaitingApproval,
+	}
+	if err := s.reviews.Create(ctx, rv); err != nil {
+		return review.Review{}, err
+	}
+	return rv, nil
+}
+
+// Approve promotes a held (awaiting_approval) review to pending and enqueues it,
+// so a webhook-triggered review the user chose to confirm runs normally. A review
+// in any other state returns ErrNotApprovable (mapped to 409 by the HTTP layer).
+func (s *Service) Approve(ctx context.Context, reviewID string) (review.Review, error) {
+	rv, err := s.reviews.Get(ctx, reviewID)
+	if err != nil {
+		return review.Review{}, err
+	}
+	if rv.Status != review.StatusAwaitingApproval {
+		return review.Review{}, ErrNotApprovable
+	}
+	if err := s.reviews.SetStatus(ctx, reviewID, review.StatusPending, ""); err != nil {
+		return review.Review{}, err
+	}
+	if _, err := s.runner.Enqueue(ctx, reviewID); err != nil {
+		return review.Review{}, err
+	}
+	rv.Status = review.StatusPending
+	return rv, nil
 }
 
 // List returns a repo's active (non-archived) reviews (without findings),
@@ -316,6 +374,13 @@ func (s *Service) Handle(ctx context.Context, reviewID string) error {
 	// completing the job). Re-running would re-charge the LLM and wipe published
 	// state, so treat the job as already done.
 	if rv.Status.Terminal() {
+		return nil
+	}
+	// A held review is never enqueued, so the worker should never see one. Guard
+	// defensively: if a stray job ever points at an awaiting_approval review, do
+	// not run it (running it would bypass the manual confirmation gate). Approve
+	// is the sole path that enqueues a held review.
+	if rv.Status == review.StatusAwaitingApproval {
 		return nil
 	}
 	if err := s.reviews.SetStatus(ctx, reviewID, review.StatusRunning, ""); err != nil {

@@ -17,7 +17,12 @@ defineProps<{
   busyIds?: string[]
 }>()
 
-const emit = defineEmits<{ archive: [id: string]; unarchive: [id: string] }>()
+const emit = defineEmits<{
+  archive: [id: string]
+  unarchive: [id: string]
+  approve: [id: string]
+  discard: [id: string, mrIid: number]
+}>()
 </script>
 
 <template>
@@ -56,7 +61,37 @@ const emit = defineEmits<{ archive: [id: string]; unarchive: [id: string] }>()
             <div v-if="rv.status === 'done'" class="label-mono mt-0.5">score {{ rv.score }}</div>
             <div v-else-if="rv.status === 'error'" class="text-danger text-xs">failed</div>
           </div>
+          <template v-if="!rv.archived && rv.status === 'awaiting_approval'">
+            <button
+              class="btn-line text-xs"
+              :disabled="busyIds?.includes(rv.id) ?? false"
+              :aria-label="`Approve review !${rv.mrIid}`"
+              title="Approve and run"
+              @click="emit('approve', rv.id)"
+            >
+              <span
+                :class="
+                  (busyIds?.includes(rv.id) ?? false)
+                    ? 'i-lucide-loader-circle animate-spin'
+                    : 'i-lucide-play'
+                "
+                class="text-sm"
+                aria-hidden="true"
+              />
+              Approve
+            </button>
+            <button
+              class="btn-ghost text-danger text-xs"
+              :disabled="busyIds?.includes(rv.id) ?? false"
+              :aria-label="`Discard review !${rv.mrIid}`"
+              title="Discard"
+              @click="emit('discard', rv.id, rv.mrIid)"
+            >
+              <span class="i-lucide-trash-2 text-sm" aria-hidden="true" />
+            </button>
+          </template>
           <button
+            v-else
             class="btn-ghost text-xs"
             :disabled="(busyIds?.includes(rv.id) ?? false) || (!rv.archived && !isTerminal(rv.status))"
             :aria-label="rv.archived ? `Unarchive review !${rv.mrIid}` : `Archive review !${rv.mrIid}`"

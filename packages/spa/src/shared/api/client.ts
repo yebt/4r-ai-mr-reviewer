@@ -219,11 +219,13 @@ export const api = {
   }) => request<Repo>('POST', '/repos', input),
   assignRepo: (id: string, input: { providerId: string; model: string }) =>
     request<Repo>('PATCH', `/repos/${id}/assign`, input),
-  // Enable/disable the per-repo GitLab auto-review webhook. Enabling generates a
-  // secret token server-side on first use; the updated repo (with webhookSecret
-  // and webhookPath) comes back so the UI can show what to paste into GitLab.
-  setRepoWebhook: (id: string, enabled: boolean) =>
-    request<Repo>('PATCH', `/repos/${id}/webhook`, { enabled }),
+  // Enable/disable the per-repo GitLab auto-review webhook, and set whether a
+  // webhook-triggered review must be manually confirmed before it runs. Enabling
+  // generates a secret token server-side on first use; the updated repo (with
+  // webhookSecret and webhookPath) comes back so the UI can show what to paste
+  // into GitLab.
+  setRepoWebhook: (id: string, enabled: boolean, requireConfirmation = false) =>
+    request<Repo>('PATCH', `/repos/${id}/webhook`, { enabled, requireConfirmation }),
   rotateRepoWebhookSecret: (id: string) =>
     request<Repo>('POST', `/repos/${id}/webhook/rotate`),
   // Preflight the repo's token scopes and project access to learn which
@@ -251,6 +253,9 @@ export const api = {
   },
   getReview: (id: string) => request<Review>('GET', `/reviews/${id}`),
   deleteReview: (id: string) => request<void>('DELETE', `/reviews/${id}`),
+  // Approve a held (awaiting_approval) webhook review: promotes it to pending and
+  // enqueues it. 409 if the review is not awaiting approval.
+  approveReview: (id: string) => request<Review>('POST', `/reviews/${id}/approve`),
   retryReview: (id: string) => request<Review>('POST', `/reviews/${id}/retry`),
   cancelReview: (id: string) => request<{ status: string }>('POST', `/reviews/${id}/cancel`),
   archiveReview: (id: string) => request<{ status: string }>('POST', `/reviews/${id}/archive`),

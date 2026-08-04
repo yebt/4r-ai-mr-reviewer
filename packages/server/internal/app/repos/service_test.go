@@ -118,7 +118,7 @@ func TestRotateWebhookSecret(t *testing.T) {
 	f := newFixture(t)
 	r, _ := f.svc.Add(ctx, AddInput{Name: "web", URL: "u", AccountID: f.accountID})
 
-	enabled, err := f.svc.SetWebhook(ctx, r.ID, true)
+	enabled, err := f.svc.SetWebhook(ctx, r.ID, true, false)
 	if err != nil {
 		t.Fatalf("SetWebhook: %v", err)
 	}
@@ -140,6 +140,47 @@ func TestRotateWebhookSecret(t *testing.T) {
 	// Unknown repo surfaces ErrNotFound.
 	if _, err := f.svc.RotateWebhookSecret(ctx, "nope"); !errors.Is(err, repo.ErrNotFound) {
 		t.Fatalf("RotateWebhookSecret(unknown) = %v, want ErrNotFound", err)
+	}
+}
+
+// TestSetWebhookRequireConfirmation asserts the confirmation gate round-trips
+// through SetWebhook and that rotating the secret preserves it.
+func TestSetWebhookRequireConfirmation(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	r, _ := f.svc.Add(ctx, AddInput{Name: "web", URL: "u", AccountID: f.accountID})
+
+	enabled, err := f.svc.SetWebhook(ctx, r.ID, true, true)
+	if err != nil {
+		t.Fatalf("SetWebhook: %v", err)
+	}
+	if !enabled.WebhookRequireConfirmation {
+		t.Fatal("SetWebhook did not set the require-confirmation flag")
+	}
+	got, err := f.svc.Get(ctx, r.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if !got.WebhookRequireConfirmation {
+		t.Fatal("require-confirmation flag did not persist")
+	}
+
+	// Rotating the secret must not clear the confirmation gate.
+	rotated, err := f.svc.RotateWebhookSecret(ctx, r.ID)
+	if err != nil {
+		t.Fatalf("RotateWebhookSecret: %v", err)
+	}
+	if !rotated.WebhookRequireConfirmation {
+		t.Fatal("rotate cleared the require-confirmation flag; want it preserved")
+	}
+
+	// Clearing it works too.
+	cleared, err := f.svc.SetWebhook(ctx, r.ID, true, false)
+	if err != nil {
+		t.Fatalf("SetWebhook clear: %v", err)
+	}
+	if cleared.WebhookRequireConfirmation {
+		t.Fatal("SetWebhook did not clear the require-confirmation flag")
 	}
 }
 

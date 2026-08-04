@@ -306,13 +306,14 @@ func (s *Server) assignRepo(w http.ResponseWriter, r *http.Request) {
 // the webhook path) so the UI can show the user what to paste into GitLab.
 func (s *Server) setRepoWebhook(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Enabled bool `json:"enabled"`
+		Enabled             bool `json:"enabled"`
+		RequireConfirmation bool `json:"requireConfirmation"`
 	}
 	if err := decode(r, &in); err != nil {
 		writeErr(w, err, http.StatusBadRequest)
 		return
 	}
-	rp, err := s.repos.SetWebhook(r.Context(), r.PathValue("id"), in.Enabled)
+	rp, err := s.repos.SetWebhook(r.Context(), r.PathValue("id"), in.Enabled, in.RequireConfirmation)
 	if err != nil {
 		writeErr(w, err, http.StatusBadRequest)
 		return
@@ -415,6 +416,21 @@ func (s *Server) deleteReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// approveReview promotes a held (awaiting_approval) webhook review to pending and
+// enqueues it. A review in any other state is a 409 conflict.
+func (s *Server) approveReview(w http.ResponseWriter, r *http.Request) {
+	rv, err := s.reviews.Approve(r.Context(), r.PathValue("id"))
+	if err != nil {
+		if errors.Is(err, reviews.ErrNotApprovable) {
+			writeErr(w, err, http.StatusConflict)
+			return
+		}
+		writeErr(w, err, http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, toReview(rv))
 }
 
 func (s *Server) cancelReview(w http.ResponseWriter, r *http.Request) {
@@ -628,6 +644,9 @@ type repoResp struct {
 	Model      string `json:"model"`
 	// WebhookEnabled toggles the per-repo GitLab auto-review webhook.
 	WebhookEnabled bool `json:"webhookEnabled"`
+	// WebhookRequireConfirmation holds webhook-triggered reviews for manual
+	// approval instead of running them immediately.
+	WebhookRequireConfirmation bool `json:"webhookRequireConfirmation"`
 	// WebhookSecret is the GitLab "Secret token" for this repo's webhook. It is
 	// returned so the single user of this self-hosted tool can copy it into
 	// GitLab; empty until the webhook is first enabled.
@@ -642,9 +661,10 @@ func toRepo(rp domainrepo.Repo) repoResp {
 	return repoResp{
 		ID: rp.ID, Name: rp.Name, URL: rp.URL, AccountID: rp.AccountID,
 		ProviderID: rp.ProviderID, Model: rp.Model,
-		WebhookEnabled: rp.WebhookEnabled, WebhookSecret: rp.WebhookSecret,
-		WebhookPath: "/webhooks/gitlab/" + rp.ID,
-		CreatedAt:   rp.CreatedAt,
+		WebhookEnabled: rp.WebhookEnabled, WebhookRequireConfirmation: rp.WebhookRequireConfirmation,
+		WebhookSecret: rp.WebhookSecret,
+		WebhookPath:   "/webhooks/gitlab/" + rp.ID,
+		CreatedAt:     rp.CreatedAt,
 	}
 }
 

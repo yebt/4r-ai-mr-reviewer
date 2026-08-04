@@ -107,6 +107,103 @@ func enableWebhook(t *testing.T, baseURL, repoID string) string {
 	return repoObj.WebhookSecret
 }
 
+// enableWebhookRequireConfirmation turns the repo's webhook on WITH the manual
+// confirmation gate and returns its secret.
+func enableWebhookRequireConfirmation(t *testing.T, baseURL, repoID string) string {
+	t.Helper()
+	resp := sendJSON(t, http.MethodPatch, baseURL+"/repos/"+repoID+"/webhook", map[string]any{"enabled": true, "requireConfirmation": true})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("enable webhook (confirm) status = %d, want 200", resp.StatusCode)
+	}
+	var repoObj struct {
+		WebhookEnabled             bool   `json:"webhookEnabled"`
+		WebhookRequireConfirmation bool   `json:"webhookRequireConfirmation"`
+		WebhookSecret              string `json:"webhookSecret"`
+	}
+	decodeBody(t, resp, &repoObj)
+	if !repoObj.WebhookEnabled || !repoObj.WebhookRequireConfirmation || repoObj.WebhookSecret == "" {
+		t.Fatalf("enable webhook (confirm) response = %+v, want enabled+requireConfirmation with a secret", repoObj)
+	}
+	return repoObj.WebhookSecret
+}
+
+// listReviews returns the repo's reviews decoded with id and status.
+func listReviews(t *testing.T, baseURL, repoID string) []struct {
+	ID     string `json:"id"`
+	Status string `json:"status"`
+} {
+	t.Helper()
+	resp, err := http.Get(baseURL + "/repos/" + repoID + "/reviews")
+	if err != nil {
+		t.Fatalf("GET reviews: %v", err)
+	}
+	var list []struct {
+		ID     string `json:"id"`
+		Status string `json:"status"`
+	}
+	decodeBody(t, resp, &list)
+	return list
+}
+
+// TestGitlabWebhookRequireConfirmationHoldsReview asserts that with the
+// confirmation gate on, a webhook trigger creates a HELD review (awaiting_approval)
+// and that POST /reviews/{id}/approve promotes it to pending.
+func TestGitlabWebhookRequireConfirmationHoldsReview(t *testing.T) {
+	srv := newTestServer(t)
+	repoID := seedRepo(t, srv.URL)
+	secret := enableWebhookRequireConfirmation(t, srv.URL, repoID)
+
+	resp := postGitlabWebhook(t, srv.URL+"/webhooks/gitlab/"+repoID, secret, mrEventBody("open", 7, ""))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("open webhook status = %d, want 200", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	if n := waitReviewCount(t, srv.URL, repoID, 1); n != 1 {
+		t.Fatalf("gated webhook created %d reviews, want 1", n)
+	}
+	list := listReviews(t, srv.URL, repoID)
+	if len(list) != 1 || list[0].Status != "awaiting_approval" {
+		t.Fatalf("gated webhook review = %+v, want a single awaiting_approval review", list)
+	}
+	reviewID := list[0].ID
+
+	// Approve promotes the held review to pending.
+	appResp := postJSON(t, srv.URL+"/reviews/"+reviewID+"/approve", nil)
+	if appResp.StatusCode != http.StatusOK {
+		t.Fatalf("approve status = %d, want 200", appResp.StatusCode)
+	}
+	var approved struct {
+		Status string `json:"status"`
+	}
+	decodeBody(t, appResp, &approved)
+	if approved.Status != "pending" {
+		t.Fatalf("approved status = %q, want pending", approved.Status)
+	}
+}
+
+// TestApproveReviewWrongStateConflict asserts approving a review that is not
+// awaiting approval (a normally-created pending review) is a 409 conflict.
+func TestApproveReviewWrongStateConflict(t *testing.T) {
+	srv := newTestServer(t)
+	repoID := seedRepo(t, srv.URL)
+
+	revResp := postJSON(t, srv.URL+"/reviews", map[string]any{"repoId": repoID, "mrIid": 7, "mode": "fast"})
+	if revResp.StatusCode != http.StatusCreated {
+		t.Fatalf("create review status = %d, want 201", revResp.StatusCode)
+	}
+	var rev struct {
+		ID string `json:"id"`
+	}
+	decodeBody(t, revResp, &rev)
+
+	appResp := postJSON(t, srv.URL+"/reviews/"+rev.ID+"/approve", nil)
+	if appResp.StatusCode != http.StatusConflict {
+		t.Fatalf("approve on pending review status = %d, want 409", appResp.StatusCode)
+	}
+	appResp.Body.Close()
+}
+
 // TestGitlabWebhookDisabledRepo asserts a repo with the webhook disabled answers
 // 200 and never creates a review.
 func TestGitlabWebhookDisabledRepo(t *testing.T) {
