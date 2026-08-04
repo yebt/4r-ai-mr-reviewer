@@ -7,7 +7,7 @@ export interface Account {
   createdAt: string
 }
 
-export type ProviderKind = 'openai-compat' | 'anthropic'
+export type ProviderKind = 'openai-compat' | 'anthropic' | 'gemini'
 
 export interface Provider {
   id: string

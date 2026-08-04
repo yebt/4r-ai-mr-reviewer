@@ -18,11 +18,14 @@ const (
 	KindOpenAICompat Kind = "openai-compat"
 	// KindAnthropic is the Claude messages API.
 	KindAnthropic Kind = "anthropic"
+	// KindGemini is Google Gemini via its OpenAI-compatible endpoint, so it
+	// reuses the OpenAI-compat wire protocol with a Gemini default base URL.
+	KindGemini Kind = "gemini"
 )
 
 // Valid reports whether k is a supported kind.
 func (k Kind) Valid() bool {
-	return k == KindOpenAICompat || k == KindAnthropic
+	return k == KindOpenAICompat || k == KindAnthropic || k == KindGemini
 }
 
 // Provider is a configured AI backend. The API key is not stored here;

@@ -125,6 +125,7 @@ async function submit() {
           openai-compat (Groq, OpenAI, Moonshot, Kimi, OpenRouter)
         </option>
         <option value="anthropic">anthropic (Claude)</option>
+        <option value="gemini">gemini (Google Gemini)</option>
       </select>
     </div>
 
@@ -139,6 +140,10 @@ async function submit() {
         placeholder="https://api.groq.com/openai/v1"
         autocomplete="off"
       />
+      <p v-if="form.kind === 'gemini'" class="text-muted mt-1 text-xs">
+        Leave empty to use Google's Gemini endpoint. Use a Gemini model such as
+        <code>gemini-2.5-flash</code>.
+      </p>
     </div>
 
     <div>

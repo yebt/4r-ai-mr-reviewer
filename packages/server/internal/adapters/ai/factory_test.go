@@ -22,6 +22,29 @@ func TestFactorySelectsClient(t *testing.T) {
 	if _, ok := claude.(*AnthropicClient); !ok {
 		t.Fatalf("anthropic -> %T, want *AnthropicClient", claude)
 	}
+
+	// Gemini reuses the OpenAI-compat client, defaulting to Gemini's endpoint
+	// when no base URL is set.
+	gemini, err := New(provider.Provider{Kind: provider.KindGemini}, "k")
+	if err != nil {
+		t.Fatalf("gemini: %v", err)
+	}
+	gc, ok := gemini.(*OpenAIClient)
+	if !ok {
+		t.Fatalf("gemini -> %T, want *OpenAIClient", gemini)
+	}
+	if gc.baseURL != geminiOpenAIBaseURL {
+		t.Fatalf("gemini baseURL = %q, want %q", gc.baseURL, geminiOpenAIBaseURL)
+	}
+
+	// An explicit base URL on a Gemini provider is honored (not overridden).
+	custom, err := New(provider.Provider{Kind: provider.KindGemini, BaseURL: "https://proxy.test/v1"}, "k")
+	if err != nil {
+		t.Fatalf("gemini custom: %v", err)
+	}
+	if cc, ok := custom.(*OpenAIClient); !ok || cc.baseURL != "https://proxy.test/v1" {
+		t.Fatalf("gemini custom baseURL not honored: %T %v", custom, custom)
+	}
 }
 
 func TestFactoryRejectsUnknownKind(t *testing.T) {
