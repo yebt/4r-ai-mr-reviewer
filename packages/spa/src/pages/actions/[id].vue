@@ -215,7 +215,10 @@ onUnmounted(pause)
 
 <template>
   <div>
-    <PageHeader :title="headerTitle" />
+    <PageHeader
+      :title="headerTitle"
+      :view-transition-name="run ? `action-${run.id}` : undefined"
+    />
 
     <p v-if="loading && !run" class="text-muted py-3 text-sm">Loading…</p>
     <template v-else-if="notFound">

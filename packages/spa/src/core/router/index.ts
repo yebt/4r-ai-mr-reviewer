@@ -3,6 +3,7 @@ import { routes, handleHotUpdate } from 'vue-router/auto-routes'
 import NProgress from 'nprogress'
 import { onUnauthorized } from '@shared/api/client'
 import { useAuthStore } from '@modules/auth/store'
+import { installViewTransitions } from './viewTransitions'
 
 // Slim top-of-page progress bar for navigations. The spinner is off (the bar
 // alone reads as "loading") and the bar colour is themed to the accent token in
@@ -65,6 +66,10 @@ onUnauthorized(() => {
   if (current.path === '/login') return
   void router.push({ path: '/login', query: { redirect: current.fullPath } })
 })
+
+// Smooth same-document navigation via the View Transitions API. Self-guards for
+// feature support and prefers-reduced-motion, so it is inert where unsupported.
+installViewTransitions(router)
 
 export default router
 

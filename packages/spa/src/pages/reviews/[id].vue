@@ -430,7 +430,10 @@ async function remove() {
 
 <template>
   <div>
-    <PageHeader :title="review ? `Merge request !${review.mrIid}` : 'Review'">
+    <PageHeader
+      :title="review ? `Merge request !${review.mrIid}` : 'Review'"
+      :view-transition-name="review ? `review-${review.id}` : undefined"
+    >
       <template #actions>
         <ReviewStatusChip v-if="review" :status="review.status" />
         <button

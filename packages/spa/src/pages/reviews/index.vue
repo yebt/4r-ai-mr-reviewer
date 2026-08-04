@@ -148,7 +148,11 @@ const archived = computed(() => reviews.allArchived)
       <li v-for="rv in items" :key="rv.id" class="row justify-between">
         <div class="min-w-0">
           <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <RouterLink :to="`/reviews/${rv.id}`" class="text-ink hover:text-accent text-sm">
+            <RouterLink
+              :to="`/reviews/${rv.id}`"
+              class="text-ink hover:text-accent text-sm"
+              :style="{ viewTransitionName: `review-${rv.id}` }"
+            >
               {{ repoName(rv.repoId) }} · !{{ rv.mrIid }}
             </RouterLink>
             <ReviewStatusChip :status="rv.status" />
@@ -220,7 +224,11 @@ const archived = computed(() => reviews.allArchived)
         <li v-for="rv in archived" :key="rv.id" class="row justify-between">
           <div class="min-w-0">
             <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <RouterLink :to="`/reviews/${rv.id}`" class="text-ink hover:text-accent text-sm">
+              <RouterLink
+                :to="`/reviews/${rv.id}`"
+                class="text-ink hover:text-accent text-sm"
+                :style="{ viewTransitionName: `review-${rv.id}` }"
+              >
                 {{ repoName(rv.repoId) }} · !{{ rv.mrIid }}
               </RouterLink>
               <ReviewStatusChip :status="rv.status" />

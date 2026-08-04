@@ -38,6 +38,7 @@ const emit = defineEmits<{
             <RouterLink
               :to="`/reviews/${rv.id}`"
               class="text-ink hover:text-accent font-mono text-sm"
+              :style="{ viewTransitionName: `review-${rv.id}` }"
             >
               !{{ rv.mrIid }}
             </RouterLink>

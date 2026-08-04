@@ -35,6 +35,23 @@ body {
   opacity: 0;
 }
 
+/* View Transitions API — same-document navigation.
+   The JS integration only calls startViewTransition when motion is allowed, so
+   these rules are already inert under reduced motion; the media query is a
+   belt-and-braces guard that also keeps any named shared-element morph subtle.
+   Only tokens/keywords here — no invented colours. */
+@media (prefers-reduced-motion: no-preference) {
+  /* Root cross-fade for the whole page on every navigation. Named shared
+     elements (the review- and action- prefixes) morph position/size and
+     cross-fade between list row and detail header using the browser's default
+     (tasteful) timing. */
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 0.22s;
+    animation-timing-function: ease;
+  }
+}
+
 /* Off-canvas drawer slide. */
 .drawer-enter-active,
 .drawer-leave-active {

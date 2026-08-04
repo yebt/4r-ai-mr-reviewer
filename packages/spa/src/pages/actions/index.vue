@@ -123,7 +123,10 @@ async function remove(run: RoutineRun) {
         >
           <!-- Primary label: the MR title when captured, else the !{mrIid}
                fallback. Truncates so a long title never overflows the row. -->
-          <span class="text-ink group-hover:text-accent min-w-0 truncate text-sm">
+          <span
+            class="text-ink group-hover:text-accent min-w-0 truncate text-sm"
+            :style="{ viewTransitionName: `action-${run.id}` }"
+          >
             {{ runTitle(run) }}
           </span>
           <span class="text-muted text-xs">{{ repoLabel(run) }}</span>
