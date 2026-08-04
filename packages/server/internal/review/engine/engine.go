@@ -9,6 +9,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/llm"
@@ -102,6 +103,14 @@ func (e *Engine) Run(ctx context.Context, client llm.Client, p RunParams) (revie
 
 	summary, findings, err := parseResponse(resp.Content)
 	if err != nil {
+		// Enrich the parse error with the phase and the tokens this call used,
+		// so a failed review can show where and at what cost it broke.
+		var pe *ParseError
+		if errors.As(err, &pe) {
+			pe.Phase = "reviewing"
+			pe.InputTokens = resp.InputTokens
+			pe.OutputTokens = resp.OutputTokens
+		}
 		return review.Review{}, fmt.Errorf("engine: %w", err)
 	}
 

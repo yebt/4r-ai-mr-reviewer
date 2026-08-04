@@ -156,8 +156,8 @@ func TestRunMalformedOutputIsError(t *testing.T) {
 }
 
 // TestParseResponseParseError asserts a decode failure yields a *ParseError that
-// carries the full raw model output, discoverable via errors.As even when the
-// caller wraps it.
+// carries the full raw model output and the clearer JSON message, discoverable
+// via errors.As even when the caller wraps it.
 func TestParseResponseParseError(t *testing.T) {
 	const junk = "not json"
 	_, _, err := parseResponse(junk)
@@ -172,5 +172,55 @@ func TestParseResponseParseError(t *testing.T) {
 	}
 	if pe.Raw != junk {
 		t.Fatalf("ParseError.Raw = %q, want %q", pe.Raw, junk)
+	}
+	if !strings.Contains(pe.Error(), "could not parse the model's response as JSON") {
+		t.Fatalf("ParseError.Error() = %q, want the clearer JSON message", pe.Error())
+	}
+}
+
+// TestParseResponseEmptyOutput asserts an empty response is surfaced as a
+// distinct, human "empty response" error with an empty Raw — the exact case where
+// the model returns no content at all.
+func TestParseResponseEmptyOutput(t *testing.T) {
+	_, _, err := parseResponse("")
+	if err == nil {
+		t.Fatal("expected an error for empty output")
+	}
+	var pe *ParseError
+	if !errors.As(err, &pe) {
+		t.Fatalf("errors.As did not find *ParseError in %v", err)
+	}
+	if pe.Raw != "" {
+		t.Fatalf("ParseError.Raw = %q, want the empty string on an empty response", pe.Raw)
+	}
+	if !strings.Contains(pe.Error(), "the model returned an empty response") {
+		t.Fatalf("ParseError.Error() = %q, want the empty-response message", pe.Error())
+	}
+}
+
+// TestMultiPassEnrichesParseError asserts the multi-pass strategy enriches a
+// parse failure with the failing phase and the tokens spent up to that point,
+// discoverable via errors.As on the wrapped error.
+func TestMultiPassEnrichesParseError(t *testing.T) {
+	set, err := skills.Load("")
+	if err != nil {
+		t.Fatalf("skills.Load: %v", err)
+	}
+	// The first pass (risk) returns an empty response, failing to parse.
+	fc := &fakeClient{content: ""}
+	_, err = NewMultiPass(set).Run(context.Background(), fc, RunParams{Model: "m", In: sampleInput()})
+	if err == nil {
+		t.Fatal("expected a parse error from the empty first pass")
+	}
+	var pe *ParseError
+	if !errors.As(err, &pe) {
+		t.Fatalf("errors.As did not find *ParseError in %v", err)
+	}
+	if pe.Phase != "risk" {
+		t.Fatalf("ParseError.Phase = %q, want %q", pe.Phase, "risk")
+	}
+	// fakeClient reports 100/50 per call; the risk pass accumulates its own.
+	if pe.InputTokens != 100 || pe.OutputTokens != 50 {
+		t.Fatalf("ParseError tokens = %d/%d, want 100/50", pe.InputTokens, pe.OutputTokens)
 	}
 }

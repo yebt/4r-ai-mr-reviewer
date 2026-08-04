@@ -74,6 +74,36 @@ const review = computed(() => store.current)
 // long — and only shown when present.
 const rawOutputOpen = ref(false)
 
+// A failed review whose error is the model returning nothing at all. The backend
+// surfaces this exact case with a distinct message; matching it lets the UI add a
+// plain-language hint next to the (zero) token usage.
+const emptyModelResponse = computed(
+  () =>
+    review.value?.status === 'error' && /empty response/i.test(review.value?.error ?? ''),
+)
+
+// Whether a failed review has any model-interaction detail worth surfacing under
+// "More info": token usage, an empty-response, captured reasoning, or raw output.
+const hasFailureDetails = computed(() => {
+  const r = review.value
+  if (!r || r.status !== 'error') return false
+  return (
+    r.inputTokens > 0 ||
+    r.outputTokens > 0 ||
+    emptyModelResponse.value ||
+    r.reasonings.length > 0 ||
+    Boolean(r.rawOutput)
+  )
+})
+
+// Show the token-usage line when the failure carried token data or was an empty
+// model response (so the 0/0 reads as an intentional "model produced nothing").
+const showFailureTokens = computed(() => {
+  const r = review.value
+  if (!r || r.status !== 'error') return false
+  return r.inputTokens > 0 || r.outputTokens > 0 || emptyModelResponse.value
+})
+
 // Tab title: the reviewed MR plus its repo (e.g. "Review !42 · my-repo"), so a
 // Review tab is identifiable at a glance. Falls back to the generic label from
 // definePage while the review is still loading.
@@ -565,30 +595,63 @@ async function remove() {
       <div v-else-if="review.status === 'error'" class="flex flex-col items-start gap-3">
         <p class="text-danger text-sm">{{ review.error || 'Review failed.' }}</p>
 
-        <!-- Raw model output: captured when the failure was an unparseable
-             response. Additional to the error message above; collapsed by
-             default since it can be long. -->
-        <div v-if="review.rawOutput" class="border-line/50 w-full border">
-          <button
-            type="button"
-            class="text-ink flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm"
-            :aria-expanded="rawOutputOpen"
-            @click="rawOutputOpen = !rawOutputOpen"
+        <!-- More info: everything the run left behind so a failure is diagnosable
+             — token usage (with an empty-response hint), any captured per-phase
+             reasoning, and the raw model output. Each part self-hides when there
+             is nothing to show, and the whole block only renders when at least
+             one part has content. -->
+        <div v-if="hasFailureDetails" class="w-full">
+          <h2 class="section-title mb-3 flex items-center gap-2">
+            <span class="bg-accent inline-block h-3.5 w-0.5" aria-hidden="true" />
+            More info
+          </h2>
+
+          <!-- Token usage: what the failed run consumed. A zero output makes the
+               empty-response case explicit rather than looking like missing data. -->
+          <p
+            v-if="showFailureTokens"
+            class="text-muted mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm"
           >
-            <span class="flex items-center gap-2">
-              <span class="i-lucide-file-code text-muted text-sm" aria-hidden="true" />
-              Raw model output
+            <span class="label-mono">
+              Input {{ review.inputTokens }} · Output {{ review.outputTokens }} tokens
             </span>
             <span
-              class="i-lucide-chevron-down text-muted text-sm transition-transform"
-              :class="rawOutputOpen ? 'rotate-180' : ''"
-              aria-hidden="true"
-            />
-          </button>
-          <pre
-            v-show="rawOutputOpen"
-            class="text-muted bg-surface border-line/50 max-h-96 overflow-auto border-t px-3 py-2 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap"
-          >{{ review.rawOutput }}</pre>
+              v-if="emptyModelResponse"
+              class="text-warn inline-flex items-center gap-1 text-xs"
+            >
+              <span class="i-lucide-triangle-alert text-sm" aria-hidden="true" />
+              The model returned an empty response.
+            </span>
+          </p>
+
+          <!-- Any per-phase reasoning captured before the failure. Renders nothing
+               when none was captured. -->
+          <ReasoningPanel :review="review" />
+
+          <!-- Raw model output: captured when the failure was an unparseable
+               response. Collapsed by default since it can be long. -->
+          <div v-if="review.rawOutput" class="border-line/50 w-full border">
+            <button
+              type="button"
+              class="text-ink flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm"
+              :aria-expanded="rawOutputOpen"
+              @click="rawOutputOpen = !rawOutputOpen"
+            >
+              <span class="flex items-center gap-2">
+                <span class="i-lucide-file-code text-muted text-sm" aria-hidden="true" />
+                Raw model output
+              </span>
+              <span
+                class="i-lucide-chevron-down text-muted text-sm transition-transform"
+                :class="rawOutputOpen ? 'rotate-180' : ''"
+                aria-hidden="true"
+              />
+            </button>
+            <pre
+              v-show="rawOutputOpen"
+              class="text-muted bg-surface border-line/50 max-h-96 overflow-auto border-t px-3 py-2 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap"
+            >{{ review.rawOutput }}</pre>
+          </div>
         </div>
 
         <button class="btn-line" @click="retry">

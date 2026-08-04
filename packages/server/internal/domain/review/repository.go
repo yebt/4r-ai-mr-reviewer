@@ -30,6 +30,12 @@ type Repository interface {
 	SetStatus(ctx context.Context, id string, status Status, errMsg string) error
 	// SetRawOutput persists the raw model output captured on a parse failure.
 	SetRawOutput(ctx context.Context, id string, raw string) error
+	// SetFailure records a parse failure in one update: it marks the review
+	// errored and persists the error message, the raw model output, and the
+	// token counts accumulated before the failure, so a failed review can
+	// surface exactly what the model returned and at what cost. Returns
+	// ErrNotFound if the review does not exist.
+	SetFailure(ctx context.Context, id, errMsg, rawOutput string, inputTokens, outputTokens int) error
 	// SetPhase updates only the progress phase (called frequently while running).
 	SetPhase(ctx context.Context, id string, phase string) error
 	// SetReasoning upserts the captured chain-of-thought for one phase of a

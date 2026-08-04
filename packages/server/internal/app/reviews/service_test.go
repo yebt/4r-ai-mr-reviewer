@@ -955,8 +955,8 @@ func TestRetryClonesReview(t *testing.T) {
 
 // TestReviewCapturesRawOutputOnParseFailure drives a review whose provider
 // returns unparseable (non-JSON) content: the review must end in StatusError
-// AND the persisted review must carry the raw model output so the UI can
-// surface exactly what the model returned.
+// AND the persisted review must carry the raw model output and the token counts
+// so the UI can surface exactly what the model returned and at what cost.
 func TestReviewCapturesRawOutputOnParseFailure(t *testing.T) {
 	ctx := context.Background()
 
@@ -1005,5 +1005,9 @@ func TestReviewCapturesRawOutputOnParseFailure(t *testing.T) {
 	}
 	if !strings.Contains(got.RawOutput, junk) {
 		t.Fatalf("RawOutput = %q, want it to contain the model's junk output", got.RawOutput)
+	}
+	// The parse-failure path persists the token counts too (aiStub reports 50/20).
+	if got.InputTokens != 50 || got.OutputTokens != 20 {
+		t.Fatalf("tokens = %d/%d, want 50/20 persisted on the parse failure", got.InputTokens, got.OutputTokens)
 	}
 }

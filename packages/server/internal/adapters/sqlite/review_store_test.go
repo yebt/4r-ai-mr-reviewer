@@ -455,3 +455,44 @@ func TestReviewSetRawOutput(t *testing.T) {
 		t.Fatalf("SetRawOutput(missing) = %v, want ErrNotFound", err)
 	}
 }
+
+// TestReviewSetFailure asserts SetFailure persists the error, raw output, and
+// token counts in one write, all round-tripping through Get, and that setting it
+// on a missing review returns ErrNotFound.
+func TestReviewSetFailure(t *testing.T) {
+	ctx := context.Background()
+	s, repoID := newReviewStore(t)
+
+	rv := review.Review{ID: id.New(), RepoID: repoID, MRIID: 7, Status: review.StatusRunning}
+	if err := s.Create(ctx, rv); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	const (
+		errMsg = "engine: readability pass: the model returned an empty response"
+		raw    = ""
+	)
+	if err := s.SetFailure(ctx, rv.ID, errMsg, raw, 1200, 0); err != nil {
+		t.Fatalf("SetFailure: %v", err)
+	}
+	got, err := s.Get(ctx, rv.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Status != review.StatusError {
+		t.Fatalf("status = %s, want error", got.Status)
+	}
+	if got.Error != errMsg {
+		t.Fatalf("error = %q, want %q", got.Error, errMsg)
+	}
+	if got.RawOutput != raw {
+		t.Fatalf("RawOutput = %q, want %q", got.RawOutput, raw)
+	}
+	if got.InputTokens != 1200 || got.OutputTokens != 0 {
+		t.Fatalf("tokens = %d/%d, want 1200/0", got.InputTokens, got.OutputTokens)
+	}
+
+	if err := s.SetFailure(ctx, "missing-id", errMsg, raw, 0, 0); !errors.Is(err, review.ErrNotFound) {
+		t.Fatalf("SetFailure(missing) = %v, want ErrNotFound", err)
+	}
+}

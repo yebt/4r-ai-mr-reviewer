@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -72,6 +73,15 @@ func (m *MultiPass) Run(ctx context.Context, client llm.Client, rp RunParams) (r
 
 		_, fs, err := parseResponse(resp.Content)
 		if err != nil {
+			// Enrich the parse error with the failing phase and the tokens
+			// accumulated so far, so a failed review can show where and at what
+			// cost the model's response broke.
+			var pe *ParseError
+			if errors.As(err, &pe) {
+				pe.Phase = p.phase
+				pe.InputTokens = inputTokens
+				pe.OutputTokens = outputTokens
+			}
 			return review.Review{}, fmt.Errorf("engine: %s pass: %w", p.phase, err)
 		}
 		// The prompt is dimension-specific; pin the dimension defensively.

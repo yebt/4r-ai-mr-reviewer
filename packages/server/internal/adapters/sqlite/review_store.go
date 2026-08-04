@@ -283,6 +283,23 @@ func (r *ReviewStore) SetRawOutput(ctx context.Context, id string, raw string) e
 	return nil
 }
 
+// SetFailure records a parse failure in one update: status='error', the error
+// message, the raw model output, and the token counts accumulated before the
+// failure, so a failed review can surface exactly what the model returned and at
+// what cost.
+func (r *ReviewStore) SetFailure(ctx context.Context, id, errMsg, rawOutput string, inputTokens, outputTokens int) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE reviews SET status = ?, error = ?, raw_output = ?, input_tokens = ?, output_tokens = ?, updated_at = ? WHERE id = ?`,
+		string(review.StatusError), errMsg, rawOutput, inputTokens, outputTokens, formatTime(time.Now().UTC()), id)
+	if err != nil {
+		return fmt.Errorf("review store: set failure: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return review.ErrNotFound
+	}
+	return nil
+}
+
 // SetStatus updates only status and error.
 func (r *ReviewStore) SetStatus(ctx context.Context, id string, status review.Status, errMsg string) error {
 	res, err := r.db.ExecContext(ctx,

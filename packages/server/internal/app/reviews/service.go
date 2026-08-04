@@ -402,14 +402,16 @@ func (s *Service) Handle(ctx context.Context, reviewID string) error {
 			_ = s.reviews.SetPhase(ctx, reviewID, "")
 			return nil // job completes; no retry
 		}
-		// If the failure is a parse error, capture the raw model output so the
-		// UI can surface exactly what the model returned (not just the message).
+		// If the failure is a parse error, persist the raw model output AND the
+		// token counts in one write, so the UI can surface exactly what the model
+		// returned and at what cost (not just the message). Otherwise record the
+		// plain status+error. Either way the job still fails and can retry.
 		var pe *engine.ParseError
 		if errors.As(err, &pe) {
-			_ = s.reviews.SetRawOutput(ctx, reviewID, pe.Raw)
+			_ = s.reviews.SetFailure(ctx, reviewID, err.Error(), pe.Raw, pe.InputTokens, pe.OutputTokens)
+		} else {
+			_ = s.reviews.SetStatus(ctx, reviewID, review.StatusError, err.Error())
 		}
-		// Record the failure on the review; the job also fails so it can retry.
-		_ = s.reviews.SetStatus(ctx, reviewID, review.StatusError, err.Error())
 		s.notifyFinished(rv, review.StatusError, err.Error())
 		return err
 	}
