@@ -54,9 +54,11 @@ export function installViewTransitions(router: Router): void {
       releaseNavigation = resolve
     })
 
-    const start = (document as Document & { startViewTransition: StartViewTransition })
-      .startViewTransition
-    const transition = start(() => {
+    // Call it as a METHOD on document — extracting the function and calling it
+    // detached loses `this` and throws "called on an object that does not
+    // implement interface Document".
+    const doc = document as Document & { startViewTransition: StartViewTransition }
+    const transition = doc.startViewTransition(() => {
       releaseNavigation()
       return settled
     })
