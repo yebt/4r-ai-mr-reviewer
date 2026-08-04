@@ -1,7 +1,13 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { routes, handleHotUpdate } from 'vue-router/auto-routes'
+import NProgress from 'nprogress'
 import { onUnauthorized } from '@shared/api/client'
 import { useAuthStore } from '@modules/auth/store'
+
+// Slim top-of-page progress bar for navigations. The spinner is off (the bar
+// alone reads as "loading") and the bar colour is themed to the accent token in
+// main.css.
+NProgress.configure({ showSpinner: false })
 
 // Routes may opt out of auth gating (e.g. the login page) via `meta.public`.
 declare module 'vue-router' {
@@ -22,6 +28,7 @@ const router = createRouter({
 //   - enabled & not authenticated & leaving login -> send to /login?redirect=<path>.
 //   - authenticated (or disabled) & heading to /login -> send home.
 router.beforeEach(async (to) => {
+  NProgress.start()
   const auth = useAuthStore()
   if (!auth.ready) await auth.fetchStatus()
 
@@ -41,9 +48,14 @@ router.beforeEach(async (to) => {
 
 // Keep the browser tab title in sync with the active page's meta.title.
 router.afterEach((to) => {
+  NProgress.done()
   const t = to.meta.title as string | undefined
   document.title = t ? `${t} - AI Review` : 'AI Review'
 })
+
+// A failed/aborted navigation never reaches afterEach, so clear the bar here so
+// it can never get stuck at the top of the page.
+router.onError(() => NProgress.done())
 
 // Session expired mid-session: an authenticated API call returned 401. The auth
 // store already flipped `authenticated` to false; here we bounce to the login

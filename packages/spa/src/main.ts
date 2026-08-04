@@ -2,6 +2,7 @@
 // import 'uno.css'
 // import 'virtual:unocss-devtools'
 
+import 'nprogress/nprogress.css'
 import '@shared/assets/main.css'
 
 import { createApp } from 'vue'

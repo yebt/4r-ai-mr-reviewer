@@ -3,6 +3,7 @@ definePage({ meta: { title: 'Reviews' } })
 import { computed, onMounted, ref } from 'vue'
 import PageHeader from '@shared/components/ui/PageHeader.vue'
 import EmptyState from '@shared/components/ui/EmptyState.vue'
+import Skeleton from '@shared/components/ui/Skeleton.vue'
 import { useReposStore } from '@modules/repos/store'
 import { useReviewsStore } from '@modules/reviews/store'
 import ReviewStatusChip from '@modules/reviews/components/ReviewStatusChip.vue'
@@ -123,7 +124,19 @@ const archived = computed(() => reviews.allArchived)
       </button>
     </div>
 
-    <p v-if="loading" class="text-muted py-3 text-sm">Loading…</p>
+    <!-- Skeleton rows while the first load is in flight and nothing is cached. -->
+    <ul v-if="loading" class="border-line/50 border-t" aria-hidden="true">
+      <li v-for="n in 5" :key="n" class="row justify-between">
+        <div class="min-w-0 space-y-2">
+          <div class="flex items-center gap-3">
+            <Skeleton w="w-48" h="h-4" />
+            <Skeleton w="w-16" h="h-3" />
+          </div>
+          <Skeleton w="w-56" h="h-3" />
+        </div>
+        <Skeleton w="w-16" h="h-4" />
+      </li>
+    </ul>
     <EmptyState
       v-else-if="items.length === 0"
       icon="i-lucide-list-checks"

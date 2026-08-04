@@ -4,6 +4,7 @@ import { errorMessage } from '@shared/api/client'
 import { confirm } from '@shared/composables/useConfirm'
 import { toast } from '@shared/composables/useToast'
 import EmptyState from '@shared/components/ui/EmptyState.vue'
+import Skeleton from '@shared/components/ui/Skeleton.vue'
 import type { Repo } from '@shared/api/types'
 import { useReposStore } from '@modules/repos/store'
 import { useAccountsStore } from '@modules/accounts/store'
@@ -56,7 +57,20 @@ async function remove(id: string) {
   <div>
     <div class="label-mono mb-3">{{ repos.items.length }} repository(ies)</div>
 
-    <p v-if="repos.loading" class="text-muted py-3 text-sm">Loading…</p>
+    <!-- Skeleton rows while the first load is in flight and nothing is cached. -->
+    <ul
+      v-if="repos.loading && repos.items.length === 0"
+      class="border-line/50 border-t"
+      aria-hidden="true"
+    >
+      <li v-for="n in 4" :key="n" class="row justify-between">
+        <div class="min-w-0 flex-1 space-y-2">
+          <Skeleton w="w-40" h="h-4" />
+          <Skeleton w="w-64" h="h-3" />
+          <Skeleton w="w-32" h="h-3" />
+        </div>
+      </li>
+    </ul>
     <p v-else-if="repos.error" class="text-danger py-3 text-sm">{{ repos.error }}</p>
     <EmptyState
       v-else-if="repos.items.length === 0"

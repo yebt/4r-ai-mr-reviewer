@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppSidebar from '@shared/components/layout/AppSidebar.vue'
 import AppBottomNav from '@shared/components/layout/AppBottomNav.vue'
 import ConfirmDialog from '@shared/components/ui/ConfirmDialog.vue'
 import ToastHost from '@shared/components/ui/ToastHost.vue'
+import StatusBottomSheet from '@shared/components/ui/StatusBottomSheet.vue'
 import Breadcrumbs from '@shared/components/ui/Breadcrumbs.vue'
 import { setBreadcrumbs, useBreadcrumbs } from '@shared/composables/useBreadcrumbs'
+import { useActivityStore } from '@modules/activity/store'
 
 const { state: breadcrumbs, sticky, toggleSticky } = useBreadcrumbs()
 const router = useRouter()
@@ -14,6 +16,12 @@ const route = useRoute()
 
 // Public routes (e.g. /login) render standalone, without the sidebar/nav shell.
 const bare = computed(() => route.meta.public === true)
+
+// Drive the in-flight operations tracker: the store's poller self-pauses when
+// nothing is active, so starting it here just arms it for the app's lifetime.
+const activity = useActivityStore()
+onMounted(() => activity.start())
+onUnmounted(() => activity.stop())
 
 // Reset the breadcrumb trail before each navigation; pages declare their own.
 router.beforeEach(() => {
@@ -76,6 +84,7 @@ router.beforeEach(() => {
       <AppBottomNav />
     </div>
 
+    <StatusBottomSheet />
     <ConfirmDialog />
     <ToastHost />
   </template>

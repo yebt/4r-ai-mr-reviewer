@@ -7,6 +7,7 @@ import { confirm } from '@shared/composables/useConfirm'
 import { toast } from '@shared/composables/useToast'
 import PageHeader from '@shared/components/ui/PageHeader.vue'
 import EmptyState from '@shared/components/ui/EmptyState.vue'
+import Skeleton from '@shared/components/ui/Skeleton.vue'
 import type { RoutineRun } from '@shared/api/types'
 import { useRoutinesStore } from '@modules/routines/store'
 import { formatDateTime, isRunActive, routineKindLabel, runTitle } from '@modules/routines/format'
@@ -95,7 +96,17 @@ async function remove(run: RoutineRun) {
       answer its confirmation gate.
     </p>
 
-    <p v-if="loading" class="text-muted py-3 text-sm">Loading…</p>
+    <!-- Skeleton rows while the first load is in flight and nothing is cached. -->
+    <ul v-if="loading" class="border-line/50 border-t" aria-hidden="true">
+      <li v-for="n in 5" :key="n" class="row justify-between">
+        <div class="flex min-w-0 flex-1 items-center gap-3">
+          <Skeleton w="w-48" h="h-4" />
+          <Skeleton w="w-20" h="h-3" />
+          <Skeleton w="w-16" h="h-3" />
+        </div>
+        <Skeleton w="w-24" h="h-3" />
+      </li>
+    </ul>
     <p v-else-if="store.listError" class="text-danger py-3 text-sm">{{ store.listError }}</p>
     <EmptyState
       v-else-if="runs.length === 0"

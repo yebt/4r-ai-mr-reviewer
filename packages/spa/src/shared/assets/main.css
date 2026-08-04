@@ -14,6 +14,17 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Route-change progress bar (nprogress). Recolour the default green bar to the
+   app accent token; the peg glow matches. Spinner stays disabled in config. */
+#nprogress .bar {
+  @apply bg-accent;
+}
+#nprogress .peg {
+  box-shadow:
+    0 0 10px theme('colors.accent'),
+    0 0 5px theme('colors.accent');
+}
+
 /* Overlay fade for the confirm dialog. */
 .fade-enter-active,
 .fade-leave-active {
