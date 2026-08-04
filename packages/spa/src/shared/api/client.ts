@@ -224,6 +224,8 @@ export const api = {
   // and webhookPath) comes back so the UI can show what to paste into GitLab.
   setRepoWebhook: (id: string, enabled: boolean) =>
     request<Repo>('PATCH', `/repos/${id}/webhook`, { enabled }),
+  rotateRepoWebhookSecret: (id: string) =>
+    request<Repo>('POST', `/repos/${id}/webhook/rotate`),
   // Preflight the repo's token scopes and project access to learn which
   // automated actions are permitted before running any routine. Non-2xx (404
   // unknown repo, 502 upstream GitLab error) throws ApiError.

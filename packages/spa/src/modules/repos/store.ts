@@ -44,10 +44,16 @@ export const useReposStore = defineStore('repos', () => {
     return updated
   }
 
+  async function rotateWebhookSecret(id: string) {
+    const updated = await api.rotateRepoWebhookSecret(id)
+    items.value = items.value.map((r) => (r.id === id ? updated : r))
+    return updated
+  }
+
   async function remove(id: string) {
     await api.deleteRepo(id)
     items.value = items.value.filter((r) => r.id !== id)
   }
 
-  return { items, loading, error, fetchAll, add, assign, setWebhook, remove }
+  return { items, loading, error, fetchAll, add, assign, setWebhook, rotateWebhookSecret, remove }
 })

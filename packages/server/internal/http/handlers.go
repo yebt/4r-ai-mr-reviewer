@@ -320,6 +320,17 @@ func (s *Server) setRepoWebhook(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, toRepo(rp))
 }
 
+// rotateRepoWebhookSecret replaces the repo's webhook secret with a fresh one and
+// returns the updated repo (including the new secret to paste into GitLab).
+func (s *Server) rotateRepoWebhookSecret(w http.ResponseWriter, r *http.Request) {
+	rp, err := s.repos.RotateWebhookSecret(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeErr(w, err, http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, http.StatusOK, toRepo(rp))
+}
+
 func (s *Server) deleteRepo(w http.ResponseWriter, r *http.Request) {
 	if err := s.repos.Remove(r.Context(), r.PathValue("id")); err != nil {
 		writeErr(w, err, http.StatusBadRequest)

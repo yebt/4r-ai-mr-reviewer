@@ -113,6 +113,36 @@ func TestAssignProviderAndClear(t *testing.T) {
 	}
 }
 
+func TestRotateWebhookSecret(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	r, _ := f.svc.Add(ctx, AddInput{Name: "web", URL: "u", AccountID: f.accountID})
+
+	enabled, err := f.svc.SetWebhook(ctx, r.ID, true)
+	if err != nil {
+		t.Fatalf("SetWebhook: %v", err)
+	}
+	if enabled.WebhookSecret == "" {
+		t.Fatal("enabling should generate a secret")
+	}
+
+	rotated, err := f.svc.RotateWebhookSecret(ctx, r.ID)
+	if err != nil {
+		t.Fatalf("RotateWebhookSecret: %v", err)
+	}
+	if rotated.WebhookSecret == "" || rotated.WebhookSecret == enabled.WebhookSecret {
+		t.Fatalf("rotate must produce a new non-empty secret, got %q (was %q)", rotated.WebhookSecret, enabled.WebhookSecret)
+	}
+	if !rotated.WebhookEnabled {
+		t.Error("rotate must not change the enabled flag")
+	}
+
+	// Unknown repo surfaces ErrNotFound.
+	if _, err := f.svc.RotateWebhookSecret(ctx, "nope"); !errors.Is(err, repo.ErrNotFound) {
+		t.Fatalf("RotateWebhookSecret(unknown) = %v, want ErrNotFound", err)
+	}
+}
+
 func TestDeletingAccountCascadesRepos(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)

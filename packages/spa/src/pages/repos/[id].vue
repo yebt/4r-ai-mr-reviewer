@@ -174,6 +174,19 @@ const webhookUrl = computed(() =>
 )
 const webhookBusy = ref(false)
 
+async function rotateWebhook() {
+  if (webhookBusy.value) return
+  webhookBusy.value = true
+  try {
+    await repos.rotateWebhookSecret(repoId)
+    toast.success('Token rotated — update it in GitLab')
+  } catch (e) {
+    toast.error(errorMessage(e))
+  } finally {
+    webhookBusy.value = false
+  }
+}
+
 async function toggleWebhook(enabled: boolean) {
   if (webhookBusy.value) return
   webhookBusy.value = true
@@ -401,12 +414,22 @@ async function copyText(text: string, label: string) {
                 <span class="i-lucide-copy text-sm" aria-hidden="true" />
                 Copy
               </button>
+              <button
+                type="button"
+                class="btn-ghost text-xs"
+                :disabled="webhookBusy"
+                aria-label="Rotate secret token"
+                @click="rotateWebhook"
+              >
+                <span class="i-lucide-refresh-cw text-sm" aria-hidden="true" />
+                Rotate
+              </button>
             </div>
           </div>
 
           <p class="text-muted text-xs">
             Add this URL and Secret Token as a Merge request events webhook in GitLab → Settings →
-            Webhooks.
+            Webhooks. Rotating the token invalidates the old one — update it in GitLab afterwards.
           </p>
         </template>
       </section>

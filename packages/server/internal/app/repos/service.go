@@ -111,6 +111,23 @@ func (s *Service) SetWebhook(ctx context.Context, id string, enabled bool) (repo
 	return x, nil
 }
 
+// RotateWebhookSecret replaces the repo's webhook secret with a fresh random one
+// and returns the updated repo. The enabled flag is unchanged. Use it when the
+// current token may be compromised; the user must then update the token in
+// GitLab. Returns ErrNotFound when the repo does not exist.
+func (s *Service) RotateWebhookSecret(ctx context.Context, id string) (repo.Repo, error) {
+	x, err := s.repos.Get(ctx, id)
+	if err != nil {
+		return repo.Repo{}, err
+	}
+	secret := newWebhookSecret()
+	if err := s.repos.SetWebhook(ctx, id, x.WebhookEnabled, secret); err != nil {
+		return repo.Repo{}, err
+	}
+	x.WebhookSecret = secret
+	return x, nil
+}
+
 // newWebhookSecret returns a strong random token (32 random bytes, hex-encoded)
 // used as the per-repo GitLab webhook secret token.
 func newWebhookSecret() string {

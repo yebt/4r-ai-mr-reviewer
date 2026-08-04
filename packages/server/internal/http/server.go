@@ -122,6 +122,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /repos", s.listRepos)
 	mux.HandleFunc("PATCH /repos/{id}/assign", s.assignRepo)
 	mux.HandleFunc("PATCH /repos/{id}/webhook", s.setRepoWebhook)
+	mux.HandleFunc("POST /repos/{id}/webhook/rotate", s.rotateRepoWebhookSecret)
 	mux.HandleFunc("DELETE /repos/{id}", s.deleteRepo)
 	mux.HandleFunc("GET /repos/{id}/merge-requests", s.listMergeRequests)
 	mux.HandleFunc("GET /repos/{id}/preflight", s.repoPreflight)
