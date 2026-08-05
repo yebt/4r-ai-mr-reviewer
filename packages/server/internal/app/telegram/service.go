@@ -263,7 +263,9 @@ func (s *Service) token(ctx context.Context, id string) (string, error) {
 
 // SendTo delivers text to the given target, loading its chat, thread and bot
 // token. It is the single send path used by both notifications fan-out and the
-// test message.
+// test message. Text is delivered with parse_mode HTML so the rich, pre-escaped
+// notification messages render as formatted text; callers are responsible for
+// html-escaping any interpolated value (see the reviews and routines services).
 func (s *Service) SendTo(ctx context.Context, targetID, text string) error {
 	t, err := s.repo.Get(ctx, targetID)
 	if err != nil {
@@ -273,7 +275,7 @@ func (s *Service) SendTo(ctx context.Context, targetID, text string) error {
 	if err != nil {
 		return err
 	}
-	return tgapi.SendMessage(ctx, token, t.ChatID, t.ThreadID, text)
+	return tgapi.SendMessageHTML(ctx, token, t.ChatID, t.ThreadID, text, nil)
 }
 
 // SendTest sends a fixed test message to the given target so the user can

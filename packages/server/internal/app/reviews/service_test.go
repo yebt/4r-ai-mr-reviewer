@@ -780,18 +780,25 @@ func recvNotification(t *testing.T, f *fakeNotifier, timeout time.Duration) (not
 	}
 }
 
-// TestNotifyFinishedDoneAndError covers the two message shapes directly. The
-// failure text must never carry the raw error, which is sent to an external
-// third party (Telegram).
+// TestNotifyFinishedDoneAndError covers the two HTML message shapes directly:
+// the rich "finished" body (recommendation, score, findings, branch) and the
+// short bold "failed" line. It also proves interpolated values are html-escaped
+// and that the failure text never carries the raw error, which is sent to an
+// external third party (Telegram).
 func TestNotifyFinishedDoneAndError(t *testing.T) {
 	fake := newFakeNotifier()
-	svc := &Service{}
+	svc := &Service{} // no repo store: the MR link is simply omitted
 	svc.AttachNotifier(fake)
 
 	rv := review.Review{
-		MRIID: 42,
+		MRIID:          42,
+		Recommendation: review.Approve,
+		Score:          88,
+		// A branch name with HTML metacharacters must be escaped, not injected raw.
+		SourceBranch: "a<b&c",
+		TargetBranch: "main",
 		Findings: []review.Finding{
-			{Dimension: review.Risk, Severity: review.SeverityHigh},
+			{Dimension: review.Risk, Severity: review.SeverityHigh, Blocking: true},
 			{Dimension: review.Readability, Severity: review.SeverityLow},
 		},
 	}
@@ -804,8 +811,18 @@ func TestNotifyFinishedDoneAndError(t *testing.T) {
 	if got.event != notification.EventReviewFinished {
 		t.Fatalf("done event = %q, want %q", got.event, notification.EventReviewFinished)
 	}
-	if !strings.Contains(got.text, "finished") || !strings.Contains(got.text, "2 finding(s)") {
-		t.Fatalf("done text = %q, want it to mention 'finished' and '2 finding(s)'", got.text)
+	// HTML formatting: a bold title, the finding + blocking counts, and the branch.
+	for _, want := range []string{"<b>Review !42 finished</b>", "Findings: <b>2</b>", "(1 blocking)", "<code>", "→"} {
+		if !strings.Contains(got.text, want) {
+			t.Fatalf("done text = %q, want it to contain %q", got.text, want)
+		}
+	}
+	// Escaping: the "<" and "&" in the branch name are escaped, never raw.
+	if !strings.Contains(got.text, "a&lt;b&amp;c") {
+		t.Fatalf("done text = %q, want the branch name html-escaped", got.text)
+	}
+	if strings.Contains(got.text, "a<b&c") {
+		t.Fatalf("done text = %q, want no raw metacharacters", got.text)
 	}
 	// Exactly one message for one finished review.
 	if _, extra := recvNotification(t, fake, 100*time.Millisecond); extra {
@@ -820,11 +837,51 @@ func TestNotifyFinishedDoneAndError(t *testing.T) {
 	if got.event != notification.EventReviewFinished {
 		t.Fatalf("error event = %q, want %q", got.event, notification.EventReviewFinished)
 	}
-	if got.text != "Review !42 failed." {
-		t.Fatalf("error text = %q, want %q", got.text, "Review !42 failed.")
+	if got.text != "<b>Review !42 failed</b>" {
+		t.Fatalf("error text = %q, want %q", got.text, "<b>Review !42 failed</b>")
 	}
 	if strings.Contains(got.text, "some secret detail") {
 		t.Fatalf("error text leaked the raw error: %q", got.text)
+	}
+}
+
+// notifyFakeRepoStore is a minimal repo.Repository whose Get returns a single
+// configured repo, so notifyFinished can build the MR link from its URL.
+type notifyFakeRepoStore struct{ r repo.Repo }
+
+func (f notifyFakeRepoStore) Create(context.Context, repo.Repo) error { return nil }
+func (f notifyFakeRepoStore) Get(_ context.Context, id string) (repo.Repo, error) {
+	if id == f.r.ID {
+		return f.r, nil
+	}
+	return repo.Repo{}, repo.ErrNotFound
+}
+func (f notifyFakeRepoStore) List(context.Context) ([]repo.Repo, error) {
+	return []repo.Repo{f.r}, nil
+}
+func (f notifyFakeRepoStore) Update(context.Context, repo.Repo) error { return nil }
+func (f notifyFakeRepoStore) Delete(context.Context, string) error    { return nil }
+func (f notifyFakeRepoStore) SetWebhook(context.Context, string, bool, string, bool) error {
+	return nil
+}
+
+// TestNotifyFinishedIncludesMRLink proves the finished notification carries a
+// GitLab merge-request link built from the repo URL, with a trailing slash
+// trimmed. The link is best-effort — TestNotifyFinishedDoneAndError covers the
+// no-repo-store fallback where it is simply omitted.
+func TestNotifyFinishedIncludesMRLink(t *testing.T) {
+	fake := newFakeNotifier()
+	svc := &Service{repos: notifyFakeRepoStore{r: repo.Repo{ID: "r1", URL: "https://gitlab.test/group/project/"}}}
+	svc.AttachNotifier(fake)
+
+	rv := review.Review{MRIID: 9, RepoID: "r1", Recommendation: review.Approve, Score: 90}
+	svc.notifyFinished(rv, review.StatusDone, "")
+	got, ok := recvNotification(t, fake, time.Second)
+	if !ok {
+		t.Fatal("expected a notification, got none")
+	}
+	if !strings.Contains(got.text, `<a href="https://gitlab.test/group/project/-/merge_requests/9">`) {
+		t.Fatalf("text = %q, want a merge-request link with the trailing slash trimmed", got.text)
 	}
 }
 

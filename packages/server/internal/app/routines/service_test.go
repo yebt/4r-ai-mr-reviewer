@@ -1422,13 +1422,17 @@ func TestReleaseNotifyStepSendsInformativeSummary(t *testing.T) {
 	if !n.called {
 		t.Fatal("notifier was not called")
 	}
-	// The repo created by setupRoutinesTest is named "web"; the dev flow tags a
-	// "-dev" prerelease and drives MR !7. The summary is a structured, multi-line
-	// message naming the tag, repo, flow, and merged MR.
+	// The repo created by setupRoutinesTest is named "web" with URL
+	// https://gitlab.test/group/project; the dev flow tags a "-dev" prerelease and
+	// drives MR !7. The summary is a structured, multi-line HTML message naming the
+	// tag (bold), repo, flow, and a link to the merged MR.
 	if !strings.Contains(n.text, "Release ") {
 		t.Errorf("summary %q, want it to mention %q", n.text, "Release ")
 	}
-	for _, want := range []string{"web", "dev release", "MR !7 merged", "-dev"} {
+	for _, want := range []string{
+		"<b>", "web", "dev release", "MR !7 merged", "-dev",
+		`<a href="https://gitlab.test/group/project/-/merge_requests/7">`,
+	} {
 		if !strings.Contains(n.text, want) {
 			t.Errorf("summary %q, want it to contain %q", n.text, want)
 		}
@@ -1436,17 +1440,41 @@ func TestReleaseNotifyStepSendsInformativeSummary(t *testing.T) {
 }
 
 func TestReleaseSummaryFormat(t *testing.T) {
-	got := releaseSummary("v1.2.3", "my-repo", flowDevelopment, 42, 1, 0)
-	want := "🚀 Release v1.2.3\n📦 my-repo · dev release\n🔀 MR !42 merged\n📝 1 feature, 0 fixes"
+	got := releaseSummary("v1.2.3", "my-repo", "https://gitlab.test/group/project", flowDevelopment, 42, 1, 0)
+	want := "🚀 Release <b>v1.2.3</b>\n📦 my-repo · dev release\n🔀 <a href=\"https://gitlab.test/group/project/-/merge_requests/42\">MR !42 merged</a>\n📝 1 feature, 0 fixes"
 	if got != want {
 		t.Errorf("releaseSummary =\n%q\nwant\n%q", got, want)
 	}
 	// Main flow uses the "main release" noun; pluralization switches at 1.
-	main := releaseSummary("v2.0.0", "svc", flowMain, 7, 3, 2)
-	for _, want := range []string{"🚀 Release v2.0.0", "svc · main release", "MR !7 merged", "3 features, 2 fixes"} {
+	main := releaseSummary("v2.0.0", "svc", "https://gitlab.test/group/project", flowMain, 7, 3, 2)
+	for _, want := range []string{"🚀 Release <b>v2.0.0</b>", "svc · main release", "MR !7 merged", "3 features, 2 fixes"} {
 		if !strings.Contains(main, want) {
 			t.Errorf("main summary %q, want it to contain %q", main, want)
 		}
+	}
+
+	// A trailing slash on the repo URL is trimmed so the link is well-formed.
+	slash := releaseSummary("v1.0.0", "svc", "https://gitlab.test/group/project/", flowMain, 3, 0, 0)
+	if !strings.Contains(slash, `<a href="https://gitlab.test/group/project/-/merge_requests/3">`) {
+		t.Errorf("summary %q, want a trailing slash trimmed from the repo URL", slash)
+	}
+
+	// No repo URL: the MR line falls back to plain text (no anchor).
+	noLink := releaseSummary("v1.0.0", "svc", "", flowMain, 5, 1, 0)
+	if strings.Contains(noLink, "<a href") {
+		t.Errorf("summary %q, want no link when repoURL is empty", noLink)
+	}
+	if !strings.Contains(noLink, "🔀 MR !5 merged") {
+		t.Errorf("summary %q, want a plain MR line when repoURL is empty", noLink)
+	}
+
+	// A repo name carrying HTML metacharacters must be escaped, never injected raw.
+	esc := releaseSummary("v1.0.0", "a<b&c", "", flowMain, 5, 0, 0)
+	if !strings.Contains(esc, "a&lt;b&amp;c") {
+		t.Errorf("summary %q, want the repo name html-escaped", esc)
+	}
+	if strings.Contains(esc, "a<b&c") {
+		t.Errorf("summary %q, want no raw metacharacters", esc)
 	}
 }
 

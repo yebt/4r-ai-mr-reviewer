@@ -343,6 +343,11 @@ func TestSendToDeliversToTarget(t *testing.T) {
 	if got.body["message_thread_id"] != "7" {
 		t.Fatalf("message_thread_id = %v, want 7", got.body["message_thread_id"])
 	}
+	// Notifications are delivered as HTML so the rich, pre-escaped bodies render as
+	// formatted text rather than flat text.
+	if got.body["parse_mode"] != "HTML" {
+		t.Fatalf("parse_mode = %v, want HTML", got.body["parse_mode"])
+	}
 }
 
 // stubGetUpdates spins up an httptest server that answers getUpdates with the

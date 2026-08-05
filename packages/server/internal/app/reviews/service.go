@@ -7,7 +7,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"html"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -164,13 +166,6 @@ func (s *Service) notifyFinished(rv review.Review, status review.Status, _ strin
 	if s.notifier == nil {
 		return
 	}
-	var text string
-	switch status {
-	case review.StatusDone:
-		text = fmt.Sprintf("Review !%d finished — %d finding(s).", rv.MRIID, len(rv.Findings))
-	default:
-		text = fmt.Sprintf("Review !%d failed.", rv.MRIID)
-	}
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -179,8 +174,73 @@ func (s *Service) notifyFinished(rv review.Review, status review.Status, _ strin
 		}()
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
+		text := s.buildReviewMessage(ctx, rv, status)
 		_ = s.notifier.Notify(ctx, notification.EventReviewFinished, rv.RepoID, text)
 	}()
+}
+
+// buildReviewMessage renders the HTML notification body for a finished review.
+// Every interpolated value (branch names, recommendation, MR link) is passed
+// through html.EscapeString so a "<", ">" or "&" can never break Telegram's HTML
+// parser or inject tags. Only Telegram-supported tags are used (<b>, <code>,
+// <a href>) with "\n" for line breaks (Telegram supports neither <br> nor <ul>).
+func (s *Service) buildReviewMessage(ctx context.Context, rv review.Review, status review.Status) string {
+	link := s.reviewMRURL(ctx, rv)
+	var b strings.Builder
+
+	// A failed review reduces to a short bold line (plus the MR link when known):
+	// the raw error is deliberately never included (it is sent to a third party).
+	if status != review.StatusDone {
+		fmt.Fprintf(&b, "<b>Review !%d failed</b>", rv.MRIID)
+		if link != "" {
+			fmt.Fprintf(&b, "\n<a href=\"%s\">Open merge request</a>", html.EscapeString(link))
+		}
+		return b.String()
+	}
+
+	blocking := 0
+	for _, f := range rv.Findings {
+		if f.Blocking {
+			blocking++
+		}
+	}
+
+	fmt.Fprintf(&b, "<b>Review !%d finished</b>\n", rv.MRIID)
+	fmt.Fprintf(&b, "Recommendation: <b>%s</b> · Score: <b>%d</b>\n",
+		html.EscapeString(recommendationLabel(rv.Recommendation)), rv.Score)
+	fmt.Fprintf(&b, "Findings: <b>%d</b> (%d blocking)", len(rv.Findings), blocking)
+	if rv.SourceBranch != "" || rv.TargetBranch != "" {
+		fmt.Fprintf(&b, "\nBranch: <code>%s</code> → <code>%s</code>",
+			html.EscapeString(rv.SourceBranch), html.EscapeString(rv.TargetBranch))
+	}
+	if link != "" {
+		fmt.Fprintf(&b, "\n<a href=\"%s\">Open merge request</a>", html.EscapeString(link))
+	}
+	return b.String()
+}
+
+// reviewMRURL builds the merge-request link for a review, best-effort: it looks
+// the repo up for its URL and returns "" on any failure (a nil repo store, an
+// unknown repo, an empty URL) so a notification never fails for a missing link.
+func (s *Service) reviewMRURL(ctx context.Context, rv review.Review) string {
+	if s.repos == nil || rv.RepoID == "" {
+		return ""
+	}
+	rp, err := s.repos.Get(ctx, rv.RepoID)
+	if err != nil {
+		return ""
+	}
+	return mergeRequestURL(rp.URL, rv.MRIID)
+}
+
+// mergeRequestURL forms the GitLab merge-request URL "<repoURL>/-/merge_requests/<iid>",
+// trimming a trailing slash on the repo URL. An empty repo URL yields "".
+func mergeRequestURL(repoURL string, iid int) string {
+	repoURL = strings.TrimRight(repoURL, "/")
+	if repoURL == "" {
+		return ""
+	}
+	return fmt.Sprintf("%s/-/merge_requests/%d", repoURL, iid)
 }
 
 // Create records a pending review and enqueues it. An empty mode defaults to

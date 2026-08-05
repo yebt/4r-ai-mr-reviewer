@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"log"
 	"runtime/debug"
 	"strings"
@@ -246,15 +247,33 @@ func countPhrase(n int, one, many string) string {
 }
 
 // releaseSummary builds the human-facing release notification: a compact,
-// structured, multi-line message (the tag, repo, flow, merged MR and a
-// feat/fix count) that reads cleanly in a chat client.
-func releaseSummary(tag, repoName, flow string, mrIID, featCount, fixCount int) string {
+// structured, multi-line HTML message (the tag, repo, flow, merged MR and a
+// feat/fix count) that reads cleanly in a chat client. The emojis render in HTML
+// too; the tag is bold and the merged MR becomes a link when repoURL is known.
+// Every interpolated value (tag, repo name, MR link) is passed through
+// html.EscapeString so a "<", ">" or "&" can never break Telegram's HTML parser.
+// Only Telegram-supported tags are used (<b>, <a href>) with "\n" line breaks.
+func releaseSummary(tag, repoName, repoURL, flow string, mrIID, featCount, fixCount int) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "🚀 Release %s\n", tag)
-	fmt.Fprintf(&b, "📦 %s · %s\n", repoName, flowNoun(flow))
-	fmt.Fprintf(&b, "🔀 MR !%d merged\n", mrIID)
+	fmt.Fprintf(&b, "🚀 Release <b>%s</b>\n", html.EscapeString(tag))
+	fmt.Fprintf(&b, "📦 %s · %s\n", html.EscapeString(repoName), flowNoun(flow))
+	if link := mergeRequestURL(repoURL, mrIID); link != "" {
+		fmt.Fprintf(&b, "🔀 <a href=\"%s\">MR !%d merged</a>\n", html.EscapeString(link), mrIID)
+	} else {
+		fmt.Fprintf(&b, "🔀 MR !%d merged\n", mrIID)
+	}
 	fmt.Fprintf(&b, "📝 %s, %s", countPhrase(featCount, "feature", "features"), countPhrase(fixCount, "fix", "fixes"))
 	return b.String()
+}
+
+// mergeRequestURL forms the GitLab merge-request URL "<repoURL>/-/merge_requests/<iid>",
+// trimming a trailing slash on the repo URL. An empty repo URL yields "".
+func mergeRequestURL(repoURL string, iid int) string {
+	repoURL = strings.TrimRight(repoURL, "/")
+	if repoURL == "" {
+		return ""
+	}
+	return fmt.Sprintf("%s/-/merge_requests/%d", repoURL, iid)
 }
 
 // Preflight probes a repo's GitLab project and reports which routine actions the
@@ -1570,10 +1589,17 @@ func (s *Service) runReleaseStep(ctx context.Context, gl *gitlab.Client, project
 			flow = flowDevelopment
 		}
 		repoName := run.RepoID
-		if rp, err := s.repos.Get(ctx, run.RepoID); err == nil && rp.Name != "" {
-			repoName = rp.Name
+		repoURL := ""
+		// The repo URL yields the MR link; both name and URL are best-effort — a
+		// lookup failure just omits them, since notification must never hold up (or
+		// fail) a finished release.
+		if rp, err := s.repos.Get(ctx, run.RepoID); err == nil {
+			if rp.Name != "" {
+				repoName = rp.Name
+			}
+			repoURL = rp.URL
 		}
-		summary := releaseSummary(state.NextTag+tagSuffix(params.Flow), repoName, flow, mrIID, state.FeatCount, state.FixCount)
+		summary := releaseSummary(state.NextTag+tagSuffix(params.Flow), repoName, repoURL, flow, mrIID, state.FeatCount, state.FixCount)
 		if s.notifier == nil {
 			s.logger.Printf("routines: release %s notification skipped (no notifier configured)", state.NextTag+tagSuffix(params.Flow))
 			return "No notifier configured", nil
