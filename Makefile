@@ -6,7 +6,7 @@ WEB    := packages/spa
 BIN    := $(CURDIR)/bin
 BINARY := $(BIN)/air-server
 
-.PHONY: help run run-server run-spa dev build test vet fmt tidy clean
+.PHONY: help run run-server run-spa run-spa-host dev build test vet fmt tidy clean
 
 help: ## Show this help
 	@echo "ai-reviewer — make targets:"
@@ -26,6 +26,10 @@ run-server: ## Start the API server (reads AIR_* env vars)
 
 run-spa: ## Start the SPA dev server (Vite)
 	cd $(WEB) && bun run dev
+
+run-spa-host: ## Start the SPA dev server (Vite)
+	cd $(WEB) && bun run dev -- --host
+
 
 dev: ## Run backend + SPA together (Ctrl-C stops both)
 	@echo "backend → :8080   SPA → :5173"
