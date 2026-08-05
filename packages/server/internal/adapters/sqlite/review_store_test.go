@@ -168,6 +168,31 @@ func TestReviewBranchRoundTrip(t *testing.T) {
 	}
 }
 
+func TestReviewSetBranches(t *testing.T) {
+	ctx := context.Background()
+	s, repoID := newReviewStore(t)
+
+	rv := review.Review{ID: id.New(), RepoID: repoID, MRIID: 9, Status: review.StatusRunning}
+	if err := s.Create(ctx, rv); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	// SetBranches records the branch before the review completes, so it survives
+	// a later failure (which never reaches the success Save).
+	if err := s.SetBranches(ctx, rv.ID, "fix/bug", "develop"); err != nil {
+		t.Fatalf("SetBranches: %v", err)
+	}
+	got, err := s.Get(ctx, rv.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.SourceBranch != "fix/bug" || got.TargetBranch != "develop" {
+		t.Fatalf("SetBranches not persisted: source=%q target=%q", got.SourceBranch, got.TargetBranch)
+	}
+	if err := s.SetBranches(ctx, "nope", "a", "b"); !errors.Is(err, review.ErrNotFound) {
+		t.Fatalf("SetBranches(unknown) = %v, want ErrNotFound", err)
+	}
+}
+
 func TestReviewSaveWithFindings(t *testing.T) {
 	ctx := context.Background()
 	s, repoID := newReviewStore(t)

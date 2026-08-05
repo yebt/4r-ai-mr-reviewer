@@ -30,6 +30,9 @@ type Repository interface {
 	SetStatus(ctx context.Context, id string, status Status, errMsg string) error
 	// SetRawOutput persists the raw model output captured on a parse failure.
 	SetRawOutput(ctx context.Context, id string, raw string) error
+	// SetBranches persists the MR's source/target branch, recorded once the
+	// context build resolves them so the branch survives a later failure.
+	SetBranches(ctx context.Context, id, source, target string) error
 	// SetFailure records a parse failure in one update: it marks the review
 	// errored and persists the error message, the raw model output, and the
 	// token counts accumulated before the failure, so a failed review can

@@ -468,6 +468,13 @@ func (s *Service) execute(ctx context.Context, rv review.Review) (review.Review,
 		return review.Review{}, err
 	}
 	in.RepoID = rv.RepoID
+	// Persist the MR branch as soon as it is known (right after the context build,
+	// before the model runs) so it is visible even when the review later fails —
+	// the success path also carries it through Save, but a failed run never
+	// reaches that Save.
+	if in.SourceBranch != "" || in.TargetBranch != "" {
+		_ = s.reviews.SetBranches(ctx, rv.ID, in.SourceBranch, in.TargetBranch)
+	}
 
 	params := engine.RunParams{
 		Model:          model,

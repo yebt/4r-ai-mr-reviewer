@@ -283,6 +283,22 @@ func (r *ReviewStore) SetRawOutput(ctx context.Context, id string, raw string) e
 	return nil
 }
 
+// SetBranches persists the MR's source/target branch on the review. Called once
+// the context build resolves them (before the model runs), so the branch is
+// recorded even for a review that later fails.
+func (r *ReviewStore) SetBranches(ctx context.Context, id, source, target string) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE reviews SET source_branch = ?, target_branch = ?, updated_at = ? WHERE id = ?`,
+		source, target, formatTime(time.Now().UTC()), id)
+	if err != nil {
+		return fmt.Errorf("review store: set branches: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return review.ErrNotFound
+	}
+	return nil
+}
+
 // SetFailure records a parse failure in one update: status='error', the error
 // message, the raw model output, and the token counts accumulated before the
 // failure, so a failed review can surface exactly what the model returned and at
