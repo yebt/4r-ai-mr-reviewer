@@ -756,13 +756,18 @@ async function remove() {
         <SummaryCard :review="review" :profile-id="profileId" />
 
         <section class="mt-6" :class="selected.length ? 'pb-24 sm:pb-0' : ''">
+          <!-- Primary header line: title + view toggle on the left, the single
+               primary action (Comment all) on the right. The bulk/selection
+               actions and filter controls live in their own calmer zones below
+               (desktop) or in the phone controls row / bottom sheet (mobile). -->
           <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 class="section-title flex items-center gap-2 hidden md:inline ">
-              <span class="bg-accent inline-block h-3.5 w-0.5" aria-hidden="true" />
-              <span class="hidden sm:inline">Findings</span>
-            </h2>
-            <div v-if="review.findings.length" class="flex flex-wrap items-center gap-3">
+            <div class="flex w-full items-center gap-3 sm:w-auto">
+              <h2 class="section-title hidden items-center gap-2 md:flex">
+                <span class="bg-accent inline-block h-3.5 w-0.5" aria-hidden="true" />
+                Findings
+              </h2>
               <div
+                v-if="review.findings.length"
                 class="flex w-full items-center gap-1 sm:w-auto"
                 role="group"
                 aria-label="Findings view"
@@ -783,44 +788,23 @@ async function remove() {
                   {{ v }}
                 </button>
               </div>
-              <!-- Include-summary checkbox: desktop only. On phone the choice moves
-                   into the publish-confirm modal (askPublish). -->
-              <label
-                class="text-muted hidden cursor-pointer items-center gap-1.5 text-xs sm:flex"
+            </div>
+            <div
+              v-if="review.findings.length"
+              class="flex w-full items-center gap-2 sm:w-auto"
+            >
+              <button
+                class="btn-accent flex-1 text-xs sm:flex-none"
+                :disabled="publishing || unpublished.length === 0"
+                @click="onCommentAll"
               >
-                <input v-model="includeSummary" type="checkbox" class="accent-accent" />
-                Include summary note
-              </label>
-              <div class="flex w-full items-center gap-2 sm:w-auto">
-                <!-- Copy + Publish selected: desktop only — the phone sticky bar covers them. -->
-                <button
-                  class="btn-ghost hidden flex-1 text-xs sm:inline-flex sm:flex-none"
-                  :disabled="selected.length === 0"
-                  @click="copySelected"
-                >
-                  <span class="i-lucide-copy text-sm" aria-hidden="true" />
-                  Copy selected ({{ selected.length }})
-                </button>
-                <button
-                  class="btn-ghost hidden flex-1 text-xs sm:inline-flex sm:flex-none"
-                  :disabled="publishing || selected.length === 0"
-                  @click="publish({ indices: selected, includeSummary })"
-                >
-                  Publish selected ({{ selected.length }})
-                </button>
-                <button
-                  class="btn-accent flex-1 text-xs sm:flex-none"
-                  :disabled="publishing || unpublished.length === 0"
-                  @click="onCommentAll"
-                >
-                  <span
-                    v-if="publishing"
-                    class="i-lucide-loader-circle animate-spin"
-                    aria-hidden="true"
-                  />
-                  Comment all
-                </button>
-              </div>
+                <span
+                  v-if="publishing"
+                  class="i-lucide-loader-circle animate-spin"
+                  aria-hidden="true"
+                />
+                Comment all
+              </button>
             </div>
           </div>
 
@@ -899,8 +883,84 @@ async function remove() {
               </button>
             </div>
 
-            <!-- Desktop: inline toolbar, now collapsible via the Filters toggle in
-                 the row below. Hidden state persists; filters stay applied. -->
+            <!-- Desktop controls zone: a calm band split from the primary header
+                 by a hairline. Left = the collapsible-filter toggle plus muted
+                 meta (counts + visible/total); right = the lighter bulk/selection
+                 actions. Kept separate so nothing competes with the header. -->
+            <div
+              class="border-line/50 mb-4 hidden flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t pt-4 sm:flex"
+            >
+              <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <button
+                  type="button"
+                  class="btn-line text-xs"
+                  :aria-expanded="filtersShown"
+                  aria-controls="triage-filters"
+                  @click="filtersShown = !filtersShown"
+                >
+                  <span class="i-lucide-sliders-horizontal text-sm" aria-hidden="true" />
+                  {{ filtersShown ? 'Hide filters' : 'Filters' }}
+                  <span
+                    v-if="activeFilterCount"
+                    class="border-accent/40 bg-accent/15 text-accent border px-1 font-mono"
+                  >
+                    {{ activeFilterCount }}
+                  </span>
+                </button>
+                <p class="text-muted text-xs">
+                  <span class="text-ink font-medium">{{ triage.counts.value.total }}</span> findings
+                  <span aria-hidden="true">·</span>
+                  <span class="text-flame font-medium">{{ triage.counts.value.blocking }}</span> blocking
+                  <span class="text-muted/50" aria-hidden="true">·</span>
+                  <span class="text-muted/70">
+                    Showing {{ triage.visible.value.length }} of {{ review.findings.length }}
+                  </span>
+                </p>
+              </div>
+              <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <!-- Include-summary checkbox: desktop only. On phone the choice
+                     moves into the publish-confirm modal (askPublish). -->
+                <label class="text-muted flex cursor-pointer items-center gap-1.5 text-xs">
+                  <input v-model="includeSummary" type="checkbox" class="accent-accent" />
+                  Include summary note
+                </label>
+                <button
+                  type="button"
+                  class="btn-ghost text-xs"
+                  :disabled="selectableVisible.length === 0"
+                  @click="selectAllVisible"
+                >
+                  Select all visible ({{ selectableVisible.length }})
+                </button>
+                <!-- Copy + Publish selected: desktop only — the phone sticky bar covers them. -->
+                <button
+                  class="btn-ghost text-xs"
+                  :disabled="selected.length === 0"
+                  @click="copySelected"
+                >
+                  <span class="i-lucide-copy text-sm" aria-hidden="true" />
+                  Copy selected ({{ selected.length }})
+                </button>
+                <button
+                  class="btn-ghost text-xs"
+                  :disabled="publishing || selected.length === 0"
+                  @click="publish({ indices: selected, includeSummary })"
+                >
+                  Publish selected ({{ selected.length }})
+                </button>
+                <button
+                  v-if="selected.length"
+                  type="button"
+                  class="btn-ghost text-xs"
+                  @click="clearSelection"
+                >
+                  Clear selection
+                </button>
+              </div>
+            </div>
+
+            <!-- Desktop: collapsible filter bar, toggled by the Filters button
+                 above. Hidden state persists; filters stay applied while away. -->
             <FindingsToolbar
               v-if="!isPhone && filtersShown"
               id="triage-filters"
@@ -937,44 +997,6 @@ async function remove() {
                 @reset="triage.reset"
               />
             </Modal>
-
-            <div class="text-muted mb-3 hidden flex-wrap items-center gap-3 text-xs sm:flex">
-              <button
-                type="button"
-                class="btn-line text-xs"
-                :aria-expanded="filtersShown"
-                aria-controls="triage-filters"
-                @click="filtersShown = !filtersShown"
-              >
-                <span class="i-lucide-sliders-horizontal text-sm" aria-hidden="true" />
-                {{ filtersShown ? 'Hide filters' : 'Filters' }}
-                <span
-                  v-if="activeFilterCount"
-                  class="border-accent/40 bg-accent/15 text-accent border px-1 font-mono"
-                >
-                  {{ activeFilterCount }}
-                </span>
-              </button>
-              <span>
-                Showing {{ triage.visible.value.length }} of {{ review.findings.length }}
-              </span>
-              <button
-                type="button"
-                class="btn-ghost text-xs"
-                :disabled="selectableVisible.length === 0"
-                @click="selectAllVisible"
-              >
-                Select all visible ({{ selectableVisible.length }})
-              </button>
-              <button
-                v-if="selected.length"
-                type="button"
-                class="btn-ghost text-xs"
-                @click="clearSelection"
-              >
-                Clear selection
-              </button>
-            </div>
 
             <template v-if="triage.visible.value.length === 0">
               <!-- Phone: compact alert box. Desktop: unchanged plain text. -->

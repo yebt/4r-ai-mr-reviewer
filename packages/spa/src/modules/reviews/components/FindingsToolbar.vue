@@ -51,9 +51,11 @@ function chipClass(isActive: boolean, disabled: boolean): string {
 <template>
   <!-- Mobile (inside the filters modal): stacked rows. Desktop: one horizontal
        filter bar that wraps, with a divider splitting filters from controls. -->
-  <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4 sm:gap-y-2">
-    <!-- Counts summary -->
-    <p class="text-muted shrink-0 text-xs">
+  <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-5 sm:gap-y-3">
+    <!-- Counts summary. Hidden on desktop, where the page surfaces the same
+         total/blocking meta beside the filter toggle so it stays visible even
+         while this bar is collapsed. Still shown inside the phone filter sheet. -->
+    <p class="text-muted shrink-0 text-xs sm:hidden">
       <span class="text-ink font-medium">{{ props.counts.total }}</span> findings
       <span aria-hidden="true">·</span>
       <span class="text-flame font-medium">{{ props.counts.blocking }}</span> blocking
