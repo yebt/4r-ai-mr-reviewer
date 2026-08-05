@@ -1,0 +1,15 @@
+# Keep the build context small and never ship local state or secrets.
+.git
+**/node_modules
+**/dist
+**/dist-ssr
+**/coverage
+**/.codegraph
+**/*.log
+# Local database, vault key-file, and env — must never enter an image.
+packages/server/ai-reviewer.db
+packages/server/ai-reviewer.db.key
+packages/server/*.db
+packages/server/*.db.key
+**/.env
+**/.env.*
