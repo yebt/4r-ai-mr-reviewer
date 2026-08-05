@@ -6,6 +6,7 @@ import type {
   ConfirmDecision,
   CreateReviewInput,
   FindingHumanized,
+  GitlabProject,
   HumanizationsResponse,
   HumanizeFindingText,
   MainReleaseInput,
@@ -122,6 +123,14 @@ export const api = {
   createAccount: (input: { name: string; baseUrl: string; token: string }) =>
     request<Account>('POST', '/accounts', input),
   deleteAccount: (id: string) => request<void>('DELETE', `/accounts/${id}`),
+  // Search the GitLab projects an account's token can see, to power the add-repo
+  // picker. An empty search returns the most-recently-active membership
+  // projects. Non-2xx (404 unknown account, 502 upstream GitLab error) throws.
+  searchAccountProjects: (accountId: string, search: string) =>
+    request<GitlabProject[]>(
+      'GET',
+      `/accounts/${accountId}/projects?search=${encodeURIComponent(search)}`,
+    ),
 
   // providers
   listProviders: () => request<Provider[]>('GET', '/providers'),

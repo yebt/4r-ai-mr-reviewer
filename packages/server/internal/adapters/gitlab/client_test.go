@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -62,6 +63,67 @@ func TestMergeRequestChanges(t *testing.T) {
 	}
 	if len(ch.Files) != 1 || ch.Files[0].NewPath != "a.go" {
 		t.Fatalf("unexpected changes: %+v", ch.Files)
+	}
+}
+
+func TestListProjects(t *testing.T) {
+	var gotQuery url.Values
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("PRIVATE-TOKEN") != "tok" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		if !strings.HasSuffix(r.URL.Path, "/projects") {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		gotQuery = r.URL.Query()
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `[{"id":42,"name":"Web App","path_with_namespace":"group/web-app","web_url":"https://gitlab.com/group/web-app","http_url_to_repo":"https://gitlab.com/group/web-app.git"}]`)
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "tok")
+	projects, err := c.ListProjects(context.Background(), "web")
+	if err != nil {
+		t.Fatalf("ListProjects: %v", err)
+	}
+	if got := gotQuery.Get("membership"); got != "true" {
+		t.Errorf("membership = %q, want true", got)
+	}
+	if got := gotQuery.Get("simple"); got != "true" {
+		t.Errorf("simple = %q, want true", got)
+	}
+	if got := gotQuery.Get("search"); got != "web" {
+		t.Errorf("search = %q, want web", got)
+	}
+	if len(projects) != 1 {
+		t.Fatalf("len = %d, want 1", len(projects))
+	}
+	p := projects[0]
+	if p.ID != 42 || p.Name != "Web App" || p.PathWithNamespace != "group/web-app" ||
+		p.WebURL != "https://gitlab.com/group/web-app" {
+		t.Fatalf("unexpected project: %+v", p)
+	}
+}
+
+// TestListProjectsOmitsEmptySearch proves an empty search leaves the search
+// parameter off entirely (so GitLab returns the most-recently-active projects).
+func TestListProjectsOmitsEmptySearch(t *testing.T) {
+	var hasSearch bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, hasSearch = r.URL.Query()["search"]
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `[]`)
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "tok")
+	if _, err := c.ListProjects(context.Background(), ""); err != nil {
+		t.Fatalf("ListProjects: %v", err)
+	}
+	if hasSearch {
+		t.Error("search parameter present for an empty search, want omitted")
 	}
 }
 

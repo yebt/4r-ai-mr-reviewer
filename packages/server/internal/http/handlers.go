@@ -78,6 +78,35 @@ func (s *Server) deleteAccount(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// searchAccountProjects lists the GitLab projects an account's token can see,
+// optionally filtered by a free-text ?search=<q>, so the add-repo form can offer
+// a picker instead of a hand-pasted URL. Unknown account → 404; token decrypt
+// failure → 500; a GitLab error → 502 (mirrors listMergeRequests).
+func (s *Server) searchAccountProjects(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	acc, err := s.accounts.Get(r.Context(), id)
+	if err != nil {
+		writeErr(w, err, http.StatusInternalServerError)
+		return
+	}
+	token, err := s.accounts.Token(r.Context(), id)
+	if err != nil {
+		writeErr(w, err, http.StatusInternalServerError)
+		return
+	}
+	client := gitlab.NewClient(acc.BaseURL, token)
+	projects, err := client.ListProjects(r.Context(), r.URL.Query().Get("search"))
+	if err != nil {
+		writeErr(w, err, http.StatusBadGateway)
+		return
+	}
+	out := make([]gitlabProjectResp, 0, len(projects))
+	for _, p := range projects {
+		out = append(out, toGitlabProject(p))
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 // --- providers ---
 
 func (s *Server) createProvider(w http.ResponseWriter, r *http.Request) {
@@ -582,6 +611,22 @@ type accountResp struct {
 
 func toAccount(a account.Account) accountResp {
 	return accountResp{ID: a.ID, Name: a.Name, BaseURL: a.BaseURL, CreatedAt: a.CreatedAt}
+}
+
+// gitlabProjectResp is a project the add-repo picker can select from. webUrl is
+// what fills the repo URL; the clone URL is intentionally omitted (the reviewer
+// derives the clone URL from the account + project path).
+type gitlabProjectResp struct {
+	ID                int    `json:"id"`
+	Name              string `json:"name"`
+	PathWithNamespace string `json:"pathWithNamespace"`
+	WebURL            string `json:"webUrl"`
+}
+
+func toGitlabProject(p gitlab.ProjectSummary) gitlabProjectResp {
+	return gitlabProjectResp{
+		ID: p.ID, Name: p.Name, PathWithNamespace: p.PathWithNamespace, WebURL: p.WebURL,
+	}
 }
 
 type providerResp struct {

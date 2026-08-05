@@ -3,6 +3,7 @@ package httpapi
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -397,6 +398,65 @@ func TestTelegramDuplicateUnknownIs404(t *testing.T) {
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("duplicate unknown status = %d, want 404", resp.StatusCode)
 	}
+}
+
+// TestSearchAccountProjectsOverHTTP drives the add-repo picker endpoint end to
+// end: an account pointing at a fake GitLab (loopback http is allowed) whose
+// /projects the handler proxies, mapped into the camelCase picker DTO.
+func TestSearchAccountProjectsOverHTTP(t *testing.T) {
+	var gotSearch string
+	gitlab := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/projects") {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		gotSearch = r.URL.Query().Get("search")
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `[{"id":42,"name":"Web App","path_with_namespace":"group/web-app","web_url":"http://gl.example/group/web-app","http_url_to_repo":"http://gl.example/group/web-app.git"}]`)
+	}))
+	defer gitlab.Close()
+
+	srv := newTestServer(t)
+	acctResp := postJSON(t, srv.URL+"/accounts", map[string]any{"name": "acc", "baseUrl": gitlab.URL, "token": "glpat"})
+	var acct struct{ ID string }
+	decodeBody(t, acctResp, &acct)
+
+	resp, err := http.Get(srv.URL + "/accounts/" + acct.ID + "/projects?search=web")
+	if err != nil {
+		t.Fatalf("GET projects: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	var projects []map[string]any
+	decodeBody(t, resp, &projects)
+	if gotSearch != "web" {
+		t.Errorf("upstream search = %q, want web", gotSearch)
+	}
+	if len(projects) != 1 {
+		t.Fatalf("len = %d, want 1", len(projects))
+	}
+	p := projects[0]
+	if p["pathWithNamespace"] != "group/web-app" || p["webUrl"] != "http://gl.example/group/web-app" || p["name"] != "Web App" {
+		t.Fatalf("unexpected project DTO: %+v", p)
+	}
+	// The clone URL is intentionally not surfaced to the picker.
+	if _, leaked := p["httpUrlToRepo"]; leaked {
+		t.Error("picker DTO leaked the clone URL")
+	}
+}
+
+// TestSearchAccountProjectsUnknownAccountIs404 pins the unknown-account mapping.
+func TestSearchAccountProjectsUnknownAccountIs404(t *testing.T) {
+	srv := newTestServer(t)
+	resp, err := http.Get(srv.URL + "/accounts/nope/projects?search=x")
+	if err != nil {
+		t.Fatalf("GET projects: %v", err)
+	}
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404 for unknown account", resp.StatusCode)
+	}
+	resp.Body.Close()
 }
 
 func TestCreateRepoRejectsUnknownAccount(t *testing.T) {

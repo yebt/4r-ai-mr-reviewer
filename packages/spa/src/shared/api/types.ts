@@ -7,6 +7,15 @@ export interface Account {
   createdAt: string
 }
 
+// A GitLab project the add-repo picker can select. webUrl fills the repo URL;
+// pathWithNamespace is the primary label ("group/project"), name the secondary.
+export interface GitlabProject {
+  id: number
+  name: string
+  pathWithNamespace: string
+  webUrl: string
+}
+
 export type ProviderKind = 'openai-compat' | 'anthropic' | 'gemini'
 
 export interface Provider {

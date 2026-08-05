@@ -294,6 +294,41 @@ type Project struct {
 	Permissions   ProjectPermissions `json:"permissions"`
 }
 
+// ProjectSummary is the subset of a GitLab project the add-repo picker needs to
+// list and fill a repository: the display name, the namespaced path, and the
+// web/clone URLs.
+type ProjectSummary struct {
+	ID                int    `json:"id"`
+	Name              string `json:"name"`
+	PathWithNamespace string `json:"path_with_namespace"`
+	WebURL            string `json:"web_url"`
+	HTTPURLToRepo     string `json:"http_url_to_repo"`
+}
+
+// ListProjects returns up to 30 of the caller's membership projects, most
+// recently active first, optionally filtered by a free-text search. It powers
+// the add-repo picker: one page is plenty for a fuzzy-style chooser, so it does
+// not paginate. When search is empty the search parameter is omitted, yielding
+// the caller's most-recently-active projects.
+func (c *Client) ListProjects(ctx context.Context, search string) ([]ProjectSummary, error) {
+	q := url.Values{
+		"membership": {"true"},
+		"simple":     {"true"},
+		"order_by":   {"last_activity_at"},
+		"sort":       {"desc"},
+		"per_page":   {"30"},
+	}
+	if search != "" {
+		q.Set("search", search)
+	}
+
+	var projects []ProjectSummary
+	if err := c.getJSON(ctx, "/projects", q, &projects); err != nil {
+		return nil, err
+	}
+	return projects, nil
+}
+
 // Project returns a single project, including the caller's permissions.
 func (c *Client) Project(ctx context.Context, projectID string) (Project, error) {
 	path := fmt.Sprintf("/projects/%s", url.PathEscape(projectID))

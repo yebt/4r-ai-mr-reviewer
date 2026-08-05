@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { errorMessage } from '@shared/api/client'
+import { watchDebounced } from '@vueuse/core'
+import { api, errorMessage } from '@shared/api/client'
 import { toast } from '@shared/composables/useToast'
-import type { Repo } from '@shared/api/types'
+import type { GitlabProject, Repo } from '@shared/api/types'
 import DependencyAlert from '@shared/components/ui/DependencyAlert.vue'
 import { useReposStore } from '@modules/repos/store'
 import { useAccountsStore } from '@modules/accounts/store'
@@ -48,9 +49,76 @@ const selectedProvider = computed(() => {
 })
 const modelPresets = computed(() => selectedProvider.value?.models ?? [])
 
+// --- GitLab project picker (fzf-style) ---
+// When an account is selected the user searches the projects that account's
+// token can see and picks one, auto-filling the URL (and name). The manual URL
+// field below stays as a fallback.
+const projectQuery = ref('')
+const projects = ref<GitlabProject[]>([])
+const searching = ref(false)
+const searchError = ref<string | null>(null)
+// Whether the results dropdown is open (focus opens it; picking closes it).
+const pickerOpen = ref(false)
+// Marks a URL that came from a picked project, so the "manually pasted" hint
+// isn't shown for it.
+const pickedFromSearch = ref(false)
+
+async function runProjectSearch() {
+  if (!form.accountId) return
+  searching.value = true
+  searchError.value = null
+  try {
+    projects.value = await api.searchAccountProjects(form.accountId, projectQuery.value.trim())
+  } catch (e) {
+    searchError.value = errorMessage(e)
+    projects.value = []
+  } finally {
+    searching.value = false
+  }
+}
+
+// Debounce keystrokes so we don't fire a request per character.
+watchDebounced(projectQuery, runProjectSearch, { debounce: 300 })
+
+// Switching accounts resets the picker and preloads the new account's most
+// recently active projects.
+watch(
+  () => form.accountId,
+  (id) => {
+    projectQuery.value = ''
+    projects.value = []
+    searchError.value = null
+    pickerOpen.value = false
+    if (id) void runProjectSearch()
+  },
+)
+
+function openPicker() {
+  if (!form.accountId) return
+  pickerOpen.value = true
+  // Preload recent projects the first time the field is focused.
+  if (projects.value.length === 0 && !searching.value && !searchError.value) {
+    void runProjectSearch()
+  }
+}
+
+function selectProject(p: GitlabProject) {
+  form.url = p.webUrl
+  pickedFromSearch.value = true
+  // Only fill the name when the user hasn't typed their own (or only accepted a
+  // previously auto-filled one) — never clobber a hand-typed name.
+  if (form.name.trim() === '' || form.name === lastAutoName.value) {
+    form.name = p.name
+    lastAutoName.value = p.name
+  }
+  pickerOpen.value = false
+}
+
 // Resolve name + account from the URL when the field loses focus, keeping any
 // manual edits the user already made.
 function resolveFromUrl() {
+  // A hand-edited URL is no longer the picked project's URL.
+  pickedFromSearch.value = false
   const p = parsed.value
   if (!p.valid) return
   if (form.name === '' || form.name === lastAutoName.value) {
@@ -75,6 +143,11 @@ watch(
     } else {
       Object.assign(form, blank())
       lastAutoName.value = ''
+      projectQuery.value = ''
+      projects.value = []
+      searchError.value = null
+      pickerOpen.value = false
+      pickedFromSearch.value = false
     }
     error.value = null
   },
@@ -104,6 +177,10 @@ async function submit() {
     }
     Object.assign(form, blank())
     lastAutoName.value = ''
+    projectQuery.value = ''
+    projects.value = []
+    pickedFromSearch.value = false
+    pickerOpen.value = false
     emit('done')
   } catch (e) {
     error.value = errorMessage(e)
@@ -126,7 +203,68 @@ async function submit() {
       />
 
       <div>
-        <label class="field-label" for="rp-url">Project URL</label>
+        <label class="field-label" for="rp-account">Account</label>
+        <select id="rp-account" v-model="form.accountId" class="field-underline">
+          <option value="" disabled>Select an account…</option>
+          <option v-for="a in accounts.items" :key="a.id" :value="a.id">
+            {{ a.name }} — {{ a.baseUrl }}
+          </option>
+        </select>
+      </div>
+
+      <!-- Project picker: search the projects the selected account's token can
+           see and pick one to auto-fill the URL and name. -->
+      <div>
+        <label class="field-label" for="rp-project"
+          >Project
+          <span class="text-muted/60 normal-case">— search your account's projects</span></label
+        >
+        <p v-if="!form.accountId" class="text-muted/70 mt-1.5 text-xs">
+          Select an account first to search its projects.
+        </p>
+        <template v-else>
+          <input
+            id="rp-project"
+            v-model="projectQuery"
+            class="field-underline"
+            placeholder="Search projects…"
+            autocomplete="off"
+            role="combobox"
+            aria-controls="rp-project-results"
+            :aria-expanded="pickerOpen"
+            @focus="openPicker"
+          />
+          <div
+            v-if="pickerOpen"
+            id="rp-project-results"
+            class="border-line bg-surface mt-2 max-h-64 overflow-y-auto rounded-md border"
+          >
+            <p v-if="searching" class="text-muted px-3 py-2 text-xs">Searching…</p>
+            <p v-else-if="searchError" class="text-danger px-3 py-2 text-xs">{{ searchError }}</p>
+            <p v-else-if="projects.length === 0" class="text-muted px-3 py-2 text-xs">
+              No matches — refine your search or enter the URL manually below.
+            </p>
+            <ul v-else class="divide-line/40 divide-y">
+              <li v-for="p in projects" :key="p.id">
+                <button
+                  type="button"
+                  class="hover:bg-accent/10 flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left"
+                  @click="selectProject(p)"
+                >
+                  <span class="text-ink font-mono text-sm">{{ p.pathWithNamespace }}</span>
+                  <span class="text-muted text-xs">{{ p.name }}</span>
+                </button>
+              </li>
+            </ul>
+          </div>
+        </template>
+      </div>
+
+      <div>
+        <label class="field-label" for="rp-url"
+          >Project URL
+          <span class="text-muted/60 normal-case">— filled by the picker, or paste one</span></label
+        >
         <input
           id="rp-url"
           v-model="form.url"
@@ -138,6 +276,9 @@ async function submit() {
         <p v-if="form.url && !parsed.valid" class="text-warn mt-1.5 text-xs">
           Enter a full project URL (https://host/group/project).
         </p>
+        <p v-else-if="pickedFromSearch && parsed.valid" class="label-mono mt-1.5">
+          {{ parsed.path }} · selected from search
+        </p>
         <p v-else-if="parsed.valid" class="label-mono mt-1.5">
           {{ parsed.path }}
           <template v-if="matchedAccount"> · matched {{ matchedAccount.name }}</template>
@@ -147,7 +288,7 @@ async function submit() {
 
       <div>
         <label class="field-label" for="rp-name"
-          >Name <span class="text-muted/60 normal-case">— from URL, editable</span></label
+          >Name <span class="text-muted/60 normal-case">— from the project, editable</span></label
         >
         <input
           id="rp-name"
@@ -156,16 +297,6 @@ async function submit() {
           placeholder="project"
           autocomplete="off"
         />
-      </div>
-
-      <div>
-        <label class="field-label" for="rp-account">Account</label>
-        <select id="rp-account" v-model="form.accountId" class="field-underline">
-          <option value="" disabled>Select an account…</option>
-          <option v-for="a in accounts.items" :key="a.id" :value="a.id">
-            {{ a.name }} — {{ a.baseUrl }}
-          </option>
-        </select>
       </div>
     </template>
 
