@@ -47,7 +47,12 @@ const selectedProvider = computed(() => {
   if (form.providerId) return providers.items.find((p) => p.id === form.providerId) ?? null
   return providers.items.find((p) => p.isDefault) ?? null
 })
-const modelPresets = computed(() => selectedProvider.value?.models ?? [])
+// Presets sorted alphabetically (case-insensitive), without mutating the store's array.
+const modelPresets = computed(() =>
+  [...(selectedProvider.value?.models ?? [])].sort((a, b) =>
+    a.toLowerCase().localeCompare(b.toLowerCase()),
+  ),
+)
 
 // --- GitLab project picker (fzf-style) ---
 // When an account is selected the user searches the projects that account's

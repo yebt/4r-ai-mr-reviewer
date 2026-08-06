@@ -14,18 +14,21 @@ var ErrNotFound = errors.New("provider: not found")
 type Kind string
 
 const (
-	// KindOpenAICompat covers Groq, OpenAI, Moonshot, Kimi and OpenRouter.
+	// KindOpenAICompat covers Groq, OpenAI, Moonshot and Kimi.
 	KindOpenAICompat Kind = "openai-compat"
 	// KindAnthropic is the Claude messages API.
 	KindAnthropic Kind = "anthropic"
 	// KindGemini is Google Gemini via its OpenAI-compatible endpoint, so it
 	// reuses the OpenAI-compat wire protocol with a Gemini default base URL.
 	KindGemini Kind = "gemini"
+	// KindOpenRouter is OpenRouter via its OpenAI-compatible endpoint, so it
+	// reuses the OpenAI-compat wire protocol with an OpenRouter default base URL.
+	KindOpenRouter Kind = "openrouter"
 )
 
 // Valid reports whether k is a supported kind.
 func (k Kind) Valid() bool {
-	return k == KindOpenAICompat || k == KindAnthropic || k == KindGemini
+	return k == KindOpenAICompat || k == KindAnthropic || k == KindGemini || k == KindOpenRouter
 }
 
 // Provider is a configured AI backend. The API key is not stored here;

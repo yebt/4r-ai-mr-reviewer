@@ -11,6 +11,10 @@ import (
 // Gemini provider leaves its base URL empty.
 const geminiOpenAIBaseURL = "https://generativelanguage.googleapis.com/v1beta/openai"
 
+// openRouterBaseURL is OpenRouter's OpenAI-compatible endpoint, used when an
+// OpenRouter provider leaves its base URL empty.
+const openRouterBaseURL = "https://openrouter.ai/api/v1"
+
 // New builds the llm.Client for a provider configuration and its API key.
 func New(p provider.Provider, apiKey string) (llm.Client, error) {
 	switch p.Kind {
@@ -22,6 +26,14 @@ func New(p provider.Provider, apiKey string) (llm.Client, error) {
 		baseURL := p.BaseURL
 		if baseURL == "" {
 			baseURL = geminiOpenAIBaseURL
+		}
+		return NewOpenAIClient(baseURL, apiKey), nil
+	case provider.KindOpenRouter:
+		// OpenRouter speaks the OpenAI protocol at its own endpoint; default the
+		// base URL to that endpoint when the provider didn't set one.
+		baseURL := p.BaseURL
+		if baseURL == "" {
+			baseURL = openRouterBaseURL
 		}
 		return NewOpenAIClient(baseURL, apiKey), nil
 	case provider.KindAnthropic:

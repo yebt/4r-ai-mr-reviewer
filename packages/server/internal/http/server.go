@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/webcloster-dev/ai-reviewer/internal/adapters/openrouter"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/accounts"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/bot"
 	apphumanize "github.com/webcloster-dev/ai-reviewer/internal/app/humanize"
@@ -45,6 +46,10 @@ type Server struct {
 	telegram      *apptelegram.Service
 	notifications *notifications.Service
 	skills        skills.Set
+	// openrouter serves the OpenRouter model catalog for the provider form's
+	// model browser. Always non-nil after NewServer (a cached client with a TTL);
+	// tests may replace it with a stub.
+	openrouter openRouterLister
 
 	// bot dispatches interactive Telegram webhook updates; nil disables dispatch.
 	bot *bot.Service
@@ -67,7 +72,7 @@ func NewServer(a *accounts.Service, p *providers.Service, pr *profiles.Service, 
 	if authMgr == nil {
 		authMgr = auth.NewManager("", defaultSessionLifetime)
 	}
-	return &Server{accounts: a, providers: p, profiles: pr, repos: r, reviews: rv, routines: rt, humanize: hz, telegram: tg, notifications: nt, skills: sk, bot: bt, telegramWebhookSecret: telegramWebhookSecret, auth: authMgr, trustProxy: trustProxy, loginLimiter: newRateLimiter(maxLoginAttempts, loginWindow)}
+	return &Server{accounts: a, providers: p, profiles: pr, repos: r, reviews: rv, routines: rt, humanize: hz, telegram: tg, notifications: nt, skills: sk, openrouter: openrouter.NewCachedClient(openRouterCacheTTL), bot: bt, telegramWebhookSecret: telegramWebhookSecret, auth: authMgr, trustProxy: trustProxy, loginLimiter: newRateLimiter(maxLoginAttempts, loginWindow)}
 }
 
 // Routes returns the HTTP handler with every endpoint registered.
@@ -84,6 +89,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /accounts", s.listAccounts)
 	mux.HandleFunc("GET /accounts/{id}/projects", s.searchAccountProjects)
 	mux.HandleFunc("DELETE /accounts/{id}", s.deleteAccount)
+
+	mux.HandleFunc("GET /openrouter/models", s.listOpenRouterModels)
 
 	mux.HandleFunc("POST /providers", s.createProvider)
 	mux.HandleFunc("GET /providers", s.listProviders)

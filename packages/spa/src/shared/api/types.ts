@@ -16,7 +16,15 @@ export interface GitlabProject {
   webUrl: string
 }
 
-export type ProviderKind = 'openai-compat' | 'anthropic' | 'gemini'
+export type ProviderKind = 'openai-compat' | 'anthropic' | 'gemini' | 'openrouter'
+
+// A model from OpenRouter's public catalog, used by the provider form's model
+// browser. id is the "vendor/model" slug; contextLength is the token window.
+export interface OpenRouterModel {
+  id: string
+  name: string
+  contextLength: number
+}
 
 export interface Provider {
   id: string

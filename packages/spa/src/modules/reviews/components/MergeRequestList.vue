@@ -33,9 +33,11 @@ function modelFor(iid: number) {
   return models[iid] ?? ''
 }
 
-// Models declared by the MR's currently-selected provider (empty if none).
+// Models declared by the MR's currently-selected provider (empty if none),
+// sorted alphabetically (case-insensitive) without mutating the store's array.
 function providerModelsFor(iid: number) {
-  return props.providers.find((p) => p.id === providerFor(iid))?.models ?? []
+  const models = props.providers.find((p) => p.id === providerFor(iid))?.models ?? []
+  return [...models].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
 }
 </script>
 

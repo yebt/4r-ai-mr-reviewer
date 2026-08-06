@@ -12,6 +12,7 @@ import type {
   MainReleaseInput,
   MergeRequest,
   NotificationRule,
+  OpenRouterModel,
   Preflight,
   Profile,
   Provider,
@@ -158,6 +159,10 @@ export const api = {
   ) => request<Provider>('PATCH', `/providers/${id}`, input),
   setDefaultProvider: (id: string) => request<void>('POST', `/providers/${id}/default`),
   deleteProvider: (id: string) => request<void>('DELETE', `/providers/${id}`),
+
+  // OpenRouter public model catalog, sorted alphabetically by id server-side.
+  // Powers the provider form's model browser. No OpenRouter account needed.
+  listOpenRouterModels: () => request<OpenRouterModel[]>('GET', '/openrouter/models'),
 
   // telegram (notification targets)
   listTelegram: () => request<TelegramTarget[]>('GET', '/telegram'),

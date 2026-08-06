@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { errorMessage } from '@shared/api/client'
+import { api, errorMessage } from '@shared/api/client'
 import { toast } from '@shared/composables/useToast'
-import type { Provider, ProviderKind } from '@shared/api/types'
+import type { OpenRouterModel, Provider, ProviderKind } from '@shared/api/types'
 import { useProvidersStore } from '@modules/providers/store'
+
+// Case-insensitive alphabetical comparator, reused for model lists/chips.
+const byLower = (a: string, b: string) => a.toLowerCase().localeCompare(b.toLowerCase())
 
 const props = defineProps<{ editing?: Provider | null }>()
 const emit = defineEmits<{ done: [] }>()
@@ -28,6 +31,55 @@ const modelDraft = ref('')
 
 const isEdit = computed(() => !!props.editing)
 const valid = computed(() => form.name.trim() && (isEdit.value || form.apiKey.trim()))
+
+// Selected model presets, shown alphabetically (non-mutating copy).
+const sortedModels = computed(() => [...form.models].sort(byLower))
+
+// --- OpenRouter model browser ---
+// The catalog is fetched once (lazily, when the browser is first shown) and
+// cached in-component so switching kinds back and forth doesn't refetch.
+const orModels = ref<OpenRouterModel[]>([])
+const orLoaded = ref(false)
+const orLoading = ref(false)
+const orError = ref<string | null>(null)
+const modelSearch = ref('')
+
+async function loadOpenRouterModels() {
+  if (orLoaded.value || orLoading.value) return
+  orLoading.value = true
+  orError.value = null
+  try {
+    orModels.value = await api.listOpenRouterModels()
+    orLoaded.value = true
+  } catch (e) {
+    orError.value = errorMessage(e)
+  } finally {
+    orLoading.value = false
+  }
+}
+
+// Alphabetical by id (the backend already sorts; sort again defensively so the
+// list is stable regardless of source), filtered by the search text.
+const filteredOrModels = computed(() => {
+  const q = modelSearch.value.trim().toLowerCase()
+  const list = [...orModels.value].sort((a, b) => byLower(a.id, b.id))
+  if (!q) return list
+  return list.filter((m) => m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q))
+})
+
+function pickModel(id: string) {
+  if (!form.models.includes(id)) form.models.push(id)
+  if (!form.model.trim()) form.model = id
+}
+
+// Lazy-load the catalog whenever the kind becomes openrouter (first time only).
+watch(
+  () => form.kind,
+  (kind) => {
+    if (kind === 'openrouter') void loadOpenRouterModels()
+  },
+  { immediate: true },
+)
 
 watch(
   () => props.editing,
@@ -126,6 +178,7 @@ async function submit() {
         </option>
         <option value="anthropic">anthropic (Claude)</option>
         <option value="gemini">gemini (Google Gemini)</option>
+        <option value="openrouter">openrouter (browse models)</option>
       </select>
     </div>
 
@@ -144,6 +197,9 @@ async function submit() {
         Leave empty to use Google's Gemini endpoint. Use a Gemini model such as
         <code>gemini-2.5-flash</code>.
       </p>
+      <p v-else-if="form.kind === 'openrouter'" class="text-muted mt-1 text-xs">
+        Leave Base URL empty to use OpenRouter. Browse and add models below.
+      </p>
     </div>
 
     <div>
@@ -155,6 +211,60 @@ async function submit() {
         placeholder="llama-3.3-70b-versatile"
         autocomplete="off"
       />
+    </div>
+
+    <!-- OpenRouter model browser -->
+    <div v-if="form.kind === 'openrouter'">
+      <label class="field-label" for="pv-or-search">Browse OpenRouter models</label>
+      <input
+        id="pv-or-search"
+        v-model="modelSearch"
+        class="field-underline"
+        placeholder="search by id or name"
+        autocomplete="off"
+      />
+
+      <p v-if="orLoading" class="text-muted mt-3 flex items-center gap-2 text-xs">
+        <span class="i-lucide-loader-circle animate-spin" aria-hidden="true" />
+        Loading models…
+      </p>
+      <p v-else-if="orError" class="text-danger mt-3 text-xs">
+        {{ orError }}
+        <button type="button" class="btn-line ml-2 text-xs" @click="loadOpenRouterModels">
+          Retry
+        </button>
+      </p>
+      <p v-else-if="filteredOrModels.length === 0" class="text-muted mt-3 text-xs">
+        No models match “{{ modelSearch }}”.
+      </p>
+      <ul
+        v-else
+        class="border-line/50 mt-3 max-h-64 divide-y divide-line/40 overflow-y-auto border"
+      >
+        <li v-for="m in filteredOrModels" :key="m.id">
+          <button
+            type="button"
+            class="hover:bg-surface flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left"
+            :class="form.models.includes(m.id) ? 'text-muted' : 'text-ink'"
+            @click="pickModel(m.id)"
+          >
+            <span class="flex w-full items-center gap-2">
+              <span class="truncate font-mono text-xs">{{ m.id }}</span>
+              <span
+                v-if="form.models.includes(m.id)"
+                class="text-ok ml-auto text-xs"
+                aria-hidden="true"
+                >added</span
+              >
+            </span>
+            <span class="text-muted truncate text-xs">{{ m.name }}</span>
+          </button>
+        </li>
+      </ul>
+      <p class="text-muted/70 mt-2 text-xs">
+        Click a model to add it to the preset list. The first one you add fills the default model
+        when it's empty.
+      </p>
     </div>
 
     <div>
@@ -226,7 +336,7 @@ async function submit() {
           </div>
           <div v-if="form.models.length" class="mt-3 flex flex-wrap gap-2">
             <span
-              v-for="m in form.models"
+              v-for="m in sortedModels"
               :key="m"
               class="border-line text-ink inline-flex items-center gap-1 border px-2 py-1 font-mono text-xs"
             >
