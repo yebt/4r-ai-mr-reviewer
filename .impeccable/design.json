@@ -1,0 +1,144 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-06T00:00:00Z",
+  "title": "Design System: 4R — AI Merge Request Reviewer",
+  "extensions": {
+    "colorMeta": {
+      "canvas": { "role": "neutral", "displayName": "Canvas Black", "canonical": "#0a0a0b", "tonalRamp": ["#0a0a0b", "#141416", "#1e1e22", "#2a2a30", "#3a3a42", "#5a5a63", "#7c7c85", "#b7b7bd", "#ededf0"] },
+      "surface": { "role": "neutral", "displayName": "Surface", "canonical": "#111113", "tonalRamp": ["#0a0a0b", "#111113", "#1a1a1d", "#242428", "#333339", "#55555d", "#7c7c85", "#b7b7bd", "#ededf0"] },
+      "line": { "role": "neutral", "displayName": "Hairline", "canonical": "#2a2a30", "tonalRamp": ["#141416", "#1e1e22", "#2a2a30", "#3a3a42", "#4a4a53", "#5f5f68", "#7c7c85", "#a6a6ad", "#d6d6da"] },
+      "ink": { "role": "neutral", "displayName": "Ink", "canonical": "#ededf0", "tonalRamp": ["#2a2a30", "#3a3a42", "#55555d", "#7c7c85", "#9a9aa2", "#b7b7bd", "#d2d2d7", "#ededf0", "#ffffff"] },
+      "muted": { "role": "neutral", "displayName": "Muted", "canonical": "#7c7c85", "tonalRamp": ["#1e1e22", "#2f2f35", "#44444b", "#5a5a63", "#7c7c85", "#96969d", "#b1b1b7", "#cdcdd1", "#e9e9ec"] },
+      "accent": { "role": "primary", "displayName": "Live Signal Lime", "canonical": "#d6ff3f", "tonalRamp": ["#2c3a00", "#455a00", "#5f7c00", "#7ba300", "#98c900", "#b6ee14", "#d6ff3f", "#e6ff7d", "#f2ffb8"] },
+      "accent-ink": { "role": "primary", "displayName": "Accent Ink", "canonical": "#0a0a0b", "tonalRamp": ["#0a0a0b", "#141416", "#1e1e22", "#2a2a30", "#3a3a42", "#5a5a63", "#7c7c85", "#b7b7bd", "#ededf0"] },
+      "flame": { "role": "secondary", "displayName": "Alarm Flame", "canonical": "#ff5a1f", "tonalRamp": ["#3d1200", "#5c1c00", "#7d2800", "#a33600", "#cc4500", "#ec5314", "#ff5a1f", "#ff8a5c", "#ffb59a"] },
+      "danger": { "role": "status", "displayName": "Danger Red", "canonical": "#ff5a5a", "tonalRamp": ["#3d0f0f", "#5c1717", "#7d2020", "#a32a2a", "#cc3636", "#ec4747", "#ff5a5a", "#ff8f8f", "#ffbcbc"] },
+      "warn": { "role": "status", "displayName": "Warn Amber", "canonical": "#ffb84d", "tonalRamp": ["#3d2900", "#5c3d00", "#7d5300", "#a36c00", "#cc8800", "#ec9f1f", "#ffb84d", "#ffce85", "#ffe3b8"] },
+      "ok": { "role": "status", "displayName": "OK Green", "canonical": "#8bef8b", "tonalRamp": ["#0f3d0f", "#175c17", "#207d20", "#2aa32a", "#36cc36", "#5ce05c", "#8bef8b", "#b3f5b3", "#d6fad6"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Page titles in PageHeader — one per screen, paired above with a mono eyebrow label." },
+      "title": { "displayName": "Title", "purpose": "Section titles inside a form or panel; dominant over the muted mono labels." },
+      "body": { "displayName": "Body", "purpose": "Default prose; finding headlines step up to 1rem medium weight." },
+      "label": { "displayName": "Label (mono)", "purpose": "The signature label-mono — field labels, eyebrows, readouts. Uppercase, letter-spaced, monospace." }
+    },
+    "shadows": [
+      { "name": "none", "value": "none", "purpose": "System is flat by doctrine. Depth is the canvas → surface → line tonal stack, never a drop shadow." },
+      { "name": "signal-glow", "value": "0 0 10px #d6ff3f, 0 0 5px #d6ff3f", "purpose": "Exception: the route-change progress peg glow. A lime live-signal effect, not an elevation cue." }
+    ],
+    "motion": [
+      { "name": "ease-standard", "value": "ease", "purpose": "Default easing for color/opacity/transform state transitions (0.15s–0.2s)." },
+      { "name": "duration-fast", "value": "0.15s", "purpose": "Overlay/toast fades." },
+      { "name": "duration-base", "value": "0.2s", "purpose": "Drawer slide, toast, general state transitions." },
+      { "name": "view-transition", "value": "0.22s ease", "purpose": "Same-document navigation cross-fade + shared-element morph (review-/action- prefixes). Inert under prefers-reduced-motion." }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Accent Button",
+      "kind": "button",
+      "refersTo": "button-accent",
+      "description": "The one primary action per view. Lime fill, square, flat.",
+      "html": "<button class=\"ds-btn-accent\">Run review</button>",
+      "css": ".ds-btn-accent { display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: #d6ff3f; color: #0a0a0b; border: none; border-radius: 0; padding: 8px 16px; font-size: 0.875rem; font-weight: 500; font-family: ui-sans-serif, system-ui, sans-serif; cursor: pointer; transition: opacity 0.2s ease; } .ds-btn-accent:hover { opacity: 0.9; } .ds-btn-accent:focus-visible { outline: 2px solid #d6ff3f; outline-offset: 2px; } .ds-btn-accent:disabled { opacity: 0.4; pointer-events: none; }"
+    },
+    {
+      "name": "Line Button",
+      "kind": "button",
+      "refersTo": "button-line",
+      "description": "Secondary action. Hairline border, no fill; border deepens to ink on hover.",
+      "html": "<button class=\"ds-btn-line\">Cancel</button>",
+      "css": ".ds-btn-line { display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: transparent; color: #ededf0; border: 1px solid #2a2a30; border-radius: 0; padding: 8px 16px; font-size: 0.875rem; font-weight: 500; font-family: ui-sans-serif, system-ui, sans-serif; cursor: pointer; transition: border-color 0.2s ease; } .ds-btn-line:hover { border-color: #ededf0; } .ds-btn-line:focus-visible { outline: 2px solid #d6ff3f; outline-offset: 2px; } .ds-btn-line:disabled { opacity: 0.4; pointer-events: none; }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Tertiary/inline row action. Muted text, tight padding, faint hover fill.",
+      "html": "<button class=\"ds-btn-ghost\">Copy</button>",
+      "css": ".ds-btn-ghost { display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: transparent; color: #7c7c85; border: none; border-radius: 0; padding: 4px 8px; font-size: 0.875rem; font-weight: 500; font-family: ui-sans-serif, system-ui, sans-serif; cursor: pointer; transition: color 0.2s ease, background 0.2s ease; } .ds-btn-ghost:hover { color: #ededf0; background: rgba(124,124,133,0.2); } .ds-btn-ghost:focus-visible { outline: 2px solid #d6ff3f; outline-offset: 2px; }"
+    },
+    {
+      "name": "Underline Field",
+      "kind": "input",
+      "refersTo": "input-underline",
+      "description": "The signature borderless input — a single bottom hairline that turns lime on focus.",
+      "html": "<label class=\"ds-field\"><span class=\"ds-field-label\">Merge request URL</span><input class=\"ds-input-underline\" placeholder=\"https://gitlab.com/…\" /></label>",
+      "css": ".ds-field { display: block; } .ds-field-label { display: block; margin-bottom: 6px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.68rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.14em; color: #7c7c85; } .ds-input-underline { width: 100%; background: transparent; color: #ededf0; border: 0; border-bottom: 1px solid #2a2a30; border-radius: 0; padding: 8px 0; font-size: 0.875rem; font-family: ui-sans-serif, system-ui, sans-serif; outline: none; transition: border-color 0.2s ease; } .ds-input-underline::placeholder { color: rgba(124,124,133,0.5); } .ds-input-underline:focus { border-bottom-color: #d6ff3f; }"
+    },
+    {
+      "name": "Severity Chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Mono uppercase status/metadata tag, colored by role. Pairs a glyph with a word.",
+      "html": "<span class=\"ds-chip ds-chip-flame\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z\"/></svg>blocking</span>",
+      "css": ".ds-chip { display: inline-flex; align-items: center; gap: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.06em; color: #7c7c85; } .ds-chip-flame { color: #ff5a1f; } .ds-chip-ok { color: #8bef8b; } .ds-chip-danger { color: #ff5a5a; } .ds-chip-warn { color: #ffb84d; }"
+    },
+    {
+      "name": "Finding Card (triage, boxed)",
+      "kind": "card",
+      "refersTo": "card-boxed",
+      "description": "The signature boxed exception: surface fill, hairline border, and a colored severity edge (left on desktop). Published state uses a faint tint, never opacity.",
+      "html": "<article class=\"ds-finding\"><div class=\"ds-finding-chips\"><span class=\"ds-chip\">R1 Risk</span><span class=\"ds-chip ds-chip-danger\">high</span></div><span class=\"ds-file\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z\"/><path d=\"M14 2v6h6\"/></svg>internal/app/routines/service.go</span><span class=\"ds-line\">:212</span><p class=\"ds-finding-issue\">Unvalidated tag input flows into the shell command.</p></article>",
+      "css": ".ds-finding { display: flex; flex-direction: column; gap: 16px; background: #111113; color: #ededf0; border: 1px solid #2a2a30; border-left: 2px solid #ff5a5a; border-radius: 0; padding: 16px; } .ds-finding-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; } .ds-file { display: inline-flex; align-items: center; gap: 6px; background: #111113; border: 1px solid #2a2a30; color: #7c7c85; padding: 4px 8px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.75rem; } .ds-line { display: inline-flex; align-items: center; border: 1px solid rgba(214,255,63,0.4); background: rgba(214,255,63,0.1); color: #d6ff3f; padding: 2px 6px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.75rem; margin-left: 8px; } .ds-finding-issue { color: #ededf0; font-size: 1rem; font-weight: 500; margin: 0; }"
+    },
+    {
+      "name": "Score Meter",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "A thin gauge readout: a 2px hairline track with a lime fill scaled to the 0–100 score.",
+      "html": "<div class=\"ds-score\" role=\"img\" aria-label=\"Score 82 of 100\"><div class=\"ds-score-fill\" style=\"width:82%\"></div></div>",
+      "css": ".ds-score { height: 8px; width: 100%; background: rgba(42,42,48,0.4); } .ds-score-fill { height: 100%; background: #d6ff3f; }"
+    },
+    {
+      "name": "Sidebar Nav Item",
+      "kind": "nav",
+      "refersTo": null,
+      "description": "Left-rail nav row: muted by default; active gets a lime left-edge rule and ink text.",
+      "html": "<nav class=\"ds-nav\"><a class=\"ds-nav-item ds-nav-active\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polygon points=\"13 2 3 14 12 14 11 22 21 10 12 10 13 2\"/></svg>Quick access</a><a class=\"ds-nav-item\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M9 20H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-5\"/></svg>Repositories</a></nav>",
+      "css": ".ds-nav { display: flex; flex-direction: column; background: #0a0a0b; } .ds-nav-item { display: flex; align-items: center; gap: 12px; padding: 10px 20px; font-size: 0.875rem; font-family: ui-sans-serif, system-ui, sans-serif; color: #7c7c85; border-left: 2px solid transparent; text-decoration: none; transition: color 0.2s ease; } .ds-nav-item:hover { color: #ededf0; } .ds-nav-active { color: #ededf0; border-left-color: #d6ff3f; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Instrument Panel",
+    "overview": "4R looks like a precision diagnostic instrument for reading code, not a consumer app. The screen is a near-black field (#0a0a0b) on which thin #2a2a30 hairlines act as gauge markings, monospace uppercase micro-labels act as instrument readouts, and a single lime signal (#d6ff3f) marks whatever is live, primary, or on. Nothing is boxed unless the content genuinely needs to be isolated; structure is drawn with lines and whitespace the way a well-designed panel separates dials without cramming each one in a bezel. The register is engineered, exact, and calm under load. Type is the default system sans for prose and the system monospace for anything that is data — a filename, a line number, a status, a count, a label. Corners are square everywhere; there is not a single rounded rectangle in the system. There are no shadows: depth comes only from a three-step tonal stack (canvas → surface → hairline). This is a dark-only system by design. The two color voices never blur. Lime is the live signal; flame (#ff5a1f) is the alarm, reserved for blocking findings and danger emphasis. Because both are rationed, a screen with one lime element and one flame element reads instantly.",
+    "keyCharacteristics": [
+      "Near-black canvas, hairline dividers, zero boxes by default.",
+      "Monospace uppercase micro-labels as the signature detail.",
+      "One lime 'live signal' accent; one flame 'alarm' accent; both rationed.",
+      "Square corners everywhere (border-radius: 0).",
+      "Flat — no shadows; depth is a canvas → surface → line tonal stack.",
+      "Dark-only; system font stacks (no bundled web fonts)."
+    ],
+    "rules": [
+      { "name": "The Two-Voice Rule", "body": "There are exactly two accents and they are not interchangeable: lime = live signal (active/primary/on), flame = alarm (blocking/danger emphasis). Never use lime to warn; never use flame to indicate primary action.", "section": "colors" },
+      { "name": "The One Signal Rule", "body": "Lime appears on a small fraction of any screen — one primary action, one active nav item, one score fill. Its rarity is what makes it legible. If two things are lime, one of them is wrong.", "section": "colors" },
+      { "name": "The Labelled-Status Rule", "body": "Status color is always shipped with a text label. Color is reinforcement, never the sole signal — CVD- and contrast-safe by construction.", "section": "colors" },
+      { "name": "The Sans-Prose / Mono-Data Rule", "body": "If it is language, it is sans. If it is a datum — filename, line number, count, status, label — it is monospace, uppercase, and letter-spaced. This split is the brand; do not introduce a decorative display face to replace it.", "section": "typography" },
+      { "name": "The No-Box-By-Default Rule", "body": "Content is separated with hairlines and space, not containers. A boxed surface (border-line + bg-surface) is the deliberate exception for content that must be isolated, never the default wrapper.", "section": "layout" },
+      { "name": "The Flat Panel Rule", "body": "Never add a box-shadow to convey elevation. If a surface needs to lift, step it up the tonal stack (canvas → surface) and/or add a hairline — do not float it.", "section": "elevation" },
+      { "name": "The Square-Corner Rule", "body": "Nothing rounds. If a component needs to feel softer, solve it with spacing or tone, never with a radius.", "section": "shapes" },
+      { "name": "The Tint-Not-Dim Rule", "body": "Represent a positive/done state (e.g. published) with a faint semantic tint (bg-ok/5), never with reduced opacity. Opacity is reserved for the disabled state — dimming must always mean 'unavailable,' never 'complete.'", "section": "elevation" }
+    ],
+    "dos": [
+      "Do separate content with hairlines (border-line at /50–/70) and whitespace; reach for a boxed bg-surface card only when content must be isolated.",
+      "Do set border-radius: 0 on every new component. Square is the system.",
+      "Do put every datum — filename, line, count, status, label — in monospace, uppercase, letter-spaced; keep prose in the sans stack.",
+      "Do use lime for exactly one 'live/primary' thing per view (primary action, active nav, score fill, focus), and reserve flame for blocking/danger emphasis.",
+      "Do ship status color with a text label (chips, bars) so meaning never depends on color alone.",
+      "Do convey a done/positive state with a faint semantic tint (bg-ok/5)."
+    ],
+    "donts": [
+      "Don't add box-shadow for elevation — step the tonal stack instead.",
+      "Don't round corners, anywhere.",
+      "Don't use lime as a warning or flame as a primary action — the two voices don't cross.",
+      "Don't wrap default content in bordered boxes; the borderless ledger is the point.",
+      "Don't dim a completed item with opacity — dimming means disabled only.",
+      "Don't introduce a bundled/decorative display font; the sans-prose / mono-data split carries the identity."
+    ]
+  }
+}
