@@ -125,7 +125,7 @@ const { store, tabs, selectedTab, humanizing, publishedTabIdx, shown, publishing
     <button
       v-if="isPhone && !expanded && (shown.why || shown.fix)"
       type="button"
-      class="text-muted/70 hover:text-ink -mt-1 flex items-center gap-1 text-xs"
+      class="text-muted hover:text-ink -mt-1 flex items-center gap-1 text-xs"
       @click="expanded = true"
     >
       <span class="i-lucide-chevron-down text-sm" aria-hidden="true" />

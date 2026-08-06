@@ -142,7 +142,7 @@ async function publish() {
     >
       {{ shownSummary }}
     </p>
-    <p v-else class="text-muted/60 mt-4 text-sm italic">No summary.</p>
+    <p v-else class="text-muted mt-4 text-sm italic">No summary.</p>
 
     <div class="label-mono mt-4 hidden flex-wrap gap-x-6 gap-y-1 sm:flex">
       <span>mode {{ review.contextMode }}</span>

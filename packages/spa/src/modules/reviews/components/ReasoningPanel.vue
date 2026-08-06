@@ -73,7 +73,7 @@ function toggle(i: number) {
   <!-- While the review runs with nothing captured yet, a subtle hint (never a
        scary empty box). Renders nothing once the review finishes with no
        reasoning captured. -->
-  <p v-else-if="running" class="text-muted/60 mb-6 flex items-center gap-2 text-xs">
+  <p v-else-if="running" class="text-muted mb-6 flex items-center gap-2 text-xs">
     <span class="i-lucide-loader-circle animate-spin text-sm" aria-hidden="true" />
     Waiting for model reasoning…
   </p>

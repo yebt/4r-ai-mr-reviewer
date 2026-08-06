@@ -45,7 +45,7 @@ const emit = defineEmits<{
             <ReviewStatusChip :status="rv.status" />
           </div>
           <div class="label-mono mt-0.5 flex flex-wrap gap-x-2">
-            <span class="text-muted/70">#{{ shortId(rv.id) }}</span>
+            <span class="text-muted">#{{ shortId(rv.id) }}</span>
             <span>{{ rv.contextMode }}</span>
             <span v-if="rv.createdAt">{{ formatDateTime(rv.createdAt) }}</span>
           </div>

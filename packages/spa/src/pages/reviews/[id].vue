@@ -556,7 +556,7 @@ async function remove() {
           <span class="i-lucide-loader-circle animate-spin" aria-hidden="true" />
           <template v-if="phase">
             Reviewing {{ phase.label }}
-            <span class="text-muted/70 font-mono">({{ phase.step }}/4)</span>…
+            <span class="text-muted font-mono">({{ phase.step }}/4)</span>…
           </template>
           <template v-else>Review {{ review.status }}… updates automatically.</template>
         </div>
@@ -813,7 +813,7 @@ async function remove() {
             <Alert variant="info" class="mb-3 sm:hidden">
               Summary already posted — use 'Publish summary again' above to repost it.
             </Alert>
-            <p class="text-muted/70 mb-3 hidden text-xs sm:block">
+            <p class="text-muted mb-3 hidden text-xs sm:block">
               Summary already posted — use 'Publish summary again' above to repost it.
             </p>
           </template>
@@ -861,7 +861,7 @@ async function remove() {
                 >
                   {{ activeFilterCount }}
                 </span>
-                <span class="text-muted/70">
+                <span class="text-muted">
                   {{ triage.visible.value.length }}/{{ review.findings.length }}
                 </span>
               </button>
@@ -912,7 +912,7 @@ async function remove() {
                   <span aria-hidden="true">·</span>
                   <span class="text-flame font-medium">{{ triage.counts.value.blocking }}</span> blocking
                   <span class="text-muted/50" aria-hidden="true">·</span>
-                  <span class="text-muted/70">
+                  <span class="text-muted">
                     Showing {{ triage.visible.value.length }} of {{ review.findings.length }}
                   </span>
                 </p>
