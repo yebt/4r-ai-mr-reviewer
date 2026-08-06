@@ -375,7 +375,7 @@ async function confirmPublish() {
   pendingPublish.value = null
 }
 
-// "Comment all" is shared between phone and desktop: phone routes through the
+// "Publish all" is shared between phone and desktop: phone routes through the
 // confirm modal, desktop publishes immediately as before.
 function onCommentAll() {
   if (isPhone.value) askPublish({ all: true })
@@ -757,7 +757,7 @@ async function remove() {
 
         <section class="mt-6" :class="selected.length ? 'pb-24 sm:pb-0' : ''">
           <!-- Primary header line: title + view toggle on the left, the single
-               primary action (Comment all) on the right. The bulk/selection
+               primary action (Publish all) on the right. The bulk/selection
                actions and filter controls live in their own calmer zones below
                (desktop) or in the phone controls row / bottom sheet (mobile). -->
           <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -803,7 +803,7 @@ async function remove() {
                   class="i-lucide-loader-circle animate-spin"
                   aria-hidden="true"
                 />
-                Comment all
+                Publish all ({{ unpublished.length }})
               </button>
             </div>
           </div>
@@ -811,10 +811,10 @@ async function remove() {
           <template v-if="review.summaryPublished">
             <!-- Phone: compact alert box. Desktop: unchanged plain text. -->
             <Alert variant="info" class="mb-3 sm:hidden">
-              Summary already posted — re-check to post again.
+              Summary already posted — use 'Publish summary again' above to repost it.
             </Alert>
             <p class="text-muted/70 mb-3 hidden text-xs sm:block">
-              Summary already posted — re-check to post again.
+              Summary already posted — use 'Publish summary again' above to repost it.
             </p>
           </template>
           <template v-if="publishError">
@@ -1054,15 +1054,15 @@ async function remove() {
         <Modal
           v-if="isPhone"
           :open="publishConfirmOpen"
-          title="Publish"
+          title="Publish findings"
           @close="publishConfirmOpen = false"
         >
           <div class="flex flex-col gap-4">
             <p class="text-muted text-sm">
               {{
                 pendingPublish?.all
-                  ? 'Comment all findings'
-                  : `Publish ${pendingPublish?.indices?.length ?? 0} selected findings`
+                  ? 'Post all findings to the merge request as inline comments. Findings you have already posted are skipped.'
+                  : `Post ${pendingPublish?.indices?.length ?? 0} selected findings to the merge request as inline comments.`
               }}
             </p>
             <label class="text-ink flex cursor-pointer items-center gap-2 text-sm">
