@@ -354,10 +354,10 @@ async function publish(payload: PublishPayload) {
   }
 }
 
-// Phone-only publish confirmation. On phone the "Include summary note" checkbox
-// is hidden from the controls and instead surfaced inside a confirm modal, so a
-// publish first opens the modal (askPublish) and only fires on confirm. Desktop
-// keeps calling publish() directly with the inline includeSummary value.
+// Publish confirmation gate (both platforms). Bulk publish posts findings to a
+// real, teammate-visible merge request and cannot be undone from the UI, so
+// "Publish all" and "Publish selected" open a focus-trapped confirm modal that
+// surfaces the "Include summary note" choice and only fires on confirm.
 const publishConfirmOpen = ref(false)
 const pendingPublish = ref<{ all?: boolean; indices?: number[] } | null>(null)
 const confirmIncludeSummary = ref(true)
@@ -378,8 +378,7 @@ async function confirmPublish() {
 // "Publish all" is shared between phone and desktop: phone routes through the
 // confirm modal, desktop publishes immediately as before.
 function onCommentAll() {
-  if (isPhone.value) askPublish({ all: true })
-  else publish({ all: true, includeSummary: includeSummary.value })
+  askPublish({ all: true })
 }
 
 async function retry() {
@@ -552,7 +551,7 @@ async function remove() {
       </div>
 
       <div v-else-if="review.status === 'pending' || review.status === 'running'">
-        <div class="text-muted flex items-center gap-2 text-sm">
+        <div class="text-muted flex items-center gap-2 text-sm" role="status" aria-live="polite">
           <span class="i-lucide-loader-circle animate-spin" aria-hidden="true" />
           <template v-if="phase">
             Reviewing {{ phase.label }}
@@ -918,12 +917,6 @@ async function remove() {
                 </p>
               </div>
               <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
-                <!-- Include-summary checkbox: desktop only. On phone the choice
-                     moves into the publish-confirm modal (askPublish). -->
-                <label class="text-muted flex cursor-pointer items-center gap-1.5 text-xs">
-                  <input v-model="includeSummary" type="checkbox" class="accent-accent" />
-                  Include summary note
-                </label>
                 <button
                   type="button"
                   class="btn-ghost text-xs"
@@ -944,7 +937,7 @@ async function remove() {
                 <button
                   class="btn-ghost text-xs"
                   :disabled="publishing || selected.length === 0"
-                  @click="publish({ indices: selected, includeSummary })"
+                  @click="askPublish({ indices: selected })"
                 >
                   Publish selected ({{ selected.length }})
                 </button>
@@ -1048,11 +1041,9 @@ async function remove() {
           </button>
         </div>
 
-        <!-- Phone-only publish confirmation: surfaces the include-summary choice
-             (hidden from the phone controls) and defers the actual publish until
-             confirmed. Desktop publishes inline without this modal. -->
+        <!-- Publish confirmation (both platforms): surfaces the include-summary
+             choice and defers the irreversible post-to-MR until confirmed. -->
         <Modal
-          v-if="isPhone"
           :open="publishConfirmOpen"
           title="Publish findings"
           @close="publishConfirmOpen = false"
