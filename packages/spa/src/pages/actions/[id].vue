@@ -145,6 +145,8 @@ async function onCancel(id: string) {
     title: 'Cancel action',
     message: `Cancel "${r ? runTitle(r) : 'this action'}"? This aborts the routine run; it cannot be resumed.`,
     danger: true,
+    confirmText: 'Cancel the run',
+    cancelText: 'Keep running',
   })
   if (!ok) return
   cancelling.value = true

@@ -26,6 +26,9 @@ export function confirm(options: ConfirmOptions): Promise<boolean> {
   state.title = options.title ?? ''
   state.message = options.message
   state.danger = options.danger ?? false
+  // A danger confirm defaults to "Delete" because most are deletions; a danger
+  // action that is NOT a delete (merge, discard, cancel…) must pass an explicit
+  // confirmText, or its button will wrongly read "Delete".
   state.confirmText = options.confirmText ?? (state.danger ? 'Delete' : 'Confirm')
   state.cancelText = options.cancelText ?? 'Cancel'
   state.open = true
