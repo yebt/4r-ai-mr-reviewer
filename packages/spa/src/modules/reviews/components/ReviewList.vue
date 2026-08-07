@@ -1,27 +1,21 @@
 <script setup lang="ts">
 import type { Review } from '@shared/api/types'
-import {
-  formatDateTime,
-  isTerminal,
-  recommendationClass,
-  recommendationLabel,
-  shortId,
-} from '@modules/reviews/format'
-import ReviewStatusChip from '@modules/reviews/components/ReviewStatusChip.vue'
+import ReviewRow from '@modules/reviews/components/ReviewRow.vue'
 
 defineProps<{
   items: Review[]
   loading?: boolean
   error?: string | null
-  // Ids with an archive/unarchive request in flight (their button is disabled).
+  // Ids with an action in flight (their buttons are disabled).
   busyIds?: string[]
 }>()
 
-const emit = defineEmits<{
+defineEmits<{
   archive: [id: string]
   unarchive: [id: string]
   approve: [id: string]
   discard: [id: string, mrIid: number]
+  retry: [id: string]
 }>()
 </script>
 
@@ -32,87 +26,17 @@ const emit = defineEmits<{
     <p v-else-if="items.length === 0" class="text-muted py-3 text-sm">No reviews yet.</p>
 
     <ul v-else class="border-line/50 border-t">
-      <li v-for="rv in items" :key="rv.id" class="row justify-between">
-        <div class="min-w-0">
-          <div class="flex items-center gap-3">
-            <RouterLink
-              :to="`/reviews/${rv.id}`"
-              class="text-ink hover:text-accent font-mono text-sm"
-              :style="{ viewTransitionName: `review-${rv.id}` }"
-            >
-              !{{ rv.mrIid }}
-            </RouterLink>
-            <ReviewStatusChip :status="rv.status" />
-          </div>
-          <div class="label-mono mt-0.5 flex flex-wrap gap-x-2">
-            <span class="text-muted">#{{ shortId(rv.id) }}</span>
-            <span>{{ rv.contextMode }}</span>
-            <span v-if="rv.createdAt">{{ formatDateTime(rv.createdAt) }}</span>
-          </div>
-        </div>
-        <div class="flex shrink-0 items-center gap-3">
-          <div class="text-right">
-            <div
-              v-if="rv.status === 'done'"
-              class="text-sm"
-              :class="recommendationClass[rv.recommendation]"
-            >
-              {{ recommendationLabel(rv.recommendation) }}
-            </div>
-            <div v-if="rv.status === 'done'" class="label-mono mt-0.5">score {{ rv.score }}</div>
-            <div v-else-if="rv.status === 'error'" class="text-danger text-xs">failed</div>
-          </div>
-          <template v-if="!rv.archived && rv.status === 'awaiting_approval'">
-            <button
-              class="btn-line text-xs"
-              :disabled="busyIds?.includes(rv.id) ?? false"
-              :aria-label="`Approve review !${rv.mrIid}`"
-              title="Approve and run"
-              @click="emit('approve', rv.id)"
-            >
-              <span
-                :class="
-                  (busyIds?.includes(rv.id) ?? false)
-                    ? 'i-lucide-loader-circle animate-spin'
-                    : 'i-lucide-play'
-                "
-                class="text-sm"
-                aria-hidden="true"
-              />
-              Approve
-            </button>
-            <button
-              class="btn-ghost text-danger text-xs"
-              :disabled="busyIds?.includes(rv.id) ?? false"
-              :aria-label="`Discard review !${rv.mrIid}`"
-              title="Discard"
-              @click="emit('discard', rv.id, rv.mrIid)"
-            >
-              <span class="i-lucide-trash-2 text-sm" aria-hidden="true" />
-            </button>
-          </template>
-          <button
-            v-else
-            class="btn-ghost text-xs"
-            :disabled="(busyIds?.includes(rv.id) ?? false) || (!rv.archived && !isTerminal(rv.status))"
-            :aria-label="rv.archived ? `Unarchive review !${rv.mrIid}` : `Archive review !${rv.mrIid}`"
-            :title="
-              rv.archived
-                ? 'Unarchive'
-                : isTerminal(rv.status)
-                  ? 'Archive'
-                  : 'Cannot archive a running review'
-            "
-            @click="rv.archived ? emit('unarchive', rv.id) : emit('archive', rv.id)"
-          >
-            <span
-              :class="rv.archived ? 'i-lucide-archive-restore' : 'i-lucide-archive'"
-              class="text-sm"
-              aria-hidden="true"
-            />
-          </button>
-        </div>
-      </li>
+      <ReviewRow
+        v-for="rv in items"
+        :key="rv.id"
+        :review="rv"
+        :busy="busyIds?.includes(rv.id) ?? false"
+        @approve="$emit('approve', $event)"
+        @discard="(id, mrIid) => $emit('discard', id, mrIid)"
+        @retry="$emit('retry', $event)"
+        @archive="$emit('archive', $event)"
+        @unarchive="$emit('unarchive', $event)"
+      />
     </ul>
   </div>
 </template>

@@ -4,17 +4,10 @@ import { computed, onMounted, ref } from 'vue'
 import PageHeader from '@shared/components/ui/PageHeader.vue'
 import EmptyState from '@shared/components/ui/EmptyState.vue'
 import Skeleton from '@shared/components/ui/Skeleton.vue'
-import ScoreMeter from '@shared/components/charts/ScoreMeter.vue'
 import { useReposStore } from '@modules/repos/store'
 import { useReviewsStore } from '@modules/reviews/store'
-import ReviewStatusChip from '@modules/reviews/components/ReviewStatusChip.vue'
-import {
-  formatDateTime,
-  isTerminal,
-  recommendationClass,
-  recommendationLabel,
-  shortId,
-} from '@modules/reviews/format'
+import ReviewRow from '@modules/reviews/components/ReviewRow.vue'
+import { isTerminal } from '@modules/reviews/format'
 import { toast } from '@shared/composables/useToast'
 import { confirm } from '@shared/composables/useConfirm'
 import { errorMessage } from '@shared/api/client'
@@ -122,6 +115,13 @@ onMounted(load)
 const items = computed(() => reviews.allReviews)
 const archived = computed(() => reviews.allArchived)
 
+// ReviewRow's unarchive emit carries only the id; unarchiveReview also needs the
+// repo to repopulate its active cache, so resolve it from the archived list.
+function onUnarchive(id: string) {
+  const rv = archived.value.find((r) => r.id === id)
+  if (rv) void unarchiveReview(id, rv.repoId)
+}
+
 // --- Status filter + attention sort ---
 // A self-hoster opens this list to answer "what needs me?" — so it must be
 // filterable by status and float the attention-needing reviews to the top.
@@ -149,6 +149,29 @@ const visibleItems = computed(() =>
     (a, b) => attentionRank(a.status) - attentionRank(b.status),
   ),
 )
+
+// Group by merge request (repo + iid) so retry/webhook clones collapse under the
+// latest attempt instead of cluttering the list; older attempts expand on demand.
+const expandedGroups = ref<Set<string>>(new Set())
+function toggleGroup(key: string) {
+  const next = new Set(expandedGroups.value)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  expandedGroups.value = next
+}
+const groupedItems = computed(() => {
+  const groups = new Map<string, typeof visibleItems.value>()
+  for (const rv of visibleItems.value) {
+    const key = `${rv.repoId}:${rv.mrIid}`
+    const arr = groups.get(key) ?? []
+    arr.push(rv)
+    groups.set(key, arr)
+  }
+  return [...groups.entries()].map(([key, list]) => {
+    const byNewest = [...list].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+    return { key, latest: byNewest[0]!, older: byNewest.slice(1) }
+  })
+})
 
 // Bulk archive: every finished (terminal) review that isn't archived yet. Running
 // and awaiting-approval reviews are left alone — only "old" ones are swept. Archive
@@ -264,90 +287,49 @@ async function archiveAll() {
     />
 
     <ul v-else class="border-line/50 border-t">
-      <li v-for="rv in visibleItems" :key="rv.id" class="row justify-between">
-        <div class="min-w-0">
-          <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <RouterLink
-              :to="`/reviews/${rv.id}`"
-              class="text-ink text-sm hover:underline"
-              :style="{ viewTransitionName: `review-${rv.id}` }"
-            >
-              {{ repoName(rv.repoId) }} · !{{ rv.mrIid }}
-            </RouterLink>
-            <ReviewStatusChip :status="rv.status" />
-          </div>
-          <div class="label-mono mt-0.5 flex flex-wrap gap-x-2">
-            <span class="text-muted">#{{ shortId(rv.id) }}</span>
-            <span>{{ rv.contextMode }}</span>
-            <span v-if="rv.createdAt">{{ formatDateTime(rv.createdAt) }}</span>
-          </div>
-        </div>
-        <div class="flex shrink-0 items-center gap-3">
-          <div v-if="rv.status === 'done'" class="text-right">
-            <div class="text-sm" :class="recommendationClass[rv.recommendation]">
-              {{ recommendationLabel(rv.recommendation) }}
-            </div>
-            <div class="label-mono mt-0.5">score {{ rv.score }}</div>
-            <ScoreMeter :value="rv.score" class="mt-1 ml-auto w-16" />
-          </div>
+      <template v-for="g in groupedItems" :key="g.key">
+        <ReviewRow
+          :review="g.latest"
+          :repo-name="repoName(g.latest.repoId)"
+          :busy="busyIds.includes(g.latest.id)"
+          @approve="approveReview"
+          @discard="discardReview"
+          @retry="retryReview"
+          @archive="archiveReview"
+          @unarchive="onUnarchive"
+        />
+        <!-- Collapsed earlier attempts for the same MR (retry/webhook clones). -->
+        <li v-if="g.older.length" class="border-line/40 border-b">
           <button
-            v-if="rv.status === 'error'"
-            class="btn-line text-xs"
-            :disabled="busyIds.includes(rv.id)"
-            :aria-label="`Retry review !${rv.mrIid}`"
-            title="Retry — clones this review and re-runs it"
-            @click="retryReview(rv.id)"
+            type="button"
+            class="text-muted hover:text-ink flex w-full items-center gap-1.5 px-0 py-2 text-xs"
+            :aria-expanded="expandedGroups.has(g.key)"
+            @click="toggleGroup(g.key)"
           >
             <span
-              :class="
-                busyIds.includes(rv.id)
-                  ? 'i-lucide-loader-circle animate-spin'
-                  : 'i-lucide-refresh-cw'
-              "
+              :class="expandedGroups.has(g.key) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
               class="text-sm"
               aria-hidden="true"
             />
-            Retry
+            {{ expandedGroups.has(g.key) ? 'Hide' : 'Show' }} {{ g.older.length }} earlier
+            {{ g.older.length === 1 ? 'attempt' : 'attempts' }} for !{{ g.latest.mrIid }}
           </button>
-          <template v-if="rv.status === 'awaiting_approval'">
-            <button
-              class="btn-line text-xs"
-              :disabled="busyIds.includes(rv.id)"
-              :aria-label="`Approve review !${rv.mrIid}`"
-              title="Approve and run"
-              @click="approveReview(rv.id)"
-            >
-              <span
-                :class="
-                  busyIds.includes(rv.id) ? 'i-lucide-loader-circle animate-spin' : 'i-lucide-play'
-                "
-                class="text-sm"
-                aria-hidden="true"
-              />
-              Approve
-            </button>
-            <button
-              class="btn-ghost text-danger text-xs"
-              :disabled="busyIds.includes(rv.id)"
-              :aria-label="`Discard review !${rv.mrIid}`"
-              title="Discard"
-              @click="discardReview(rv.id, rv.mrIid)"
-            >
-              <span class="i-lucide-trash-2 text-sm" aria-hidden="true" />
-            </button>
-          </template>
-          <button
-            v-else
-            class="btn-ghost text-xs"
-            :disabled="busyIds.includes(rv.id) || !isTerminal(rv.status)"
-            :aria-label="`Archive review !${rv.mrIid}`"
-            :title="isTerminal(rv.status) ? 'Archive' : 'Cannot archive a running review'"
-            @click="archiveReview(rv.id)"
-          >
-            <span class="i-lucide-archive text-sm" aria-hidden="true" />
-          </button>
-        </div>
-      </li>
+        </li>
+        <template v-if="expandedGroups.has(g.key)">
+          <ReviewRow
+            v-for="rv in g.older"
+            :key="rv.id"
+            :review="rv"
+            :repo-name="repoName(rv.repoId)"
+            :busy="busyIds.includes(rv.id)"
+            @approve="approveReview"
+            @discard="discardReview"
+            @retry="retryReview"
+            @archive="archiveReview"
+            @unarchive="onUnarchive"
+          />
+        </template>
+      </template>
     </ul>
 
     <template v-if="showArchived">
@@ -360,42 +342,14 @@ async function archiveAll() {
       </p>
       <p v-else-if="archived.length === 0" class="text-muted py-3 text-sm">No archived reviews.</p>
       <ul v-else class="border-line/50 border-t">
-        <li v-for="rv in archived" :key="rv.id" class="row justify-between">
-          <div class="min-w-0">
-            <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <RouterLink
-                :to="`/reviews/${rv.id}`"
-                class="text-ink text-sm hover:underline"
-                :style="{ viewTransitionName: `review-${rv.id}` }"
-              >
-                {{ repoName(rv.repoId) }} · !{{ rv.mrIid }}
-              </RouterLink>
-              <ReviewStatusChip :status="rv.status" />
-            </div>
-            <div class="label-mono mt-0.5 flex flex-wrap gap-x-2">
-              <span class="text-muted">#{{ shortId(rv.id) }}</span>
-              <span>{{ rv.contextMode }}</span>
-              <span v-if="rv.createdAt">{{ formatDateTime(rv.createdAt) }}</span>
-            </div>
-          </div>
-          <div class="flex shrink-0 items-center gap-3">
-            <div v-if="rv.status === 'done'" class="text-right">
-              <div class="text-sm" :class="recommendationClass[rv.recommendation]">
-                {{ recommendationLabel(rv.recommendation) }}
-              </div>
-              <div class="label-mono mt-0.5">score {{ rv.score }}</div>
-            </div>
-            <button
-              class="btn-ghost text-xs"
-              :disabled="busyIds.includes(rv.id)"
-              :aria-label="`Unarchive review !${rv.mrIid}`"
-              title="Unarchive"
-              @click="unarchiveReview(rv.id, rv.repoId)"
-            >
-              <span class="i-lucide-archive-restore text-sm" aria-hidden="true" />
-            </button>
-          </div>
-        </li>
+        <ReviewRow
+          v-for="rv in archived"
+          :key="rv.id"
+          :review="rv"
+          :repo-name="repoName(rv.repoId)"
+          :busy="busyIds.includes(rv.id)"
+          @unarchive="onUnarchive"
+        />
       </ul>
     </template>
   </div>
