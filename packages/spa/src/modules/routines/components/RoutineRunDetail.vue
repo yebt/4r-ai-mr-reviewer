@@ -52,6 +52,7 @@ async function requestMerge() {
     title: 'Merge and release',
     message: `Merge this merge request into ${target} and push ${tag}? This merges a protected branch on your real GitLab project and cannot be undone.`,
     danger: true,
+    confirmText: 'Merge and release',
   })
   if (ok) emit('confirm', props.run.id, 'merge')
 }

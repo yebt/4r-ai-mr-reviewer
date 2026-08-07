@@ -86,6 +86,11 @@ const reviewsRepoA = [
     outputTokens: 1500,
     findings: [
       { index: 0, dimension: 'risk', severity: 'high', file: 'internal/app/routines/service.go', line: 212, issue: 'Unvalidated tag input flows into the shell command.', why: 'Command injection risk.', fix: 'Validate against the semver regex first.', blocking: true, published: false },
+      { index: 1, dimension: 'risk', severity: 'medium', file: 'internal/http/handlers.go', line: 88, issue: 'Error body leaks the internal path.', why: 'Information disclosure.', fix: 'Return a generic message.', blocking: false, published: true },
+      { index: 2, dimension: 'readability', severity: 'low', file: 'src/pages/flow.vue', line: 140, issue: 'The withBusy helper name is vague.', why: 'Intent is unclear at call sites.', fix: 'Rename to runReviewAction.', blocking: false, published: false },
+      { index: 3, dimension: 'reliability', severity: 'medium', file: 'internal/app/reviews/service.go', line: 514, issue: 'No timeout on the model call.', why: 'A hung provider blocks the worker.', fix: 'Wrap in context.WithTimeout.', blocking: false, published: false },
+      { index: 4, dimension: 'resilience', severity: 'low', file: 'internal/adapters/gitlab/client.go', line: 171, issue: 'ListTags has no retry on 5xx.', why: 'Transient GitLab errors fail the run.', fix: 'Add a bounded backoff.', blocking: false, published: false },
+      { index: 5, dimension: 'readability', severity: 'low', file: 'src/pages/reviews/index.vue', line: 140, issue: 'Deeply nested computed.', why: 'Hard to follow.', fix: 'Extract a helper.', blocking: false, published: false },
     ],
     createdAt: '2026-08-06T18:00:00Z',
   }),
@@ -165,6 +170,8 @@ export function fixtureFor(method, pathname, search) {
   if (method === 'GET' && /^\/repos\/[^/]+\/routines\/preview-tag$/.test(p))
     return { status: 200, json: { nextTag: 'v1.0.0', lastTag: 'v0.86.1', featCount: 3, fixCount: 2 } }
   if (method === 'GET' && /^\/repos\/[^/]+\/preflight$/.test(p)) return { status: 200, json: preflight }
+  if (method === 'GET' && /^\/reviews\/[^/]+\/humanizations$/.test(p))
+    return { status: 200, json: { summary: [], findings: {} } }
   if (method === 'GET' && /^\/reviews\/(.+)$/.test(p)) {
     const id = p.split('/')[2]
     return { status: 200, json: reviewsRepoA.find((r) => r.id === id) ?? reviewsRepoA[2] }

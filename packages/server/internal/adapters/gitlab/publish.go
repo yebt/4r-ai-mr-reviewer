@@ -81,31 +81,91 @@ func alreadyAwarded(err error) bool {
 }
 
 // ApproveMergeRequest records the caller's approval on a merge request. It is
-// IDEMPOTENT: GitLab answers an already-approved MR with 401 or 409 and a body
-// mentioning it is "already" approved, which is treated as success so a routine
-// re-run does not fail on an approval it recorded on a previous pass.
+// IDEMPOTENT: GitLab answers an already-approved MR with 401 or 409, but the
+// body is inconsistent — sometimes it mentions the MR is "already" approved,
+// sometimes it is a bare "401 Unauthorized". The body fast-path catches the
+// former; for the latter we confirm against the approvals endpoint that the
+// current user has in fact already approved, so a routine re-run does not fail
+// on an approval it recorded on a previous pass. A genuine auth failure (bad or
+// unscoped token) also fails those verification calls, so the original error
+// still surfaces instead of being wrongly swallowed.
 func (c *Client) ApproveMergeRequest(ctx context.Context, projectID string, iid int) error {
 	path := fmt.Sprintf("/projects/%s/merge_requests/%s/approve",
 		url.PathEscape(projectID), strconv.Itoa(iid))
 	err := c.doForm(ctx, http.MethodPost, path, url.Values{}, nil)
-	if err != nil && alreadyApproved(err) {
+	if err == nil {
+		return nil
+	}
+	if !approveIdempotentStatus(err) {
+		return err
+	}
+	if alreadyApproved(err) || c.approvedByCurrentUser(ctx, projectID, iid) {
 		return nil
 	}
 	return err
 }
 
-// alreadyApproved reports whether an approve APIError means the MR was already
-// approved by the caller. GitLab answers with 401 or 409 and a body mentioning
-// it is "already" approved.
-func alreadyApproved(err error) bool {
+// approveIdempotentStatus reports whether an approve APIError carries a status
+// GitLab uses for an already-approved MR (401 or 409). A 403 is a real
+// permission failure and must surface, so it is excluded.
+func approveIdempotentStatus(err error) bool {
 	var apiErr *APIError
 	if !errors.As(err, &apiErr) {
 		return false
 	}
-	if apiErr.Status != http.StatusUnauthorized && apiErr.Status != http.StatusConflict {
+	return apiErr.Status == http.StatusUnauthorized || apiErr.Status == http.StatusConflict
+}
+
+// alreadyApproved reports whether an approve APIError body explicitly says the
+// MR was already approved by the caller. Used as a fast-path before the more
+// expensive approvals-endpoint check.
+func alreadyApproved(err error) bool {
+	if !approveIdempotentStatus(err) {
 		return false
 	}
+	var apiErr *APIError
+	errors.As(err, &apiErr)
 	return strings.Contains(strings.ToLower(apiErr.Body), "already")
+}
+
+// approvedByCurrentUser reports whether the current user already appears in the
+// MR's approvals. It fetches the current user and the MR's approval state; any
+// failure (including an auth error from a genuinely bad token) yields false, so
+// the caller surfaces the original approve error rather than masking it.
+func (c *Client) approvedByCurrentUser(ctx context.Context, projectID string, iid int) bool {
+	me, err := c.CurrentUser(ctx)
+	if err != nil || me.Username == "" {
+		return false
+	}
+	approvals, err := c.MergeRequestApprovals(ctx, projectID, iid)
+	if err != nil {
+		return false
+	}
+	for _, a := range approvals.ApprovedBy {
+		if a.User.Username == me.Username {
+			return true
+		}
+	}
+	return false
+}
+
+// Approvals is the approval state of a merge request, as returned by GitLab's
+// merge-request approvals endpoint.
+type Approvals struct {
+	ApprovedBy []struct {
+		User Author `json:"user"`
+	} `json:"approved_by"`
+}
+
+// MergeRequestApprovals returns who has approved a merge request.
+func (c *Client) MergeRequestApprovals(ctx context.Context, projectID string, iid int) (Approvals, error) {
+	path := fmt.Sprintf("/projects/%s/merge_requests/%s/approvals",
+		url.PathEscape(projectID), strconv.Itoa(iid))
+	var out Approvals
+	if err := c.getJSON(ctx, path, nil, &out); err != nil {
+		return Approvals{}, err
+	}
+	return out, nil
 }
 
 // CreateTag creates a tag pointing at ref (a branch, tag, or commit SHA). The

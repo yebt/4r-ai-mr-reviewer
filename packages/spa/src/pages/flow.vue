@@ -154,6 +154,7 @@ async function discardReview(id: string, mrIid: number) {
     title: 'Discard review',
     message: `Discard the held review for !${mrIid}? This cannot be undone.`,
     danger: true,
+    confirmText: 'Discard',
   })
   if (!ok) return
   await withBusy(id, () => reviews.remove(id), 'Review discarded')

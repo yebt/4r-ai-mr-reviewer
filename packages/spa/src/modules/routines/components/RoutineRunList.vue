@@ -13,7 +13,13 @@ const props = defineProps<{
   items: RoutineRun[]
   loading?: boolean
   error?: string | null
+  // When true, terminal runs can be archived / archived runs restored (repo tab
+  // + Actions page); left off for glance views like the Home recent list.
+  archivable?: boolean
 }>()
+const emit = defineEmits<{ changed: [] }>()
+
+const isTerminalRun = (s: string) => s === 'done' || s === 'cancelled'
 
 // Runs waiting on the user (a confirm gate or a recoverable block) float to the
 // top and wear a warn edge, so "which run needs me?" reads instantly.
@@ -27,6 +33,32 @@ const sortedItems = computed(() =>
 
 const store = useRoutinesStore()
 const deletingId = ref<string | null>(null)
+const archivingId = ref<string | null>(null)
+
+async function archiveRun(run: RoutineRun) {
+  archivingId.value = run.id
+  try {
+    await store.archive(run.id)
+    toast.success('Action archived')
+    emit('changed')
+  } catch (e) {
+    toast.error(errorMessage(e))
+  } finally {
+    archivingId.value = null
+  }
+}
+async function unarchiveRun(run: RoutineRun) {
+  archivingId.value = run.id
+  try {
+    await store.unarchive(run.id)
+    toast.success('Action restored')
+    emit('changed')
+  } catch (e) {
+    toast.error(errorMessage(e))
+  } finally {
+    archivingId.value = null
+  }
+}
 
 // Delete a run behind the app's shared confirm dialog. Running actions are never
 // offered here (the button is hidden), so the backend 409 is only a backstop.
@@ -85,6 +117,36 @@ async function remove(run: RoutineRun) {
         </RouterLink>
         <div class="flex shrink-0 items-center gap-1">
           <span v-if="run.updatedAt" class="label-mono">{{ formatDateTime(run.updatedAt) }}</span>
+          <button
+            v-if="archivable && run.archived"
+            type="button"
+            class="btn-ghost text-xs"
+            :disabled="archivingId === run.id"
+            :aria-label="`Restore ${runTitle(run)}`"
+            title="Restore"
+            @click="unarchiveRun(run)"
+          >
+            <span
+              :class="archivingId === run.id ? 'i-lucide-loader-circle animate-spin' : 'i-lucide-archive-restore'"
+              class="text-sm"
+              aria-hidden="true"
+            />
+          </button>
+          <button
+            v-else-if="archivable && isTerminalRun(run.status)"
+            type="button"
+            class="btn-ghost text-xs"
+            :disabled="archivingId === run.id"
+            :aria-label="`Archive ${runTitle(run)}`"
+            title="Archive"
+            @click="archiveRun(run)"
+          >
+            <span
+              :class="archivingId === run.id ? 'i-lucide-loader-circle animate-spin' : 'i-lucide-archive'"
+              class="text-sm"
+              aria-hidden="true"
+            />
+          </button>
           <button
             v-if="run.status !== 'running'"
             type="button"

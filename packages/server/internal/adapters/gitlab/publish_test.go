@@ -128,6 +128,60 @@ func TestApproveMergeRequestAlreadyApprovedIsSuccess(t *testing.T) {
 	}
 }
 
+// TestApproveMergeRequestBare401AlreadyApprovedIsSuccess: GitLab sometimes
+// answers an already-approved MR with a BARE "401 Unauthorized" (no "already" in
+// the body), as seen in the wild. The body fast-path misses it, so the client
+// must confirm via /user + /approvals that the current user already approved and
+// treat it as success.
+func TestApproveMergeRequestBare401AlreadyApprovedIsSuccess(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/approve"):
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"message":"401 Unauthorized"}`))
+		case strings.HasSuffix(r.URL.Path, "/user"):
+			_, _ = w.Write([]byte(`{"username":"release-bot"}`))
+		case strings.HasSuffix(r.URL.Path, "/approvals"):
+			_, _ = w.Write([]byte(`{"approved_by":[{"user":{"username":"release-bot"}}]}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "tok")
+	if err := c.ApproveMergeRequest(context.Background(), "g/p", 7); err != nil {
+		t.Fatalf("bare-401 already-approved should be nil, got %v", err)
+	}
+}
+
+// TestApproveMergeRequestBare401NotApprovedSurfaces: a bare 401 where the current
+// user is NOT among the approvers is a real failure and must surface, so an
+// approval that never landed is not silently reported as done.
+func TestApproveMergeRequestBare401NotApprovedSurfaces(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/approve"):
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"message":"401 Unauthorized"}`))
+		case strings.HasSuffix(r.URL.Path, "/user"):
+			_, _ = w.Write([]byte(`{"username":"release-bot"}`))
+		case strings.HasSuffix(r.URL.Path, "/approvals"):
+			_, _ = w.Write([]byte(`{"approved_by":[]}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "tok")
+	err := c.ApproveMergeRequest(context.Background(), "g/p", 7)
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.Status != http.StatusUnauthorized {
+		t.Fatalf("un-approved bare 401 must surface as APIError 401, got %v", err)
+	}
+}
+
 // cannedServer answers every request with a fixed status and body.
 func cannedServer(t *testing.T, status int, body string) *httptest.Server {
 	t.Helper()

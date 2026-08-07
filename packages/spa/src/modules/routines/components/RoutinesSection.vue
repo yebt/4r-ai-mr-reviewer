@@ -2,9 +2,9 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useIntervalFn } from '@vueuse/core'
-import { errorMessage } from '@shared/api/client'
+import { api, errorMessage } from '@shared/api/client'
 import { toast } from '@shared/composables/useToast'
-import type { MergeRequest } from '@shared/api/types'
+import type { MergeRequest, RoutineRun } from '@shared/api/types'
 import { useRoutinesStore } from '@modules/routines/store'
 import { isRunActive } from '@modules/routines/format'
 import ReleaseModal, {
@@ -103,6 +103,36 @@ onUnmounted(pause)
 // Any newly-active run (after a fresh list, create, or poll refresh) starts the
 // poll.
 watch(runs, () => startPolling())
+
+// --- Archived runs (loaded on demand for this repo) ---
+const showArchived = ref(false)
+const archivedRuns = ref<RoutineRun[]>([])
+const archivedLoading = ref(false)
+const archivedError = ref<string | null>(null)
+const archivedLoaded = ref(false)
+async function fetchArchived() {
+  archivedLoading.value = true
+  archivedError.value = null
+  try {
+    archivedRuns.value = await api.listRepoRoutines(props.repoId, true)
+    archivedLoaded.value = true
+  } catch (e) {
+    archivedError.value = errorMessage(e)
+  } finally {
+    archivedLoading.value = false
+  }
+}
+async function toggleArchived() {
+  showArchived.value = !showArchived.value
+  if (showArchived.value && !archivedLoaded.value) await fetchArchived()
+}
+// After an archive (active list) or restore (archived list), keep both in sync.
+async function onActiveChanged() {
+  if (archivedLoaded.value) await fetchArchived()
+}
+async function onArchivedChanged() {
+  await Promise.all([store.list(props.repoId), fetchArchived()])
+}
 </script>
 
 <template>
@@ -157,8 +187,36 @@ watch(runs, () => startPolling())
       </ul>
     </div>
 
-    <h3 class="label-mono mb-2">Runs</h3>
-    <RoutineRunList :items="runs" :loading="loading" :error="store.listError" />
+    <div class="mb-2 flex items-center justify-between gap-3">
+      <h3 class="label-mono">Runs</h3>
+      <button class="btn-ghost text-xs" @click="toggleArchived">
+        <span
+          :class="showArchived ? 'i-lucide-eye-off' : 'i-lucide-archive'"
+          class="text-sm"
+          aria-hidden="true"
+        />
+        {{ showArchived ? 'Hide archived' : 'Show archived' }}
+      </button>
+    </div>
+    <RoutineRunList
+      :items="runs"
+      :loading="loading"
+      :error="store.listError"
+      archivable
+      @changed="onActiveChanged"
+    />
+
+    <template v-if="showArchived">
+      <h3 class="label-mono text-muted mt-6 mb-2">Archived</h3>
+      <p v-if="archivedLoading && archivedRuns.length === 0" class="text-muted py-2 text-sm">
+        Loading…
+      </p>
+      <p v-else-if="archivedError" class="text-danger py-2 text-sm">{{ archivedError }}</p>
+      <p v-else-if="archivedRuns.length === 0" class="text-muted py-2 text-sm">
+        No archived runs.
+      </p>
+      <RoutineRunList v-else :items="archivedRuns" archivable @changed="onArchivedChanged" />
+    </template>
 
     <ReleaseModal
       :open="modalOpen"

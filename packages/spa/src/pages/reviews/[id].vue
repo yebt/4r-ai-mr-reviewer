@@ -937,22 +937,22 @@ async function remove() {
                 >
                   Select all visible ({{ selectableVisible.length }})
                 </button>
-                <!-- Copy + Publish selected: desktop only — the phone sticky bar covers them. -->
-                <button
-                  class="btn-ghost text-xs"
-                  :disabled="selected.length === 0"
-                  @click="copySelected"
-                >
-                  <span class="i-lucide-copy text-sm" aria-hidden="true" />
-                  Copy selected ({{ selected.length }})
-                </button>
-                <button
-                  class="btn-ghost text-xs"
-                  :disabled="publishing || selected.length === 0"
-                  @click="askPublish({ indices: selected })"
-                >
-                  Publish selected ({{ selected.length }})
-                </button>
+                <!-- Copy + Publish selected: desktop only, and only once something
+                     is selected so the bar stays calm at rest (phone uses its
+                     sticky bar). -->
+                <template v-if="selected.length">
+                  <button class="btn-ghost text-xs" @click="copySelected">
+                    <span class="i-lucide-copy text-sm" aria-hidden="true" />
+                    Copy selected ({{ selected.length }})
+                  </button>
+                  <button
+                    class="btn-line text-xs"
+                    :disabled="publishing"
+                    @click="askPublish({ indices: selected })"
+                  >
+                    Publish selected ({{ selected.length }})
+                  </button>
+                </template>
               </div>
             </div>
 

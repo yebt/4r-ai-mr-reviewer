@@ -39,115 +39,125 @@ const statuses: { value: FindingStatus; label: string }[] = [
   { value: 'unpublished', label: 'Unpublished' },
 ]
 
-// Shared toggle-chip look, mirroring the humanize tabs in FindingCard: active =
-// accent border + faint accent fill; a zero count dims and disables the chip.
+// Shared toggle-chip look: active = accent border + faint accent fill; a zero
+// count dims and disables the chip. Comfortable padding so the bar reads calm.
 function chipClass(isActive: boolean, disabled: boolean): string {
-  if (disabled) return 'border-line/60 text-muted/40 cursor-not-allowed'
-  if (isActive) return 'border-accent text-ink bg-accent/10'
-  return 'border-line text-muted hover:text-ink'
+  const base = 'inline-flex items-center gap-1.5 border px-2.5 py-1 text-xs transition-colors'
+  if (disabled) return `${base} border-line/60 text-muted/40 cursor-not-allowed`
+  if (isActive) return `${base} border-accent bg-accent/10 text-ink`
+  return `${base} border-line text-muted hover:text-ink`
 }
+// The count badge inside a chip, dimmed relative to the chip label.
+const countClass = 'text-[0.9em] opacity-70'
 </script>
 
 <template>
-  <!-- Mobile (inside the filters modal): stacked rows. Desktop: one horizontal
-       filter bar that wraps, with a divider splitting filters from controls. -->
-  <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-5 sm:gap-y-3">
-    <!-- Counts summary. Hidden on desktop, where the page surfaces the same
-         total/blocking meta beside the filter toggle so it stays visible even
-         while this bar is collapsed. Still shown inside the phone filter sheet. -->
-    <p class="text-muted shrink-0 text-xs sm:hidden">
+  <!-- Two calm bands: the filters (lens / severity / blocking) over a hairline,
+       then the quieter view options (status / sort). Groups are clearly labelled
+       and generously spaced so the bar never reads as a wall of chips. -->
+  <div class="mb-4 flex flex-col gap-3">
+    <!-- Phone-only counts (desktop surfaces them beside the filter toggle). -->
+    <p class="text-muted text-xs sm:hidden">
       <span class="text-ink font-medium">{{ props.counts.total }}</span> findings
       <span aria-hidden="true">·</span>
       <span class="text-flame font-medium">{{ props.counts.blocking }}</span> blocking
     </p>
 
-    <!-- Dimension filters -->
-    <div class="flex flex-wrap items-center gap-1.5">
-      <span class="label-mono hidden sm:inline">dimension</span>
-      <button
-        v-for="d in props.dimensions"
-        :key="d"
-        type="button"
-        class="inline-flex items-center gap-1.5 border px-2 py-1.5 font-mono text-xs transition-colors sm:py-0.5"
-        :class="chipClass(props.filters.dimensions.has(d), props.counts.byDimension[d] === 0)"
-        :disabled="props.counts.byDimension[d] === 0"
-        :aria-pressed="props.filters.dimensions.has(d)"
-        @click="emit('toggleDimension', d)"
-      >
-        {{ dimCode(d) }}
-        <span class="text-muted">{{ props.counts.byDimension[d] }}</span>
-      </button>
-    </div>
+    <!-- Filters: lens + severity multi-selects and the blocking toggle. -->
+    <div class="flex flex-wrap items-center gap-x-6 gap-y-2.5">
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="label-mono">Lens</span>
+        <div class="flex flex-wrap gap-1">
+          <button
+            v-for="d in props.dimensions"
+            :key="d"
+            type="button"
+            class="font-mono"
+            :class="chipClass(props.filters.dimensions.has(d), props.counts.byDimension[d] === 0)"
+            :disabled="props.counts.byDimension[d] === 0"
+            :aria-pressed="props.filters.dimensions.has(d)"
+            :title="dimensionLabel[d]"
+            @click="emit('toggleDimension', d)"
+          >
+            {{ dimCode(d) }}
+            <span :class="countClass">{{ props.counts.byDimension[d] }}</span>
+          </button>
+        </div>
+      </div>
 
-    <!-- Severity filters -->
-    <div class="flex flex-wrap items-center gap-1.5">
-      <span class="label-mono hidden sm:inline">severity</span>
-      <button
-        v-for="s in props.severities"
-        :key="s"
-        type="button"
-        class="inline-flex items-center gap-1.5 border px-2 py-1.5 font-mono text-xs uppercase transition-colors sm:py-0.5"
-        :class="chipClass(props.filters.severities.has(s), props.counts.bySeverity[s] === 0)"
-        :disabled="props.counts.bySeverity[s] === 0"
-        :aria-pressed="props.filters.severities.has(s)"
-        @click="emit('toggleSeverity', s)"
-      >
-        {{ s }}
-        <span class="text-muted">{{ props.counts.bySeverity[s] }}</span>
-      </button>
-    </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="label-mono">Severity</span>
+        <div class="flex flex-wrap gap-1">
+          <button
+            v-for="s in props.severities"
+            :key="s"
+            type="button"
+            class="capitalize"
+            :class="chipClass(props.filters.severities.has(s), props.counts.bySeverity[s] === 0)"
+            :disabled="props.counts.bySeverity[s] === 0"
+            :aria-pressed="props.filters.severities.has(s)"
+            @click="emit('toggleSeverity', s)"
+          >
+            {{ s }}
+            <span :class="countClass">{{ props.counts.bySeverity[s] }}</span>
+          </button>
+        </div>
+      </div>
 
-    <!-- Blocking toggle, status control, sort, reset -->
-    <div
-      class="flex flex-wrap items-center gap-3 sm:border-line/50 sm:ml-1 sm:border-l sm:pl-4"
-    >
       <button
         type="button"
-        class="inline-flex items-center gap-1.5 border px-2 py-1.5 font-mono text-xs transition-colors sm:py-0.5"
-        :class="chipClass(props.filters.blockingOnly, props.counts.blocking === 0)"
+        :class="[chipClass(props.filters.blockingOnly, props.counts.blocking === 0), 'gap-1']"
         :disabled="props.counts.blocking === 0"
         :aria-pressed="props.filters.blockingOnly"
         @click="emit('toggleBlockingOnly')"
       >
+        <span class="i-lucide-flame text-flame text-sm" aria-hidden="true" />
         Blocking
-        <span class="text-muted">{{ props.counts.blocking }}</span>
+        <span :class="countClass">{{ props.counts.blocking }}</span>
       </button>
+    </div>
 
-      <div class="flex items-center gap-1" role="group" aria-label="Filter by status">
-        <button
-          v-for="st in statuses"
-          :key="st.value"
-          type="button"
-          class="border px-2 py-1.5 text-xs transition-colors sm:py-0.5"
-          :class="chipClass(props.filters.status === st.value, false)"
-          :aria-pressed="props.filters.status === st.value"
-          @click="emit('setStatus', st.value)"
-        >
-          {{ st.label }}
-        </button>
+    <!-- View options: status segment + sort + reset, quieter, under a hairline. -->
+    <div class="border-line/50 flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-t pt-3">
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="label-mono">Status</span>
+        <div class="flex" role="group" aria-label="Filter by status">
+          <button
+            v-for="st in statuses"
+            :key="st.value"
+            type="button"
+            class="-ml-px border px-2.5 py-1 text-xs transition-colors first:ml-0"
+            :class="
+              props.filters.status === st.value
+                ? 'border-accent bg-accent/10 text-ink z-10'
+                : 'border-line text-muted hover:text-ink'
+            "
+            :aria-pressed="props.filters.status === st.value"
+            @click="emit('setStatus', st.value)"
+          >
+            {{ st.label }}
+          </button>
+        </div>
       </div>
 
-      <label class="text-muted flex items-center gap-1.5 text-xs">
-        <span class="label-mono hidden sm:inline">sort</span>
-        <select
-          class="field-underline w-auto py-1"
-          :value="props.sort"
-          @change="emit('setSort', ($event.target as HTMLSelectElement).value as FindingSort)"
-        >
-          <option value="severity">Severity</option>
-          <option value="file">File</option>
-        </select>
-      </label>
+      <div class="flex items-center gap-4">
+        <label class="text-muted flex items-center gap-1.5 text-xs">
+          <span class="label-mono">Sort</span>
+          <select
+            class="field-underline w-auto py-1"
+            :value="props.sort"
+            @change="emit('setSort', ($event.target as HTMLSelectElement).value as FindingSort)"
+          >
+            <option value="severity">Severity</option>
+            <option value="file">File</option>
+          </select>
+        </label>
 
-      <button
-        v-if="props.active"
-        type="button"
-        class="btn-ghost text-xs"
-        @click="emit('reset')"
-      >
-        <span class="i-lucide-x text-sm" aria-hidden="true" />
-        Reset
-      </button>
+        <button v-if="props.active" type="button" class="btn-ghost text-xs" @click="emit('reset')">
+          <span class="i-lucide-x text-sm" aria-hidden="true" />
+          Reset
+        </button>
+      </div>
     </div>
   </div>
 </template>

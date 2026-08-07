@@ -294,6 +294,18 @@ type TokenInfo struct {
 	Revoked bool     `json:"revoked"`
 }
 
+// CurrentUser returns the user the token authenticates as. Unlike TokenSelf,
+// GET /user works for personal, OAuth and impersonation tokens, so it is the
+// reliable way to identify "me" (e.g. to check whether the current user already
+// approved a merge request).
+func (c *Client) CurrentUser(ctx context.Context) (Author, error) {
+	var u Author
+	if err := c.getJSON(ctx, "/user", nil, &u); err != nil {
+		return Author{}, err
+	}
+	return u, nil
+}
+
 // TokenSelf returns metadata about the current personal access token. It fails
 // with 401/404 for OAuth, job, or deploy tokens, so callers must tolerate an
 // error here (token scopes are simply unknown).
