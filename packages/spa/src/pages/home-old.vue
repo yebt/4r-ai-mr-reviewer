@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePage({ meta: { title: 'Overview' } })
+definePage({ meta: { title: 'Old overview' } })
 import { computed, onMounted, ref } from 'vue'
 import PageHeader from '@shared/components/ui/PageHeader.vue'
 import EmptyState from '@shared/components/ui/EmptyState.vue'
@@ -31,8 +31,6 @@ const reviewsLoading = ref(false)
 
 onMounted(async () => {
   reviewsLoading.value = reviews.allReviews.length === 0
-  // Accounts + providers back the first-run checklist counts, so load them
-  // alongside repos before the checklist decides which step to point at.
   const jobs: Promise<unknown>[] = []
   if (repos.items.length === 0) jobs.push(repos.fetchAll())
   if (accounts.items.length === 0) jobs.push(accounts.fetchAll())
@@ -43,20 +41,16 @@ onMounted(async () => {
   void routines.listRecent()
 })
 
-// --- Attention strip ---
 const reviewCount = computed(() => reviews.allReviews.length)
 const repoCount = computed(() => repos.items.length)
 const accountCount = computed(() => accounts.items.length)
 const providerCount = computed(() => providers.items.length)
-// The first-run checklist leads the page until the user has run their first
-// review, at which point they are through the core loop and it retires.
 const setupComplete = computed(() => reviewCount.value > 0)
 const inProgress = computed(() => activity.count)
 const awaitingCount = computed(
   () => reviews.allReviews.filter((r) => r.status === 'awaiting_approval').length,
 )
 
-// --- Recent activity ---
 const recentReviews = computed(() => reviews.allReviews.slice(0, 7))
 const recentRuns = computed(() => routines.recentRuns.slice(0, 5))
 const runsLoading = computed(() => routines.listLoading && routines.recentRuns.length === 0)
@@ -67,7 +61,6 @@ const reviewsForRepo = (id: string) => reviews.reviewsFor(id).length
 const recentRepos = computed(() => repos.items.slice(0, 6))
 const reposLoading = computed(() => repos.loading && repos.items.length === 0)
 
-// --- Secondary stats: summaries of completed reviews, shown only once there's data. ---
 const done = computed(() => reviews.allReviews.filter((r) => r.status === 'done'))
 const hasData = computed(() => done.value.length > 0)
 const avgScore = computed(() =>
@@ -84,7 +77,6 @@ const recCounts = computed(() => {
   }
   return { approve, requestChanges, comment }
 })
-// Chronological, most recent 12.
 const scoreTrend = computed(() =>
   done.value
     .slice(0, 12)
@@ -92,8 +84,6 @@ const scoreTrend = computed(() =>
     .reverse(),
 )
 
-// Compact relative-time label for the recent-review rows. Not reactive to the
-// clock ticking, which is fine: rows re-render whenever the review data changes.
 function timeAgo(iso: string): string {
   if (!iso) return ''
   const then = new Date(iso).getTime()
@@ -122,15 +112,23 @@ const shortcuts = [
   { to: '/profiles', label: 'Profiles', icon: 'i-lucide-feather' },
   { to: '/skills', label: '4R skills', icon: 'i-lucide-book-open' },
 ]
+
+const statTile = 'border border-line/60 bg-surface/40 p-4 transition-colors'
 </script>
 
 <template>
   <div>
-    <PageHeader title="Overview" />
+    <PageHeader title="Overview" label="Legacy version" />
 
-    <!-- First-run guide: leads the page for a fresh self-hoster and retires
-         itself once the first review exists. The one deliberately-boxed element,
-         because it is the thing a newcomer must not miss. -->
+    <!-- Kept for side-by-side comparison against the rebuilt overview at "/". -->
+    <RouterLink
+      to="/"
+      class="text-muted hover:text-ink mb-6 inline-flex items-center gap-1 text-xs transition-colors"
+    >
+      <span class="i-lucide-arrow-left" aria-hidden="true" />
+      Back to the current overview
+    </RouterLink>
+
     <SetupChecklist
       v-if="!reviewsLoading && !setupComplete"
       :accounts="accountCount"
@@ -140,12 +138,10 @@ const shortcuts = [
       class="mb-8"
     />
 
-    <!-- Held for approval: the one moment the page should shout. Warn voice, not
-         lime — it is an alarm, not the live signal. -->
     <RouterLink
       v-if="awaitingCount > 0"
       to="/reviews"
-      class="group border-warn/40 bg-warn/5 hover:border-warn mb-6 flex items-center justify-between gap-3 border px-4 py-3 transition-colors"
+      class="group border-warn/40 bg-warn/5 hover:border-warn mb-4 flex items-center justify-between gap-3 border px-4 py-3 transition-colors"
     >
       <span class="text-warn flex items-center gap-2 text-sm">
         <span class="i-lucide-clock text-base" aria-hidden="true" />
@@ -160,27 +156,29 @@ const shortcuts = [
       />
     </RouterLink>
 
-    <!-- Stat readout: a borderless instrument line framed by hairlines, not a row
-         of bezelled tiles. -->
-    <div class="border-line/50 flex flex-wrap items-start gap-x-12 gap-y-4 border-y py-4">
-      <RouterLink to="/reviews" class="group">
-        <div class="label-mono group-hover:text-ink transition-colors">Reviews</div>
-        <div class="text-ink mt-1 font-mono text-3xl font-semibold">{{ reviewCount }}</div>
+    <div class="grid grid-cols-3 gap-3">
+      <RouterLink to="/reviews" :class="[statTile, 'hover:border-ink flex flex-col justify-between']">
+        <div class="label-mono">Reviews</div>
+        <div class="text-ink mt-3 font-mono text-2xl font-semibold sm:text-3xl">
+          {{ reviewCount }}
+        </div>
       </RouterLink>
-      <RouterLink to="/repos" class="group">
-        <div class="label-mono group-hover:text-ink transition-colors">Repositories</div>
-        <div class="text-ink mt-1 font-mono text-3xl font-semibold">{{ repoCount }}</div>
+      <RouterLink to="/repos" :class="[statTile, 'hover:border-ink flex flex-col justify-between']">
+        <div class="label-mono">Repositories</div>
+        <div class="text-ink mt-3 font-mono text-2xl font-semibold sm:text-3xl">
+          {{ repoCount }}
+        </div>
       </RouterLink>
-      <div>
+      <div :class="[statTile, 'flex flex-col justify-between']">
         <div class="label-mono">In progress</div>
-        <div class="mt-1 flex items-center gap-2">
+        <div class="mt-3 flex items-center gap-2">
           <span
             v-if="inProgress > 0"
             class="i-lucide-loader-circle text-accent animate-spin text-lg"
             aria-hidden="true"
           />
           <span
-            class="font-mono text-3xl font-semibold"
+            class="font-mono text-2xl font-semibold sm:text-3xl"
             :class="inProgress > 0 ? 'text-accent' : 'text-ink'"
           >
             {{ inProgress }}
@@ -189,11 +187,10 @@ const shortcuts = [
       </div>
     </div>
 
-    <!-- Recent activity: reviews (the core artifact) + actions, side by side. -->
-    <div class="mt-10 grid grid-cols-1 gap-x-10 gap-y-10 lg:grid-cols-2">
-      <section aria-labelledby="recent-reviews-heading">
+    <div class="mt-8 grid grid-cols-1 gap-x-8 gap-y-8 lg:grid-cols-2">
+      <section aria-labelledby="recent-reviews-heading-old">
         <div class="mb-1 flex items-end justify-between gap-4">
-          <h2 id="recent-reviews-heading" class="section-title flex items-center gap-2">
+          <h2 id="recent-reviews-heading-old" class="section-title flex items-center gap-2">
             <span class="bg-line inline-block h-3.5 w-0.5" aria-hidden="true" />
             Recent reviews
           </h2>
@@ -223,21 +220,14 @@ const shortcuts = [
           icon="i-lucide-list-checks"
           title="No reviews yet"
           hint="Open a repository and start a review on a merge request."
-        >
-          <template #action>
-            <RouterLink to="/repos" class="btn-accent text-xs">
-              {{ repoCount > 0 ? 'Open a repository' : 'Track a repository' }}
-              <span class="i-lucide-arrow-right text-sm" aria-hidden="true" />
-            </RouterLink>
-          </template>
-        </EmptyState>
+        />
         <ul v-else class="border-line/50 border-t">
           <li v-for="rv in recentReviews" :key="rv.id" class="row justify-between gap-3">
             <div class="min-w-0">
               <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <RouterLink
                   :to="`/reviews/${rv.id}`"
-                  class="text-ink min-w-0 truncate text-sm hover:underline"
+                  class="text-ink hover:text-ink min-w-0 truncate text-sm"
                 >
                   {{ repoName(rv.repoId) }} · !{{ rv.mrIid }}
                 </RouterLink>
@@ -251,7 +241,6 @@ const shortcuts = [
                   {{ recommendationLabel(rv.recommendation) }}
                 </div>
                 <div class="label-mono mt-0.5">score {{ rv.score }}</div>
-                <ScoreMeter :value="rv.score" class="mt-1 ml-auto w-16" />
               </template>
               <div v-else-if="rv.status === 'error'" class="text-danger text-xs">failed</div>
             </div>
@@ -259,9 +248,9 @@ const shortcuts = [
         </ul>
       </section>
 
-      <section aria-labelledby="recent-actions-heading">
+      <section aria-labelledby="recent-actions-heading-old">
         <div class="mb-1 flex items-end justify-between gap-4">
-          <h2 id="recent-actions-heading" class="section-title flex items-center gap-2">
+          <h2 id="recent-actions-heading-old" class="section-title flex items-center gap-2">
             <span class="bg-line inline-block h-3.5 w-0.5" aria-hidden="true" />
             Recent actions
           </h2>
@@ -277,10 +266,9 @@ const shortcuts = [
       </section>
     </div>
 
-    <!-- Repositories: a borderless ledger of hairline rows, not a grid of boxes. -->
-    <section class="mt-10" aria-labelledby="repos-heading">
-      <div class="mb-1 flex items-end justify-between gap-4">
-        <h2 id="repos-heading" class="section-title flex items-center gap-2">
+    <section class="mt-8" aria-labelledby="repos-heading-old">
+      <div class="mb-3 flex items-end justify-between gap-4">
+        <h2 id="repos-heading-old" class="section-title flex items-center gap-2">
           <span class="bg-line inline-block h-3.5 w-0.5" aria-hidden="true" />
           Repositories
         </h2>
@@ -293,62 +281,54 @@ const shortcuts = [
         </RouterLink>
       </div>
 
-      <ul v-if="reposLoading" class="border-line/50 border-t" aria-hidden="true">
-        <li v-for="n in 4" :key="n" class="row justify-between">
-          <div class="flex items-center gap-2">
-            <Skeleton w="w-4" h="h-4" />
-            <Skeleton w="w-32" h="h-4" />
-          </div>
-          <Skeleton w="w-16" h="h-3" />
-        </li>
-      </ul>
+      <div v-if="reposLoading" class="grid grid-cols-2 gap-3 sm:grid-cols-3" aria-hidden="true">
+        <div v-for="n in 3" :key="n" :class="statTile">
+          <Skeleton w="w-28" h="h-4" />
+          <Skeleton w="w-16" h="h-3" class="mt-3" />
+        </div>
+      </div>
       <EmptyState
         v-else-if="recentRepos.length === 0"
         icon="i-lucide-folder-git-2"
         title="No repositories tracked"
         hint="Track a GitLab repository to start reviewing its merge requests."
-      >
-        <template #action>
-          <RouterLink to="/repos" class="btn-accent text-xs">
-            <span class="i-lucide-plus text-sm" aria-hidden="true" />
-            Track a repository
-          </RouterLink>
-        </template>
-      </EmptyState>
-      <ul v-else class="border-line/50 border-t">
-        <li v-for="r in recentRepos" :key="r.id" class="row justify-between gap-3">
-          <RouterLink
-            :to="`/repos/${r.id}`"
-            class="group text-ink flex min-w-0 items-center gap-2 text-sm"
-          >
+      />
+      <div v-else class="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <RouterLink
+          v-for="r in recentRepos"
+          :key="r.id"
+          :to="`/repos/${r.id}`"
+          :class="[statTile, 'group hover:border-ink flex flex-col justify-between']"
+        >
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-ink group-hover:text-ink min-w-0 truncate text-sm">{{ r.name }}</span>
             <span
-              class="i-lucide-folder-git-2 text-muted group-hover:text-ink shrink-0 text-sm transition-colors"
+              class="i-lucide-arrow-up-right text-muted group-hover:text-ink shrink-0"
               aria-hidden="true"
             />
-            <span class="truncate group-hover:underline">{{ r.name }}</span>
-          </RouterLink>
-          <span class="label-mono shrink-0">{{ reviewsForRepo(r.id) }} reviews</span>
-        </li>
-      </ul>
+          </div>
+          <div class="label-mono mt-2">{{ reviewsForRepo(r.id) }} reviews</div>
+        </RouterLink>
+      </div>
     </section>
 
-    <!-- Secondary stats: borderless blocks, only once there's completed-review
-         data to summarise (a fresh install never shows empty placeholders). -->
-    <section v-if="hasData" class="mt-10" aria-labelledby="stats-heading">
-      <h2 id="stats-heading" class="section-title mb-4 flex items-center gap-2">
+    <section v-if="hasData" class="mt-8" aria-labelledby="stats-heading-old">
+      <h2 id="stats-heading-old" class="section-title mb-3 flex items-center gap-2">
         <span class="bg-line inline-block h-3.5 w-0.5" aria-hidden="true" />
         Stats
       </h2>
-      <div class="grid grid-cols-1 gap-x-12 gap-y-8 md:grid-cols-2">
-        <div>
+      <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <div :class="[statTile, 'flex flex-col']">
           <div class="label-mono">Average score</div>
-          <div class="text-ink mt-2 font-mono text-3xl font-semibold">
-            {{ avgScore }}<span class="text-muted text-base">/100</span>
+          <div class="mt-2">
+            <div class="text-ink font-mono text-3xl font-semibold">
+              {{ avgScore }}<span class="text-muted text-base">/100</span>
+            </div>
+            <ScoreMeter :value="avgScore" class="mt-3" />
           </div>
-          <ScoreMeter :value="avgScore" class="mt-3" />
         </div>
 
-        <div>
+        <div :class="[statTile, 'flex flex-col']">
           <div class="label-mono mb-3">Recommendations</div>
           <RecommendationBar
             :approve="recCounts.approve"
@@ -357,38 +337,32 @@ const shortcuts = [
           />
         </div>
 
-        <div class="md:col-span-2">
+        <div :class="[statTile, 'flex flex-col md:col-span-2']">
           <div class="label-mono mb-3">Score trend</div>
           <Sparkline v-if="scoreTrend.length" :values="scoreTrend" />
         </div>
       </div>
     </section>
 
-    <!-- Quick access: borderless links, not boxed shortcuts. The command palette
-         covers the same ground faster, so this is a quiet index, not a wall. -->
-    <section class="mt-10" aria-labelledby="shortcuts-heading">
-      <h2 id="shortcuts-heading" class="section-title mb-4 flex items-center gap-2">
+    <section class="mt-8" aria-labelledby="shortcuts-heading-old">
+      <h2 id="shortcuts-heading-old" class="section-title mb-3 flex items-center gap-2">
         <span class="bg-line inline-block h-3.5 w-0.5" aria-hidden="true" />
         Quick access
       </h2>
-      <div class="flex flex-wrap gap-x-6 gap-y-3">
+      <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
         <RouterLink
           v-for="s in shortcuts"
           :key="s.to"
           :to="s.to"
-          class="text-muted hover:text-ink inline-flex items-center gap-2 text-sm transition-colors"
+          :class="[statTile, 'group hover:border-ink flex items-center justify-between']"
         >
-          <span :class="s.icon" class="text-base" aria-hidden="true" />
-          {{ s.label }}
+          <div class="flex items-center gap-3">
+            <span :class="s.icon" class="text-muted group-hover:text-ink text-lg" aria-hidden="true" />
+            <span class="text-ink text-sm">{{ s.label }}</span>
+          </div>
+          <span class="i-lucide-arrow-up-right text-muted group-hover:text-ink" aria-hidden="true" />
         </RouterLink>
       </div>
-      <p class="text-muted mt-4 text-xs">
-        Tip: press
-        <kbd class="border-line text-muted border px-1 py-0.5 font-mono text-[0.6rem]">⌘K</kbd>
-        /
-        <kbd class="border-line text-muted border px-1 py-0.5 font-mono text-[0.6rem]">Ctrl&nbsp;K</kbd>
-        to search and jump anywhere.
-      </p>
     </section>
   </div>
 </template>

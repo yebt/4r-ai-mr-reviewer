@@ -6,6 +6,7 @@ import AppBottomNav from '@shared/components/layout/AppBottomNav.vue'
 import ConfirmDialog from '@shared/components/ui/ConfirmDialog.vue'
 import ToastHost from '@shared/components/ui/ToastHost.vue'
 import StatusBottomSheet from '@shared/components/ui/StatusBottomSheet.vue'
+import CommandPalette from '@shared/components/ui/CommandPalette.vue'
 import Breadcrumbs from '@shared/components/ui/Breadcrumbs.vue'
 import { setBreadcrumbs, useBreadcrumbs } from '@shared/composables/useBreadcrumbs'
 import { useActivityStore } from '@modules/activity/store'
@@ -85,6 +86,7 @@ router.beforeEach(() => {
     </div>
 
     <StatusBottomSheet />
+    <CommandPalette />
     <ConfirmDialog />
     <ToastHost />
   </template>

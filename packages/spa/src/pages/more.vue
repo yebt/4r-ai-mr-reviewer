@@ -6,8 +6,12 @@ import PageHeader from '@shared/components/ui/PageHeader.vue'
 import { errorMessage } from '@shared/api/client'
 import { toast } from '@shared/composables/useToast'
 import { useAuthStore } from '@modules/auth/store'
+import { useCommandPalette } from '@shared/composables/useCommandPalette'
 
 const auth = useAuthStore()
+// The command palette is the app's only global search; on touch there's no
+// Cmd/Ctrl+K, so More is where mobile users reach it.
+const palette = useCommandPalette()
 const router = useRouter()
 const loggingOut = ref(false)
 
@@ -24,6 +28,12 @@ async function logout() {
 }
 
 const items = [
+  {
+    to: '/repos',
+    label: 'Repositories',
+    icon: 'i-lucide-folder-git-2',
+    hint: 'Track and configure GitLab repos',
+  },
   {
     to: '/actions',
     label: 'Actions',
@@ -64,7 +74,7 @@ const items = [
     to: '/settings',
     label: 'Settings',
     icon: 'i-lucide-settings',
-    hint: 'App configuration & notifications',
+    hint: 'Notification routing',
   },
 ]
 </script>
@@ -74,6 +84,28 @@ const items = [
     <PageHeader title="More" />
 
     <ul class="border-line/50 border-t">
+      <li>
+        <button
+          type="button"
+          class="group border-line/50 flex w-full items-center justify-between gap-4 border-b py-4 text-left"
+          @click="palette.show()"
+        >
+          <div class="flex items-center gap-3">
+            <span
+              class="i-lucide-search text-muted group-hover:text-ink text-lg"
+              aria-hidden="true"
+            />
+            <div>
+              <div class="text-ink text-sm">Search</div>
+              <div class="text-muted mt-0.5 text-xs">Jump to any page, review or repo</div>
+            </div>
+          </div>
+          <span
+            class="i-lucide-chevron-right text-muted group-hover:text-ink"
+            aria-hidden="true"
+          />
+        </button>
+      </li>
       <li v-for="it in items" :key="it.to">
         <RouterLink
           :to="it.to"
@@ -87,11 +119,11 @@ const items = [
             />
             <div>
               <div class="text-ink text-sm">{{ it.label }}</div>
-              <div class="label-mono mt-0.5">{{ it.hint }}</div>
+              <div class="text-muted mt-0.5 text-xs">{{ it.hint }}</div>
             </div>
           </div>
           <span
-            class="i-lucide-chevron-right text-muted group-hover:text-accent"
+            class="i-lucide-chevron-right text-muted group-hover:text-ink"
             aria-hidden="true"
           />
         </RouterLink>

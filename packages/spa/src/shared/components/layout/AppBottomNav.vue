@@ -1,7 +1,7 @@
 <script setup lang="ts">
 const links = [
   { to: '/', label: 'Home', icon: 'i-lucide-zap', exact: true },
-  { to: '/repos', label: 'Repos', icon: 'i-lucide-folder-git-2' },
+  { to: '/flow', label: 'Flow', icon: 'i-lucide-layout-panel-left' },
   { to: '/reviews', label: 'Reviews', icon: 'i-lucide-list-checks' },
   { to: '/more', label: 'More', icon: 'i-lucide-menu' },
 ]

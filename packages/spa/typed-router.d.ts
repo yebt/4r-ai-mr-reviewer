@@ -59,6 +59,20 @@ declare module 'vue-router/auto-routes' {
       { id: ParamValue<false> },
       | never
     >,
+    '/flow': RouteRecordInfo<
+      '/flow',
+      '/flow',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/home-old': RouteRecordInfo<
+      '/home-old',
+      '/home-old',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/login': RouteRecordInfo<
       '/login',
       '/login',
@@ -180,6 +194,22 @@ declare module 'vue-router/auto-routes' {
         | never
       pathParamNames:
         | 'id'
+    }
+    'src/pages/flow.vue': {
+      routes:
+        | '/flow'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/home-old.vue': {
+      routes:
+        | '/home-old'
+      views:
+        | never
+      pathParamNames:
+        | never
     }
     'src/pages/login.vue': {
       routes:
