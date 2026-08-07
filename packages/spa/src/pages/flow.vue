@@ -412,7 +412,7 @@ async function runPreflight() {
           </li>
           <li v-for="run in pausedRuns" :key="run.id" class="flex flex-wrap items-center justify-between gap-2">
             <span class="text-ink min-w-0 truncate text-sm">
-              Release <span class="font-mono">{{ runTitle(run) }}</span> — paused
+              Release <span class="font-mono">{{ run.state.nextTag ?? runTitle(run) }}</span> — paused
             </span>
             <RouterLink :to="`/actions/${run.id}`" class="btn-line text-xs">
               Open <span class="i-lucide-arrow-right text-sm" aria-hidden="true" />
