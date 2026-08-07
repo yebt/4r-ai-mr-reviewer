@@ -194,6 +194,36 @@ func (c *Client) ListTags(ctx context.Context, projectID string) ([]Tag, error) 
 	return all, nil
 }
 
+// Branch is a repository branch (only the name is used by the UI).
+type Branch struct {
+	Name string `json:"name"`
+}
+
+// ListBranches returns every branch of a project, paginated. Used to populate the
+// release branch pickers and to warn when the conventional development/main
+// branches are absent.
+func (c *Client) ListBranches(ctx context.Context, projectID string) ([]Branch, error) {
+	path := fmt.Sprintf("/projects/%s/repository/branches", url.PathEscape(projectID))
+
+	var all []Branch
+	for page := 1; ; page++ {
+		q := url.Values{
+			"per_page": {"100"},
+			"page":     {strconv.Itoa(page)},
+		}
+		var branches []Branch
+		hdr, err := c.getJSONResp(ctx, path, q, &branches)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, branches...)
+		if hdr.Get("X-Next-Page") == "" || len(branches) < 100 {
+			break
+		}
+	}
+	return all, nil
+}
+
 // Pipeline is a CI pipeline attached to a merge request.
 type Pipeline struct {
 	ID     int    `json:"id"`

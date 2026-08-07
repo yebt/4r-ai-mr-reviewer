@@ -796,6 +796,24 @@ func (s *Service) ListByRepo(ctx context.Context, repoID string) ([]routine.Run,
 	return s.runs.ListByRepo(ctx, repoID)
 }
 
+// ListBranches returns the repo's branch names, so the release modal can offer a
+// branch picker and warn when development/main are absent.
+func (s *Service) ListBranches(ctx context.Context, repoID string) ([]string, error) {
+	gl, projectID, err := s.gitlabFor(ctx, repoID)
+	if err != nil {
+		return nil, err
+	}
+	branches, err := gl.ListBranches(ctx, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("list branches: %w", err)
+	}
+	names := make([]string, len(branches))
+	for i, b := range branches {
+		names[i] = b.Name
+	}
+	return names, nil
+}
+
 // defaultRecentLimit and maxRecentLimit bound ListRecent: a non-positive limit
 // falls back to the default, and anything above the max is clamped so a single
 // request cannot ask for an unbounded number of rows.

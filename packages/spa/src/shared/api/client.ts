@@ -324,6 +324,9 @@ export const api = {
   createMainRelease: (repoId: string, input: MainReleaseInput) =>
     request<RoutineRun>('POST', `/repos/${repoId}/routines/release-main`, input),
   getRoutineRun: (id: string) => request<RoutineRun>('GET', `/routines/${id}`),
+  // The repo's branch names, for the release branch pickers.
+  listRepoBranches: (repoId: string) =>
+    request<string[]>('GET', `/repos/${repoId}/branches`),
   listRepoRoutines: (repoId: string, archived = false) =>
     request<RoutineRun[]>('GET', `/repos/${repoId}/routines${archived ? '?archived=1' : ''}`),
   // Dry-run: compute the exact next release tag without creating a run. Mirrors

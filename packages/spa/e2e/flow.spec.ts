@@ -52,4 +52,9 @@ test('Release tab previews the exact next tag before launch', async ({ page }) =
   // The dry-run preview endpoint is mocked to v1.0.0.
   await expect(page.getByText('Next tag')).toBeVisible()
   await expect(page.getByText('v1.0.0').first()).toBeVisible()
+
+  // Branch pickers are populated from the repo's branches; the fixture repo is
+  // missing 'development', so the modal warns and offers a picker.
+  await expect(page.getByText(/branch not found/)).toBeVisible()
+  await expect(page.getByRole('option', { name: 'develop', exact: true }).first()).toBeAttached()
 })

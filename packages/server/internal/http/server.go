@@ -141,6 +141,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /repos/{id}/routines/release-main", s.createMainReleaseRoutine)
 	mux.HandleFunc("GET /repos/{id}/routines", s.listRoutines)
 	mux.HandleFunc("GET /repos/{id}/routines/preview-tag", s.previewRoutineTag)
+	mux.HandleFunc("GET /repos/{id}/branches", s.listRepoBranches)
 	mux.HandleFunc("GET /routines", s.listRecentRoutines)
 	mux.HandleFunc("GET /routines/{id}", s.getRoutine)
 	mux.HandleFunc("DELETE /routines/{id}", s.deleteRoutine)

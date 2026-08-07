@@ -231,6 +231,16 @@ func (s *Server) listRecentRoutines(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// listRepoBranches returns the repo's branch names for the release branch picker.
+func (s *Server) listRepoBranches(w http.ResponseWriter, r *http.Request) {
+	names, err := s.routines.ListBranches(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeErr(w, err, http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, http.StatusOK, names)
+}
+
 // previewRoutineTag computes the next release tag for a repo without creating a
 // run (a dry-run), so the release modal can show the exact tag before launch.
 // Query: flow (main|dev), bump, mrIid (dev), source/target (main).

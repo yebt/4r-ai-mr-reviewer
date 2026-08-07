@@ -33,6 +33,31 @@ const mergeWhenPipelineSucceeds = ref(true)
 // Main flow only. Empty means "use the backend default" (development → main).
 const sourceBranch = ref('')
 const targetBranch = ref('')
+
+// The repo's branches back the main-flow branch pickers. Routines assume
+// development → main exist; when they don't, warn so the user picks alternatives.
+const branches = ref<string[]>([])
+const branchesLoaded = ref(false)
+const branchesError = ref<string | null>(null)
+async function loadBranches() {
+  if (props.flow !== 'main') return
+  branchesLoaded.value = false
+  branchesError.value = null
+  try {
+    branches.value = await api.listRepoBranches(props.repoId)
+    branchesLoaded.value = true
+    if (!sourceBranch.value)
+      sourceBranch.value = branches.value.includes('development') ? 'development' : ''
+    if (!targetBranch.value) targetBranch.value = branches.value.includes('main') ? 'main' : ''
+  } catch (e) {
+    branchesError.value = errorMessage(e)
+  }
+}
+// Which conventional branches the repo is missing (main flow, once loaded).
+const missingConventional = computed(() => {
+  if (props.flow !== 'main' || !branchesLoaded.value) return [] as string[]
+  return ['development', 'main'].filter((b) => !branches.value.includes(b))
+})
 // Reaction emojis posted on the released MR. GitLab uses award-emoji NAMES (not
 // unicode), so a curated quick-pick set shows the glyph for recognition while
 // storing the name; a small input adds any name not on the list. Empty selection
@@ -139,6 +164,9 @@ watch(
     targetBranch.value = ''
     selectedEmojis.value = new Set(DEFAULT_EMOJIS)
     customEmoji.value = ''
+    branches.value = []
+    branchesLoaded.value = false
+    void loadBranches()
   },
   { immediate: true },
 )
@@ -287,13 +315,54 @@ function onSubmit() {
       </label>
 
       <template v-if="flow === 'main'">
+        <!-- Alert: the routine assumes development → main; warn when they're absent
+             so the user picks real branches instead of hitting a mid-run failure. -->
+        <p
+          v-if="missingConventional.length"
+          class="border-warn/40 bg-warn/5 text-muted border-l-2 px-3 py-2 text-xs"
+          role="alert"
+        >
+          <span class="text-warn flex items-center gap-1.5 font-medium">
+            <span class="i-lucide-triangle-alert shrink-0 text-sm" aria-hidden="true" />
+            {{ missingConventional.map((b) => `“${b}”`).join(' and ') }}
+            {{ missingConventional.length === 1 ? 'branch' : 'branches' }} not found
+          </span>
+          <span class="mt-1 block">
+            This repo has no {{ missingConventional.join('/') }} branch — pick the branches to release
+            from and into below.
+          </span>
+        </p>
+        <p v-else-if="branchesError" class="text-warn text-xs">
+          Couldn't load branches ({{ branchesError }}). Type the branch names below.
+        </p>
+
         <label class="block">
           <span class="field-label">Source branch</span>
-          <input v-model="sourceBranch" type="text" class="field-underline" placeholder="development" />
+          <select v-if="branches.length" v-model="sourceBranch" class="field-underline">
+            <option value="" disabled>Select a branch…</option>
+            <option v-for="b in branches" :key="b" :value="b">{{ b }}</option>
+          </select>
+          <input
+            v-else
+            v-model="sourceBranch"
+            type="text"
+            class="field-underline"
+            placeholder="development"
+          />
         </label>
         <label class="block">
           <span class="field-label">Target branch</span>
-          <input v-model="targetBranch" type="text" class="field-underline" placeholder="main" />
+          <select v-if="branches.length" v-model="targetBranch" class="field-underline">
+            <option value="" disabled>Select a branch…</option>
+            <option v-for="b in branches" :key="b" :value="b">{{ b }}</option>
+          </select>
+          <input
+            v-else
+            v-model="targetBranch"
+            type="text"
+            class="field-underline"
+            placeholder="main"
+          />
         </label>
       </template>
 

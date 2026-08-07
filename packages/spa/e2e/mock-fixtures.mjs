@@ -159,6 +159,9 @@ export function fixtureFor(method, pathname, search) {
   if (method === 'GET' && /^\/repos\/repoB\/reviews$/.test(p)) return { status: 200, json: [] }
   if (method === 'GET' && /^\/repos\/[^/]+\/routines$/.test(p))
     return { status: 200, json: search.includes('archived=1') ? [] : routineRuns }
+  // repoA is missing 'development' (has 'develop') → exercises the branch alert.
+  if (method === 'GET' && /^\/repos\/[^/]+\/branches$/.test(p))
+    return { status: 200, json: ['main', 'develop', 'feature/openrouter', 'fix/tags-pagination'] }
   if (method === 'GET' && /^\/repos\/[^/]+\/routines\/preview-tag$/.test(p))
     return { status: 200, json: { nextTag: 'v1.0.0', lastTag: 'v0.86.1', featCount: 3, fixCount: 2 } }
   if (method === 'GET' && /^\/repos\/[^/]+\/preflight$/.test(p)) return { status: 200, json: preflight }
