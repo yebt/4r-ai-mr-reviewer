@@ -250,6 +250,9 @@ export interface RoutineRun {
   lastError: string
   createdAt: string
   updatedAt: string
+  // Archived soft-hides the run from the active list; it moves to the archived
+  // list and can be restored.
+  archived: boolean
   // Best-effort repo display name. Populated only by the global recent-runs
   // endpoint (listRecentRoutines); absent on the per-repo and single-run paths.
   repoName?: string
@@ -368,6 +371,10 @@ export interface Review {
   repoId: string
   mrIid: number
   contextMode: ContextMode
+  // The model the review actually ran with (resolved from the review override,
+  // repo, or default provider). Omitted on older reviews from before it was
+  // recorded.
+  model?: string
   // The MR's branches (source → target), captured when the review runs. Absent
   // until a review reaches the context build step; empty strings are omitted.
   sourceBranch?: string

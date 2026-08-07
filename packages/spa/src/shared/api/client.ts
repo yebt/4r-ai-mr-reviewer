@@ -158,6 +158,16 @@ export const api = {
     },
   ) => request<Provider>('PATCH', `/providers/${id}`, input),
   setDefaultProvider: (id: string) => request<void>('POST', `/providers/${id}/default`),
+  // Probe a provider config with a minimal live call. Returns ok:false + error on
+  // a failed probe (never throws for a reachable-but-rejecting provider). When id
+  // is set and apiKey is blank, the stored key is used.
+  testProvider: (input: {
+    id?: string
+    kind: ProviderKind
+    baseUrl: string
+    model: string
+    apiKey: string
+  }) => request<{ ok: boolean; error?: string }>('POST', '/providers/test', input),
   deleteProvider: (id: string) => request<void>('DELETE', `/providers/${id}`),
 
   // OpenRouter public model catalog, sorted alphabetically by id server-side.
@@ -314,12 +324,33 @@ export const api = {
   createMainRelease: (repoId: string, input: MainReleaseInput) =>
     request<RoutineRun>('POST', `/repos/${repoId}/routines/release-main`, input),
   getRoutineRun: (id: string) => request<RoutineRun>('GET', `/routines/${id}`),
-  listRepoRoutines: (repoId: string) =>
-    request<RoutineRun[]>('GET', `/repos/${repoId}/routines`),
+  listRepoRoutines: (repoId: string, archived = false) =>
+    request<RoutineRun[]>('GET', `/repos/${repoId}/routines${archived ? '?archived=1' : ''}`),
+  // Dry-run: compute the exact next release tag without creating a run. Mirrors
+  // the compute_tag step (main ignores -dev tags; dev counts the MR's commits).
+  previewRoutineTag: (
+    repoId: string,
+    q: { flow: 'dev' | 'main'; bump: string; mrIid?: number; source?: string; target?: string },
+  ) => {
+    const p = new URLSearchParams({ flow: q.flow, bump: q.bump })
+    if (q.mrIid != null) p.set('mrIid', String(q.mrIid))
+    if (q.source) p.set('source', q.source)
+    if (q.target) p.set('target', q.target)
+    return request<{ nextTag: string; lastTag: string; featCount: number; fixCount: number }>(
+      'GET',
+      `/repos/${repoId}/routines/preview-tag?${p.toString()}`,
+    )
+  },
   // Recent routine runs across all repos, newest first. Each item carries a
-  // best-effort repoName. The optional limit is clamped server-side.
-  listRecentRoutines: (limit?: number) =>
-    request<RoutineRun[]>('GET', `/routines${limit != null ? `?limit=${limit}` : ''}`),
+  // best-effort repoName. The optional limit is clamped server-side; archived
+  // returns the archived set instead of the active one.
+  listRecentRoutines: (limit?: number, archived = false) => {
+    const p = new URLSearchParams()
+    if (limit != null) p.set('limit', String(limit))
+    if (archived) p.set('archived', '1')
+    const qs = p.toString()
+    return request<RoutineRun[]>('GET', `/routines${qs ? `?${qs}` : ''}`)
+  },
   resumeRoutine: (id: string) => request<RoutineRun>('POST', `/routines/${id}/resume`),
   // Skip a blocked run's failed (non-critical) step and re-queue it. 409 when
   // the step is essential / the run is not blocked.
@@ -331,6 +362,12 @@ export const api = {
   // Cancel a routine run and get the updated (cancelled) run back. 404 when
   // unknown, 409 when the run is already terminal (done/cancelled).
   cancelRoutine: (id: string) => request<RoutineRun>('POST', `/routines/${id}/cancel`),
+  // Archive a finished run (moves it to the archived list; reversible). 409 when
+  // the run is not terminal, 404 when unknown.
+  archiveRoutine: (id: string) =>
+    request<{ status: string }>('POST', `/routines/${id}/archive`),
+  unarchiveRoutine: (id: string) =>
+    request<{ status: string }>('POST', `/routines/${id}/unarchive`),
   // Delete a routine run. 404 when unknown, 409 when the run is still running
   // (a running action can't be deleted) — both throw ApiError for the caller.
   deleteRoutine: (id: string) => request<void>('DELETE', `/routines/${id}`),

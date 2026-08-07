@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { reactive } from 'vue'
-import type { MergeRequest, Provider } from '@shared/api/types'
+import type { MergeRequest, Provider, Review } from '@shared/api/types'
+import ReviewedBadge from '@modules/reviews/components/ReviewedBadge.vue'
 
 const props = defineProps<{
   items: MergeRequest[]
@@ -10,6 +11,9 @@ const props = defineProps<{
   providers: Provider[]
   // Preselected provider id (repo's provider, else the global default).
   defaultProviderId: string
+  // Latest review per MR iid, so a row can show it's already reviewed and link
+  // to the verdict instead of the same MR silently appearing in two sections.
+  reviewByMr?: Record<number, Review>
 }>()
 const emit = defineEmits<{
   review: [iid: number, mode: string, providerId: string, model: string]
@@ -65,6 +69,7 @@ function providerModelsFor(iid: number) {
             {{ mr.sourceBranch }} → {{ mr.targetBranch
             }}<template v-if="mr.author"> · {{ mr.author }}</template>
           </div>
+          <ReviewedBadge :review="reviewByMr?.[mr.iid]" />
         </div>
 
         <div class="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">

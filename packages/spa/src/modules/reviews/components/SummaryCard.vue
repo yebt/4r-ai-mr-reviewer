@@ -6,6 +6,7 @@ import type { Review } from '@shared/api/types'
 import { useReviewsStore } from '@modules/reviews/store'
 import { ORIGINAL } from '@modules/reviews/humanize-overrides'
 import { recommendationClass, recommendationLabel } from '@modules/reviews/format'
+import ScoreMeter from '@shared/components/charts/ScoreMeter.vue'
 
 // profileId is the globally selected humanization profile ([id].vue). Empty
 // string means no ready profile is selected, which disables Humanize here.
@@ -76,7 +77,7 @@ async function publish() {
   >
     <div class="flex items-end justify-between gap-4 sm:gap-6">
       <div>
-        <div class="label-mono hidden md:flex ">Recommendation</div>
+        <div class="label-mono">Recommendation</div>
         <div
           class="mt-1 text-2xl font-semibold tracking-tight"
           :class="recommendationClass[review.recommendation]"
@@ -85,12 +86,18 @@ async function publish() {
         </div>
       </div>
       <div class="text-right">
-        <div class="label-mono hidden md:flex ">Score</div>
-        <div class="text-ink mt-1 font-mono text-2xl font-semibold">
+        <div class="label-mono">Score</div>
+        <div
+          class="mt-1 font-mono text-3xl font-semibold"
+          :class="recommendationClass[review.recommendation]"
+        >
           {{ review.score }}<span class="text-muted text-base">/100</span>
         </div>
       </div>
     </div>
+    <!-- The deterministic score as an instrument: the lime gauge is the one
+         legitimate accent use — it IS the primary datum, not decoration. -->
+    <ScoreMeter :value="review.score" class="mt-3" />
 
     <!-- Tabs: Original + one per humanize run. -->
     <div v-if="tabs.length" class="mt-4 flex flex-wrap items-center gap-1">
@@ -146,6 +153,7 @@ async function publish() {
 
     <div class="label-mono mt-4 hidden flex-wrap gap-x-6 gap-y-1 sm:flex">
       <span>mode {{ review.contextMode }}</span>
+      <span v-if="review.model">model {{ review.model }}</span>
       <span>{{ review.findings.length }} findings</span>
       <span>tokens {{ review.inputTokens }} in / {{ review.outputTokens }} out</span>
     </div>
@@ -165,7 +173,7 @@ async function publish() {
         <span v-else class="i-lucide-feather text-sm" aria-hidden="true" />
         Humanize
       </button>
-      <button class="btn-accent w-full text-xs sm:w-auto" :disabled="publishing" @click="publish">
+      <button class="btn-line w-full text-xs sm:w-auto" :disabled="publishing" @click="publish">
         <span
           v-if="publishing"
           class="i-lucide-loader-circle animate-spin text-sm"

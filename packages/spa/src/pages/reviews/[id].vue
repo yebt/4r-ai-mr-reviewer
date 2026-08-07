@@ -619,7 +619,7 @@ async function remove() {
              one part has content. -->
         <div v-if="hasFailureDetails" class="w-full">
           <h2 class="section-title mb-3 flex items-center gap-2">
-            <span class="bg-accent inline-block h-3.5 w-0.5" aria-hidden="true" />
+            <span class="bg-line inline-block h-3.5 w-0.5" aria-hidden="true" />
             More info
           </h2>
 
@@ -762,7 +762,7 @@ async function remove() {
           <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div class="flex w-full items-center gap-3 sm:w-auto">
               <h2 class="section-title hidden items-center gap-2 md:flex">
-                <span class="bg-accent inline-block h-3.5 w-0.5" aria-hidden="true" />
+                <span class="bg-line inline-block h-3.5 w-0.5" aria-hidden="true" />
                 Findings
               </h2>
               <div
@@ -864,6 +864,16 @@ async function remove() {
                   {{ triage.visible.value.length }}/{{ review.findings.length }}
                 </span>
               </button>
+              <!-- Clear sits left of Select all and is always rendered (disabled
+                   when empty) so toggling a selection never shifts the row. -->
+              <button
+                type="button"
+                class="btn-ghost text-xs"
+                :disabled="!selected.length"
+                @click="clearSelection"
+              >
+                Clear
+              </button>
               <button
                 type="button"
                 class="btn-ghost text-xs"
@@ -871,14 +881,6 @@ async function remove() {
                 @click="selectAllVisible"
               >
                 Select all ({{ selectableVisible.length }})
-              </button>
-              <button
-                v-if="selected.length"
-                type="button"
-                class="btn-ghost text-xs"
-                @click="clearSelection"
-              >
-                Clear
               </button>
             </div>
 
@@ -917,6 +919,16 @@ async function remove() {
                 </p>
               </div>
               <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <!-- Clear sits left of Select all and is always rendered (disabled
+                     when empty) so toggling a selection never shifts the row. -->
+                <button
+                  type="button"
+                  class="btn-ghost text-xs"
+                  :disabled="!selected.length"
+                  @click="clearSelection"
+                >
+                  Clear selection
+                </button>
                 <button
                   type="button"
                   class="btn-ghost text-xs"
@@ -940,14 +952,6 @@ async function remove() {
                   @click="askPublish({ indices: selected })"
                 >
                   Publish selected ({{ selected.length }})
-                </button>
-                <button
-                  v-if="selected.length"
-                  type="button"
-                  class="btn-ghost text-xs"
-                  @click="clearSelection"
-                >
-                  Clear selection
                 </button>
               </div>
             </div>
