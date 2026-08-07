@@ -1,8 +1,18 @@
 <script setup lang="ts">
+import { useCommandPalette } from '@shared/composables/useCommandPalette'
+
 const emit = defineEmits<{ navigate: [] }>()
+
+const palette = useCommandPalette()
+
+// Show the platform-correct hotkey hint (⌘ on Apple, Ctrl elsewhere).
+const isMac =
+  typeof navigator !== 'undefined' && /Mac|iP(hone|ad|od)/.test(navigator.platform || navigator.userAgent)
+const hotkeyLabel = isMac ? '⌘K' : 'Ctrl K'
 
 const links = [
   { to: '/', label: 'Quick access', icon: 'i-lucide-zap', exact: true },
+  { to: '/flow', label: 'Flow', icon: 'i-lucide-layout-panel-left' },
   { to: '/repos', label: 'Repositories', icon: 'i-lucide-folder-git-2' },
   { to: '/reviews', label: 'Reviews', icon: 'i-lucide-list-checks' },
   { to: '/actions', label: 'Actions', icon: 'i-lucide-git-merge' },
@@ -20,6 +30,20 @@ const links = [
     <div class="px-5 py-5">
       <div class="text-ink font-mono text-sm font-semibold tracking-tight">ai&#8209;reviewer</div>
       <div class="label-mono mt-1">4R quality gate</div>
+    </div>
+    <div class="px-3 pb-3">
+      <button
+        type="button"
+        class="border-line text-muted hover:text-ink hover:border-ink flex w-full items-center gap-2 border px-3 py-2 text-sm transition-colors"
+        aria-keyshortcuts="Meta+K Control+K"
+        @click="palette.show()"
+      >
+        <span class="i-lucide-search shrink-0 text-sm" aria-hidden="true" />
+        <span class="flex-1 text-left">Search</span>
+        <kbd class="border-line text-muted border px-1 py-0.5 font-mono text-[0.6rem]">{{
+          hotkeyLabel
+        }}</kbd>
+      </button>
     </div>
     <nav class="flex flex-col">
       <RouterLink

@@ -46,9 +46,11 @@ async function onSubmit() {
   <div class="flex min-h-screen items-center justify-center px-4">
     <div class="w-full max-w-sm">
       <div class="mb-8 text-center">
-        <div class="label-mono">ai-reviewer</div>
+        <div class="label-mono">4R · AI MR Reviewer</div>
         <h1 class="mt-1.5 text-2xl font-semibold tracking-tight">Sign in</h1>
-        <p class="text-muted mt-2 text-sm">Enter the password to access this instance.</p>
+        <p class="text-muted mt-2 text-sm">
+          This self-hosted instance is password-protected — enter it to continue.
+        </p>
       </div>
 
       <form novalidate @submit.prevent="onSubmit">

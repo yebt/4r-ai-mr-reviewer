@@ -11,8 +11,16 @@ const store = useAccountsStore()
 const form = reactive({ name: '', baseUrl: 'https://gitlab.com', token: '' })
 const submitting = ref(false)
 const error = ref<string | null>(null)
+const showToken = ref(false)
 
 const valid = computed(() => form.name.trim() && form.baseUrl.trim() && form.token.trim())
+const missing = computed(() => {
+  const m: string[] = []
+  if (!form.name.trim()) m.push('name')
+  if (!form.baseUrl.trim()) m.push('base URL')
+  if (!form.token.trim()) m.push('access token')
+  return m
+})
 
 async function submit() {
   if (!valid.value || submitting.value) return
@@ -39,45 +47,79 @@ async function submit() {
 <template>
   <form class="flex flex-col gap-5" @submit.prevent="submit">
     <div>
-      <label class="field-label" for="acc-name">Name</label>
+      <label class="field-label" for="acc-name">
+        Name <span class="text-accent" aria-hidden="true">*</span>
+      </label>
       <input
         id="acc-name"
         v-model="form.name"
         class="field-underline"
         placeholder="work"
         autocomplete="off"
+        aria-required="true"
       />
     </div>
 
     <div>
-      <label class="field-label" for="acc-url">GitLab base URL</label>
+      <label class="field-label" for="acc-url">
+        GitLab base URL <span class="text-accent" aria-hidden="true">*</span>
+      </label>
       <input
         id="acc-url"
         v-model="form.baseUrl"
         class="field-underline"
         placeholder="https://gitlab.com"
         autocomplete="off"
+        aria-required="true"
       />
     </div>
 
     <div>
-      <label class="field-label" for="acc-token">Access token</label>
-      <input
-        id="acc-token"
-        v-model="form.token"
-        type="password"
-        class="field-underline"
-        placeholder="glpat-…"
-        autocomplete="off"
-      />
-      <p class="text-muted/70 mt-1.5 text-xs">Stored encrypted by the backend. Write-only.</p>
+      <label class="field-label" for="acc-token">
+        Access token <span class="text-accent" aria-hidden="true">*</span>
+      </label>
+      <div class="flex items-center gap-2">
+        <input
+          id="acc-token"
+          v-model="form.token"
+          :type="showToken ? 'text' : 'password'"
+          class="field-underline"
+          placeholder="glpat-…"
+          autocomplete="off"
+          spellcheck="false"
+          aria-required="true"
+        />
+        <button
+          type="button"
+          class="btn-ghost shrink-0"
+          :aria-label="showToken ? 'Hide token' : 'Show token'"
+          :aria-pressed="showToken"
+          @click="showToken = !showToken"
+        >
+          <span
+            :class="showToken ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+            class="text-sm"
+            aria-hidden="true"
+          />
+        </button>
+      </div>
+      <p class="text-muted mt-1.5 text-xs">
+        A personal access token with the <span class="font-mono">api</span> scope (add
+        <span class="font-mono">read_repository</span> for deep reviews). Encrypted at rest on your
+        instance; not shown again after saving.
+      </p>
     </div>
 
     <p v-if="error" class="text-danger text-sm">{{ error }}</p>
 
-    <button type="submit" class="btn-accent self-start" :disabled="!valid || submitting">
-      <span v-if="submitting" class="i-lucide-loader-circle animate-spin" aria-hidden="true" />
-      {{ submitting ? 'Saving' : 'Add account' }}
-    </button>
+    <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+      <button type="submit" class="btn-accent" :disabled="!valid || submitting">
+        <span v-if="submitting" class="i-lucide-loader-circle animate-spin" aria-hidden="true" />
+        {{ submitting ? 'Saving' : 'Add account' }}
+      </button>
+      <p v-if="!valid && missing.length" class="text-muted w-full text-xs sm:w-auto">
+        Still needed: {{ missing.join(', ') }}.
+      </p>
+    </div>
   </form>
 </template>

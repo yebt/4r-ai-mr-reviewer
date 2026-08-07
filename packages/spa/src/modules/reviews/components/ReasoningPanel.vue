@@ -35,7 +35,7 @@ function toggle(i: number) {
 <template>
   <section v-if="reasonings.length" class="border-line/50 mb-6 border-b pb-4">
     <h2 class="section-title mb-3 flex items-center gap-2">
-      <span class="bg-accent inline-block h-3.5 w-0.5" aria-hidden="true" />
+      <span class="bg-line inline-block h-3.5 w-0.5" aria-hidden="true" />
       Reasoning
     </h2>
     <div class="flex flex-col gap-2">
@@ -73,7 +73,7 @@ function toggle(i: number) {
   <!-- While the review runs with nothing captured yet, a subtle hint (never a
        scary empty box). Renders nothing once the review finishes with no
        reasoning captured. -->
-  <p v-else-if="running" class="text-muted/60 mb-6 flex items-center gap-2 text-xs">
+  <p v-else-if="running" class="text-muted mb-6 flex items-center gap-2 text-xs">
     <span class="i-lucide-loader-circle animate-spin text-sm" aria-hidden="true" />
     Waiting for model reasoning…
   </p>

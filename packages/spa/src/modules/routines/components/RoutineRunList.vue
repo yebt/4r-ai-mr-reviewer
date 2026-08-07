@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { errorMessage } from '@shared/api/client'
 import { confirm } from '@shared/composables/useConfirm'
 import { toast } from '@shared/composables/useToast'
@@ -9,11 +9,21 @@ import { useRoutinesStore } from '@modules/routines/store'
 import RoutineStatusChip from '@modules/routines/components/RoutineStatusChip.vue'
 import RoutineBranchChip from '@modules/routines/components/RoutineBranchChip.vue'
 
-defineProps<{
+const props = defineProps<{
   items: RoutineRun[]
   loading?: boolean
   error?: string | null
 }>()
+
+// Runs waiting on the user (a confirm gate or a recoverable block) float to the
+// top and wear a warn edge, so "which run needs me?" reads instantly.
+const needsAttention = (status: string) =>
+  status === 'awaiting_confirmation' || status === 'blocked'
+const sortedItems = computed(() =>
+  [...props.items].sort(
+    (a, b) => Number(needsAttention(b.status)) - Number(needsAttention(a.status)),
+  ),
+)
 
 const store = useRoutinesStore()
 const deletingId = ref<string | null>(null)
@@ -46,7 +56,12 @@ async function remove(run: RoutineRun) {
     <p v-else-if="items.length === 0" class="text-muted py-3 text-sm">No routine runs yet.</p>
 
     <ul v-else class="border-line/50 border-t">
-      <li v-for="run in items" :key="run.id" class="row flex-wrap justify-between gap-y-1">
+      <li
+        v-for="run in sortedItems"
+        :key="run.id"
+        class="row flex-wrap justify-between gap-y-1 border-l-2 pl-3"
+        :class="needsAttention(run.status) ? 'border-warn' : 'border-transparent'"
+      >
         <RouterLink
           :to="`/actions/${run.id}`"
           class="group flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1"
@@ -54,7 +69,7 @@ async function remove(run: RoutineRun) {
           <!-- Primary label: the MR title when captured, else the !{mrIid}
                fallback. Truncates so a long title never overflows the row. -->
           <span
-            class="text-ink group-hover:text-accent min-w-0 truncate text-sm"
+            class="text-ink group-hover:text-ink min-w-0 truncate text-sm hover:underline"
             :style="{ viewTransitionName: `action-${run.id}` }"
           >
             {{ runTitle(run) }}

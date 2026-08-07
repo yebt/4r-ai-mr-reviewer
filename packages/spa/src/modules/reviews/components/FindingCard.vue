@@ -44,12 +44,12 @@ const { store, tabs, selectedTab, humanizing, publishedTabIdx, shown, publishing
     <input
       v-if="selectable"
       type="checkbox"
-      class="accent-accent mt-1"
+      class="accent-accent mt-1 [@media(pointer:coarse)]:h-6 [@media(pointer:coarse)]:w-6"
       :checked="selected"
       :aria-label="`Select finding ${finding.index + 1}`"
       @change="$emit('toggle', finding.index)"
     />
-    <span v-else class="mt-1 w-[13px] shrink-0" aria-hidden="true" />
+    <span v-else class="mt-1 w-[13px] shrink-0 [@media(pointer:coarse)]:w-6" aria-hidden="true" />
 
     <div class="min-w-0 flex-1">
       <div class="flex flex-wrap items-center gap-2">

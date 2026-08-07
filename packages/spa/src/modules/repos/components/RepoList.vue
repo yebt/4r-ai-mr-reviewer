@@ -10,7 +10,7 @@ import { useReposStore } from '@modules/repos/store'
 import { useAccountsStore } from '@modules/accounts/store'
 import { useProvidersStore } from '@modules/providers/store'
 
-const emit = defineEmits<{ edit: [repo: Repo] }>()
+const emit = defineEmits<{ edit: [repo: Repo]; add: [] }>()
 
 const repos = useReposStore()
 const accounts = useAccountsStore()
@@ -55,7 +55,9 @@ async function remove(id: string) {
 
 <template>
   <div>
-    <div class="label-mono mb-3">{{ repos.items.length }} repository(ies)</div>
+    <div class="label-mono mb-3">
+      {{ repos.items.length }} {{ repos.items.length === 1 ? 'repository' : 'repositories' }}
+    </div>
 
     <!-- Skeleton rows while the first load is in flight and nothing is cached. -->
     <ul
@@ -77,7 +79,14 @@ async function remove(id: string) {
       icon="i-lucide-folder-git-2"
       title="No repositories yet"
       hint="Track a repository to start reviewing its merge requests."
-    />
+    >
+      <template #action>
+        <button class="btn-accent text-xs" @click="emit('add')">
+          <span class="i-lucide-plus text-sm" aria-hidden="true" />
+          Track repository
+        </button>
+      </template>
+    </EmptyState>
 
     <ul v-else class="border-line/50 border-t">
       <li v-for="r in repos.items" :key="r.id" class="row flex-wrap justify-between gap-y-2">

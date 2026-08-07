@@ -796,6 +796,24 @@ func (s *Service) ListByRepo(ctx context.Context, repoID string) ([]routine.Run,
 	return s.runs.ListByRepo(ctx, repoID)
 }
 
+// ListBranches returns the repo's branch names, so the release modal can offer a
+// branch picker and warn when development/main are absent.
+func (s *Service) ListBranches(ctx context.Context, repoID string) ([]string, error) {
+	gl, projectID, err := s.gitlabFor(ctx, repoID)
+	if err != nil {
+		return nil, err
+	}
+	branches, err := gl.ListBranches(ctx, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("list branches: %w", err)
+	}
+	names := make([]string, len(branches))
+	for i, b := range branches {
+		names[i] = b.Name
+	}
+	return names, nil
+}
+
 // defaultRecentLimit and maxRecentLimit bound ListRecent: a non-positive limit
 // falls back to the default, and anything above the max is clamped so a single
 // request cannot ask for an unbounded number of rows.
@@ -815,6 +833,134 @@ func (s *Service) ListRecent(ctx context.Context, limit int) ([]routine.Run, err
 		limit = maxRecentLimit
 	}
 	return s.runs.ListRecent(ctx, limit)
+}
+
+// Archive soft-hides a finished run from the active list, keeping its history.
+// Only terminal (done/cancelled) runs can be archived; a still-active or
+// user-gated (blocked/awaiting) run returns routine.ErrRunActive.
+func (s *Service) Archive(ctx context.Context, runID string) error {
+	run, err := s.runs.Get(ctx, runID)
+	if err != nil {
+		return err
+	}
+	if run.Status != routine.RunDone && run.Status != routine.RunCancelled {
+		return routine.ErrRunActive
+	}
+	return s.runs.SetArchived(ctx, runID, true)
+}
+
+// Unarchive restores an archived run to the active list.
+func (s *Service) Unarchive(ctx context.Context, runID string) error {
+	return s.runs.SetArchived(ctx, runID, false)
+}
+
+// ListArchivedByRepo returns a repo's archived runs, newest first.
+func (s *Service) ListArchivedByRepo(ctx context.Context, repoID string) ([]routine.Run, error) {
+	return s.runs.ListArchivedByRepo(ctx, repoID)
+}
+
+// ListRecentArchived returns recent archived runs across all repos, clamped like
+// ListRecent.
+func (s *Service) ListRecentArchived(ctx context.Context, limit int) ([]routine.Run, error) {
+	if limit <= 0 {
+		limit = defaultRecentLimit
+	}
+	if limit > maxRecentLimit {
+		limit = maxRecentLimit
+	}
+	return s.runs.ListRecentArchived(ctx, limit)
+}
+
+// PreviewInput asks for a dry-run of the next release version without creating a
+// run or touching the repo. It mirrors the compute_tag step for both flows.
+type PreviewInput struct {
+	RepoID       string
+	Flow         string // "main" for the main flow; anything else is the dev flow
+	MRIID        int    // dev flow: the MR to release
+	Bump         string // major/minor/patch; empty defaults to minor
+	SourceBranch string // main flow; empty defaults to development
+	TargetBranch string // main flow; empty defaults to main
+}
+
+// PreviewResult is the computed next version and the commit counts behind it.
+type PreviewResult struct {
+	NextTag   string
+	LastTag   string
+	FeatCount int
+	FixCount  int
+}
+
+// PreviewNextTag computes the next release tag WITHOUT creating a run or mutating
+// the repo, mirroring the compute_tag step exactly (main ignores -dev tags; dev
+// counts the MR's commits) so the release modal can show the exact tag up front.
+func (s *Service) PreviewNextTag(ctx context.Context, in PreviewInput) (PreviewResult, error) {
+	bump := in.Bump
+	if bump == "" {
+		bump = "minor"
+	}
+	if !validBumps[bump] {
+		return PreviewResult{}, fmt.Errorf("routines: invalid bump %q (want major, minor or patch)", bump)
+	}
+	gl, projectID, err := s.gitlabFor(ctx, in.RepoID)
+	if err != nil {
+		return PreviewResult{}, err
+	}
+	tags, err := gl.ListTags(ctx, projectID)
+	if err != nil {
+		return PreviewResult{}, fmt.Errorf("list tags: %w", err)
+	}
+	existing := make([]string, 0, len(tags))
+	for _, t := range tags {
+		existing = append(existing, t.Name)
+	}
+
+	var lastTag string
+	var subjects []string
+	if in.Flow == flowMain {
+		source := in.SourceBranch
+		if source == "" {
+			source = devBranch
+		}
+		target := in.TargetBranch
+		if target == "" {
+			target = mainBranch
+		}
+		// Main ignores -dev prerelease tags: it bases off the highest PURE release.
+		lastTag = routine.HighestReleaseSemver(existing)
+		from := lastTag
+		if from == "" {
+			from = target
+		}
+		cmp, err := gl.CompareRefs(ctx, projectID, from, source)
+		if err != nil {
+			return PreviewResult{}, fmt.Errorf("compare refs %s...%s: %w", from, source, err)
+		}
+		// CompareRefs returns commits oldest-first, the order NextRelease wants.
+		subjects = make([]string, len(cmp.Commits))
+		for i, c := range cmp.Commits {
+			subjects[i] = c.Title
+		}
+	} else {
+		if in.MRIID <= 0 {
+			return PreviewResult{}, fmt.Errorf("routines: a merge request is required to preview a dev release")
+		}
+		lastTag = routine.HighestSemver(existing)
+		commits, err := gl.MergeRequestCommits(ctx, projectID, in.MRIID)
+		if err != nil {
+			return PreviewResult{}, fmt.Errorf("get merge request commits: %w", err)
+		}
+		// GitLab returns commits newest-first; NextRelease wants oldest-first.
+		subjects = make([]string, len(commits))
+		for i, c := range commits {
+			subjects[len(commits)-1-i] = c.Title
+		}
+	}
+
+	next, counts, err := routine.NextRelease(lastTag, subjects, routine.BumpMode(bump))
+	if err != nil {
+		return PreviewResult{}, fmt.Errorf("compute next release: %w", err)
+	}
+	return PreviewResult{NextTag: next, LastTag: lastTag, FeatCount: counts.Feat, FixCount: counts.Fix}, nil
 }
 
 // Resume re-queues a blocked run and wakes the worker. A run that is not blocked

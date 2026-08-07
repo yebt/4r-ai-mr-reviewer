@@ -86,6 +86,68 @@ async function remove(run: RoutineRun) {
     deletingId.value = null
   }
 }
+
+// --- Archive ---
+// Only terminal runs (done/cancelled) can be archived; running/blocked/awaiting
+// are left alone. Archive is reversible via Show archived → Restore.
+const isTerminal = (s: string) => s === 'done' || s === 'cancelled'
+const archivable = computed(() => runs.value.filter((r) => isTerminal(r.status)))
+const archivingId = ref<string | null>(null)
+const archivingAll = ref(false)
+
+async function archiveRun(run: RoutineRun) {
+  archivingId.value = run.id
+  try {
+    await store.archive(run.id)
+    toast.success('Action archived')
+  } catch (e) {
+    toast.error(errorMessage(e))
+  } finally {
+    archivingId.value = null
+  }
+}
+
+async function archiveAll() {
+  const targets = [...archivable.value]
+  if (targets.length === 0 || archivingAll.value) return
+  const ok = await confirm({
+    title: 'Archive finished actions',
+    message: `Archive ${targets.length} finished ${targets.length === 1 ? 'action' : 'actions'}? They move to the archived list — you can restore them anytime.`,
+  })
+  if (!ok) return
+  archivingAll.value = true
+  try {
+    for (const run of targets) await store.archive(run.id)
+    toast.success(`Archived ${targets.length} ${targets.length === 1 ? 'action' : 'actions'}`)
+  } catch (e) {
+    toast.error(errorMessage(e))
+  } finally {
+    archivingAll.value = false
+  }
+}
+
+// --- Archived list ---
+const showArchived = ref(false)
+const archivedLoaded = ref(false)
+const archived = computed(() => store.archivedRuns)
+async function toggleArchived() {
+  showArchived.value = !showArchived.value
+  if (showArchived.value && !archivedLoaded.value) {
+    await store.listRecentArchived()
+    archivedLoaded.value = true
+  }
+}
+async function unarchiveRun(run: RoutineRun) {
+  archivingId.value = run.id
+  try {
+    await store.unarchive(run.id)
+    toast.success('Action restored')
+  } catch (e) {
+    toast.error(errorMessage(e))
+  } finally {
+    archivingId.value = null
+  }
+}
 </script>
 
 <template>
@@ -95,6 +157,31 @@ async function remove(run: RoutineRun) {
       Recent routine runs across all repositories. Open one to watch its step ledger update live and
       answer its confirmation gate.
     </p>
+
+    <div class="mb-4 flex flex-wrap items-center justify-end gap-2">
+      <button
+        v-if="archivable.length > 0"
+        class="btn-ghost text-xs"
+        :disabled="archivingAll"
+        title="Archive every finished action"
+        @click="archiveAll"
+      >
+        <span
+          :class="archivingAll ? 'i-lucide-loader-circle animate-spin' : 'i-lucide-archive'"
+          class="text-sm"
+          aria-hidden="true"
+        />
+        Archive all ({{ archivable.length }})
+      </button>
+      <button class="btn-ghost text-xs" @click="toggleArchived">
+        <span
+          :class="showArchived ? 'i-lucide-eye-off' : 'i-lucide-archive'"
+          class="text-sm"
+          aria-hidden="true"
+        />
+        {{ showArchived ? 'Hide archived' : 'Show archived' }}
+      </button>
+    </div>
 
     <!-- Skeleton rows while the first load is in flight and nothing is cached. -->
     <ul v-if="loading" class="border-line/50 border-t" aria-hidden="true">
@@ -124,7 +211,7 @@ async function remove(run: RoutineRun) {
           <!-- Primary label: the MR title when captured, else the !{mrIid}
                fallback. Truncates so a long title never overflows the row. -->
           <span
-            class="text-ink group-hover:text-accent min-w-0 truncate text-sm"
+            class="text-ink min-w-0 truncate text-sm group-hover:underline"
             :style="{ viewTransitionName: `action-${run.id}` }"
           >
             {{ runTitle(run) }}
@@ -142,6 +229,21 @@ async function remove(run: RoutineRun) {
         <div class="flex shrink-0 items-center gap-1">
           <span v-if="run.updatedAt" class="label-mono">{{ formatDateTime(run.updatedAt) }}</span>
           <button
+            v-if="isTerminal(run.status)"
+            type="button"
+            class="btn-ghost text-xs"
+            :disabled="archivingId === run.id"
+            :aria-label="`Archive ${runTitle(run)}`"
+            title="Archive"
+            @click="archiveRun(run)"
+          >
+            <span
+              :class="archivingId === run.id ? 'i-lucide-loader-circle animate-spin' : 'i-lucide-archive'"
+              class="text-sm"
+              aria-hidden="true"
+            />
+          </button>
+          <button
             v-if="run.status !== 'running'"
             type="button"
             class="btn-ghost hover:text-danger"
@@ -154,5 +256,55 @@ async function remove(run: RoutineRun) {
         </div>
       </li>
     </ul>
+
+    <!-- Archived actions (loaded on demand). Restore returns a run to the active
+         list; archived runs are terminal, so no live actions are offered. -->
+    <template v-if="showArchived">
+      <h2 class="section-title text-muted mt-8 mb-3 flex items-center gap-2">
+        <span class="bg-line inline-block h-3.5 w-0.5" aria-hidden="true" />
+        Archived
+      </h2>
+      <p v-if="store.archivedLoading && archived.length === 0" class="text-muted py-3 text-sm">
+        Loading…
+      </p>
+      <p v-else-if="store.archivedError" class="text-danger py-3 text-sm">
+        {{ store.archivedError }}
+      </p>
+      <p v-else-if="archived.length === 0" class="text-muted py-3 text-sm">No archived actions.</p>
+      <ul v-else class="border-line/50 border-t">
+        <li v-for="run in archived" :key="run.id" class="row flex-wrap justify-between gap-y-1">
+          <RouterLink
+            :to="`/actions/${run.id}`"
+            class="group flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1"
+          >
+            <span class="text-ink min-w-0 truncate text-sm group-hover:underline">
+              {{ runTitle(run) }}
+            </span>
+            <span class="text-muted text-xs">{{ repoLabel(run) }}</span>
+            <RoutineStatusChip :status="run.status" />
+            <span class="label-mono truncate">{{ routineKindLabel[run.kind] }}</span>
+          </RouterLink>
+          <div class="flex shrink-0 items-center gap-1">
+            <span v-if="run.updatedAt" class="label-mono">{{ formatDateTime(run.updatedAt) }}</span>
+            <button
+              type="button"
+              class="btn-ghost text-xs"
+              :disabled="archivingId === run.id"
+              :aria-label="`Restore ${runTitle(run)}`"
+              title="Restore"
+              @click="unarchiveRun(run)"
+            >
+              <span
+                :class="
+                  archivingId === run.id ? 'i-lucide-loader-circle animate-spin' : 'i-lucide-archive-restore'
+                "
+                class="text-sm"
+                aria-hidden="true"
+              />
+            </button>
+          </div>
+        </li>
+      </ul>
+    </template>
   </div>
 </template>

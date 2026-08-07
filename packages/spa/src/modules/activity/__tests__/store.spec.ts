@@ -29,6 +29,7 @@ const run = (id: string, status: RoutineRunStatus): RoutineRun => ({
   lastError: '',
   createdAt: '',
   updatedAt: '',
+  archived: false,
 })
 
 // createdAt is derived from the id suffix (r1 -> newest) so allReviews' newest-
@@ -78,6 +79,35 @@ describe('activity store', () => {
     expect(run0).toMatchObject({ kind: 'action', id: 'a', title: 'Run a', to: '/actions/a' })
     const rev = activity.activeOps.find((op) => op.id === 'r1')
     expect(rev).toMatchObject({ kind: 'review', title: 'Review !42', to: '/reviews/r1' })
+  })
+
+  it('tracks user-gated runs (blocked, awaiting_confirmation) so they stay reachable', () => {
+    // Regression: these resting states used to be filtered out of the sheet, so a
+    // run vanished at the exact moment it needed the user to confirm it.
+    seedRuns(
+      run('a', 'awaiting_confirmation'),
+      run('b', 'blocked'),
+      run('c', 'done'),
+      run('d', 'cancelled'),
+    )
+    const activity = useActivityStore()
+    const ids = activity.activeOps.map((op) => op.id)
+    expect(ids).toEqual(['a', 'b']) // gated runs tracked; terminal c/d dropped
+    expect(activity.activeOps[0]).toMatchObject({ status: 'awaiting_confirmation', to: '/actions/a' })
+  })
+
+  it('re-reveals the sheet when a run enters a user-gated state', async () => {
+    seedRuns(run('a', 'running'))
+    const activity = useActivityStore()
+    activity.dismiss()
+    expect(activity.dismissed).toBe(true)
+
+    // Running -> awaiting_confirmation: tracked count is unchanged (still 1), so
+    // only the needs-attention watcher can bring the sheet back.
+    useRoutinesStore().runsById['a']!.status = 'awaiting_confirmation'
+    await nextTick()
+    expect(activity.count).toBe(1)
+    expect(activity.dismissed).toBe(false)
   })
 
   it('count is zero when everything is terminal', () => {

@@ -109,7 +109,7 @@ watch(runs, () => startPolling())
   <section>
     <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
       <h2 class="section-title flex items-center gap-2">
-        <span class="bg-accent inline-block h-3.5 w-0.5" aria-hidden="true" />
+        <span class="bg-line inline-block h-3.5 w-0.5" aria-hidden="true" />
         Routines
       </h2>
       <button type="button" class="btn-line text-xs" @click="openMainRelease">
@@ -163,6 +163,7 @@ watch(runs, () => startPolling())
     <ReleaseModal
       :open="modalOpen"
       :flow="modalFlow"
+      :repo-id="repoId"
       :merge-request="modalMergeRequest"
       :submitting="submitting"
       @submit="submit"

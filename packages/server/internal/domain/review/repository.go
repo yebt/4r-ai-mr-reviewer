@@ -33,6 +33,11 @@ type Repository interface {
 	// SetBranches persists the MR's source/target branch, recorded once the
 	// context build resolves them so the branch survives a later failure.
 	SetBranches(ctx context.Context, id, source, target string) error
+	// SetModel persists the resolved model the review actually ran with, recorded
+	// once provider/model precedence is resolved (before the model runs), so the
+	// UI can show which model produced the review even when it was resolved from
+	// the repo or default provider rather than pinned at launch.
+	SetModel(ctx context.Context, id, model string) error
 	// SetFailure records a parse failure in one update: it marks the review
 	// errored and persists the error message, the raw model output, and the
 	// token counts accumulated before the failure, so a failed review can

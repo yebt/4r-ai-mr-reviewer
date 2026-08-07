@@ -354,10 +354,10 @@ async function publish(payload: PublishPayload) {
   }
 }
 
-// Phone-only publish confirmation. On phone the "Include summary note" checkbox
-// is hidden from the controls and instead surfaced inside a confirm modal, so a
-// publish first opens the modal (askPublish) and only fires on confirm. Desktop
-// keeps calling publish() directly with the inline includeSummary value.
+// Publish confirmation gate (both platforms). Bulk publish posts findings to a
+// real, teammate-visible merge request and cannot be undone from the UI, so
+// "Publish all" and "Publish selected" open a focus-trapped confirm modal that
+// surfaces the "Include summary note" choice and only fires on confirm.
 const publishConfirmOpen = ref(false)
 const pendingPublish = ref<{ all?: boolean; indices?: number[] } | null>(null)
 const confirmIncludeSummary = ref(true)
@@ -375,11 +375,10 @@ async function confirmPublish() {
   pendingPublish.value = null
 }
 
-// "Comment all" is shared between phone and desktop: phone routes through the
+// "Publish all" is shared between phone and desktop: phone routes through the
 // confirm modal, desktop publishes immediately as before.
 function onCommentAll() {
-  if (isPhone.value) askPublish({ all: true })
-  else publish({ all: true, includeSummary: includeSummary.value })
+  askPublish({ all: true })
 }
 
 async function retry() {
@@ -552,11 +551,11 @@ async function remove() {
       </div>
 
       <div v-else-if="review.status === 'pending' || review.status === 'running'">
-        <div class="text-muted flex items-center gap-2 text-sm">
+        <div class="text-muted flex items-center gap-2 text-sm" role="status" aria-live="polite">
           <span class="i-lucide-loader-circle animate-spin" aria-hidden="true" />
           <template v-if="phase">
             Reviewing {{ phase.label }}
-            <span class="text-muted/70 font-mono">({{ phase.step }}/4)</span>…
+            <span class="text-muted font-mono">({{ phase.step }}/4)</span>…
           </template>
           <template v-else>Review {{ review.status }}… updates automatically.</template>
         </div>
@@ -620,7 +619,7 @@ async function remove() {
              one part has content. -->
         <div v-if="hasFailureDetails" class="w-full">
           <h2 class="section-title mb-3 flex items-center gap-2">
-            <span class="bg-accent inline-block h-3.5 w-0.5" aria-hidden="true" />
+            <span class="bg-line inline-block h-3.5 w-0.5" aria-hidden="true" />
             More info
           </h2>
 
@@ -757,13 +756,13 @@ async function remove() {
 
         <section class="mt-6" :class="selected.length ? 'pb-24 sm:pb-0' : ''">
           <!-- Primary header line: title + view toggle on the left, the single
-               primary action (Comment all) on the right. The bulk/selection
+               primary action (Publish all) on the right. The bulk/selection
                actions and filter controls live in their own calmer zones below
                (desktop) or in the phone controls row / bottom sheet (mobile). -->
           <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div class="flex w-full items-center gap-3 sm:w-auto">
               <h2 class="section-title hidden items-center gap-2 md:flex">
-                <span class="bg-accent inline-block h-3.5 w-0.5" aria-hidden="true" />
+                <span class="bg-line inline-block h-3.5 w-0.5" aria-hidden="true" />
                 Findings
               </h2>
               <div
@@ -803,7 +802,7 @@ async function remove() {
                   class="i-lucide-loader-circle animate-spin"
                   aria-hidden="true"
                 />
-                Comment all
+                Publish all ({{ unpublished.length }})
               </button>
             </div>
           </div>
@@ -811,10 +810,10 @@ async function remove() {
           <template v-if="review.summaryPublished">
             <!-- Phone: compact alert box. Desktop: unchanged plain text. -->
             <Alert variant="info" class="mb-3 sm:hidden">
-              Summary already posted — re-check to post again.
+              Summary already posted — use 'Publish summary again' above to repost it.
             </Alert>
-            <p class="text-muted/70 mb-3 hidden text-xs sm:block">
-              Summary already posted — re-check to post again.
+            <p class="text-muted mb-3 hidden text-xs sm:block">
+              Summary already posted — use 'Publish summary again' above to repost it.
             </p>
           </template>
           <template v-if="publishError">
@@ -861,9 +860,19 @@ async function remove() {
                 >
                   {{ activeFilterCount }}
                 </span>
-                <span class="text-muted/70">
+                <span class="text-muted">
                   {{ triage.visible.value.length }}/{{ review.findings.length }}
                 </span>
+              </button>
+              <!-- Clear sits left of Select all and is always rendered (disabled
+                   when empty) so toggling a selection never shifts the row. -->
+              <button
+                type="button"
+                class="btn-ghost text-xs"
+                :disabled="!selected.length"
+                @click="clearSelection"
+              >
+                Clear
               </button>
               <button
                 type="button"
@@ -872,14 +881,6 @@ async function remove() {
                 @click="selectAllVisible"
               >
                 Select all ({{ selectableVisible.length }})
-              </button>
-              <button
-                v-if="selected.length"
-                type="button"
-                class="btn-ghost text-xs"
-                @click="clearSelection"
-              >
-                Clear
               </button>
             </div>
 
@@ -912,18 +913,22 @@ async function remove() {
                   <span aria-hidden="true">·</span>
                   <span class="text-flame font-medium">{{ triage.counts.value.blocking }}</span> blocking
                   <span class="text-muted/50" aria-hidden="true">·</span>
-                  <span class="text-muted/70">
+                  <span class="text-muted">
                     Showing {{ triage.visible.value.length }} of {{ review.findings.length }}
                   </span>
                 </p>
               </div>
               <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
-                <!-- Include-summary checkbox: desktop only. On phone the choice
-                     moves into the publish-confirm modal (askPublish). -->
-                <label class="text-muted flex cursor-pointer items-center gap-1.5 text-xs">
-                  <input v-model="includeSummary" type="checkbox" class="accent-accent" />
-                  Include summary note
-                </label>
+                <!-- Clear sits left of Select all and is always rendered (disabled
+                     when empty) so toggling a selection never shifts the row. -->
+                <button
+                  type="button"
+                  class="btn-ghost text-xs"
+                  :disabled="!selected.length"
+                  @click="clearSelection"
+                >
+                  Clear selection
+                </button>
                 <button
                   type="button"
                   class="btn-ghost text-xs"
@@ -944,17 +949,9 @@ async function remove() {
                 <button
                   class="btn-ghost text-xs"
                   :disabled="publishing || selected.length === 0"
-                  @click="publish({ indices: selected, includeSummary })"
+                  @click="askPublish({ indices: selected })"
                 >
                   Publish selected ({{ selected.length }})
-                </button>
-                <button
-                  v-if="selected.length"
-                  type="button"
-                  class="btn-ghost text-xs"
-                  @click="clearSelection"
-                >
-                  Clear selection
                 </button>
               </div>
             </div>
@@ -1048,21 +1045,19 @@ async function remove() {
           </button>
         </div>
 
-        <!-- Phone-only publish confirmation: surfaces the include-summary choice
-             (hidden from the phone controls) and defers the actual publish until
-             confirmed. Desktop publishes inline without this modal. -->
+        <!-- Publish confirmation (both platforms): surfaces the include-summary
+             choice and defers the irreversible post-to-MR until confirmed. -->
         <Modal
-          v-if="isPhone"
           :open="publishConfirmOpen"
-          title="Publish"
+          title="Publish findings"
           @close="publishConfirmOpen = false"
         >
           <div class="flex flex-col gap-4">
             <p class="text-muted text-sm">
               {{
                 pendingPublish?.all
-                  ? 'Comment all findings'
-                  : `Publish ${pendingPublish?.indices?.length ?? 0} selected findings`
+                  ? 'Post all findings to the merge request as inline comments. Findings you have already posted are skipped.'
+                  : `Post ${pendingPublish?.indices?.length ?? 0} selected findings to the merge request as inline comments.`
               }}
             </p>
             <label class="text-ink flex cursor-pointer items-center gap-2 text-sm">

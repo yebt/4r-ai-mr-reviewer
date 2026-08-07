@@ -23,7 +23,11 @@ const iconClass: Record<ToastKind, string> = {
 
 <template>
   <Teleport to="body">
-    <div class="fixed right-4 bottom-4 z-50 flex w-72 flex-col gap-2">
+    <div
+      class="fixed right-4 bottom-4 z-50 flex w-72 flex-col gap-2"
+      aria-live="polite"
+      aria-atomic="false"
+    >
       <TransitionGroup name="toast">
         <button
           v-for="t in toasts"

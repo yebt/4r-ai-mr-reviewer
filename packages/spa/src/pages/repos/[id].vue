@@ -4,7 +4,7 @@ import { computed, onMounted, ref, watchEffect } from 'vue'
 import { useTitle } from '@vueuse/core'
 import { useRoute, useRouter } from 'vue-router'
 import { api, errorMessage } from '@shared/api/client'
-import type { Preflight } from '@shared/api/types'
+import type { Preflight, Review } from '@shared/api/types'
 import { setBreadcrumbs } from '@shared/composables/useBreadcrumbs'
 import { confirm } from '@shared/composables/useConfirm'
 import { toast } from '@shared/composables/useToast'
@@ -64,6 +64,17 @@ const defaultProviderId = computed(
 )
 const mrs = computed(() => reviews.mergeRequestsFor(repoId))
 const repoReviews = computed(() => reviews.reviewsFor(repoId))
+// Latest review per MR iid, so the open-MR list can flag which MRs are already
+// reviewed and link straight to the verdict — connecting the two sections rather
+// than showing the same MR number twice with no relationship.
+const reviewByMr = computed<Record<number, Review>>(() => {
+  const m: Record<number, Review> = {}
+  for (const rv of repoReviews.value) {
+    const cur = m[rv.mrIid]
+    if (!cur || rv.createdAt > cur.createdAt) m[rv.mrIid] = rv
+  }
+  return m
+})
 const archivedReviews = computed(() => reviews.archivedReviewsFor(repoId))
 // Stale-while-revalidate: only show a spinner when nothing is cached yet.
 const mrsLoading = computed(() => reviews.mrsLoading && mrs.value.length === 0)
@@ -203,6 +214,9 @@ const webhookUrl = computed(() =>
   repo.value ? window.location.origin + repo.value.webhookPath : '',
 )
 const webhookBusy = ref(false)
+// The webhook secret is masked by default so it isn't shoulder-surfed; the user
+// reveals it only to copy it into GitLab.
+const showWebhookSecret = ref(false)
 
 async function rotateWebhook() {
   if (webhookBusy.value) return
@@ -277,7 +291,7 @@ async function copyText(text: string, label: string) {
     >
       <section class="mb-10">
         <h2 class="section-title mb-3 flex items-center gap-2">
-          <span class="bg-accent inline-block h-3.5 w-0.5" aria-hidden="true" />
+          <span class="bg-line inline-block h-3.5 w-0.5" aria-hidden="true" />
           Open merge requests
         </h2>
         <DependencyAlert
@@ -294,6 +308,7 @@ async function copyText(text: string, label: string) {
           :busy-iid="creatingIid"
           :providers="providers.items"
           :default-provider-id="defaultProviderId"
+          :review-by-mr="reviewByMr"
           @review="startReview"
         />
       </section>
@@ -301,7 +316,7 @@ async function copyText(text: string, label: string) {
       <section>
         <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
           <h2 class="section-title flex items-center gap-2">
-            <span class="bg-accent inline-block h-3.5 w-0.5" aria-hidden="true" />
+            <span class="bg-line inline-block h-3.5 w-0.5" aria-hidden="true" />
             Reviews
           </h2>
           <button class="btn-ghost text-xs" @click="toggleArchived">
@@ -351,7 +366,7 @@ async function copyText(text: string, label: string) {
       <section class="mb-10">
         <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
           <h2 class="section-title flex items-center gap-2">
-            <span class="bg-accent inline-block h-3.5 w-0.5" aria-hidden="true" />
+            <span class="bg-line inline-block h-3.5 w-0.5" aria-hidden="true" />
             API scope
           </h2>
           <button
@@ -397,7 +412,7 @@ async function copyText(text: string, label: string) {
       <section class="mb-10">
         <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
           <h2 class="section-title flex items-center gap-2">
-            <span class="bg-accent inline-block h-3.5 w-0.5" aria-hidden="true" />
+            <span class="bg-line inline-block h-3.5 w-0.5" aria-hidden="true" />
             Auto-review webhook
           </h2>
           <button
@@ -453,8 +468,22 @@ async function copyText(text: string, label: string) {
               <code
                 class="border-line text-ink block flex-1 overflow-x-auto border-b px-0 py-2 font-mono text-xs"
               >
-                {{ repo.webhookSecret }}
+                {{ showWebhookSecret ? repo.webhookSecret : '•'.repeat(24) }}
               </code>
+              <button
+                type="button"
+                class="btn-ghost text-xs"
+                :aria-label="showWebhookSecret ? 'Hide secret token' : 'Show secret token'"
+                :aria-pressed="showWebhookSecret"
+                @click="showWebhookSecret = !showWebhookSecret"
+              >
+                <span
+                  :class="showWebhookSecret ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+                  class="text-sm"
+                  aria-hidden="true"
+                />
+                {{ showWebhookSecret ? 'Hide' : 'Show' }}
+              </button>
               <button
                 type="button"
                 class="btn-ghost text-xs"

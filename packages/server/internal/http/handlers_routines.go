@@ -176,7 +176,11 @@ func (s *Server) getRoutine(w http.ResponseWriter, r *http.Request) {
 
 // listRoutines returns a repo's routine runs, newest first.
 func (s *Server) listRoutines(w http.ResponseWriter, r *http.Request) {
-	runs, err := s.routines.ListByRepo(r.Context(), r.PathValue("id"))
+	list := s.routines.ListByRepo
+	if q := r.URL.Query().Get("archived"); q == "1" || q == "true" {
+		list = s.routines.ListArchivedByRepo
+	}
+	runs, err := list(r.Context(), r.PathValue("id"))
 	if err != nil {
 		writeErr(w, err, http.StatusInternalServerError)
 		return
@@ -200,7 +204,11 @@ func (s *Server) listRecentRoutines(w http.ResponseWriter, r *http.Request) {
 			limit = n
 		}
 	}
-	runs, err := s.routines.ListRecent(r.Context(), limit)
+	list := s.routines.ListRecent
+	if q := r.URL.Query().Get("archived"); q == "1" || q == "true" {
+		list = s.routines.ListRecentArchived
+	}
+	runs, err := list(r.Context(), limit)
 	if err != nil {
 		writeErr(w, err, http.StatusInternalServerError)
 		return
@@ -223,6 +231,44 @@ func (s *Server) listRecentRoutines(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// listRepoBranches returns the repo's branch names for the release branch picker.
+func (s *Server) listRepoBranches(w http.ResponseWriter, r *http.Request) {
+	names, err := s.routines.ListBranches(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeErr(w, err, http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, http.StatusOK, names)
+}
+
+// previewRoutineTag computes the next release tag for a repo without creating a
+// run (a dry-run), so the release modal can show the exact tag before launch.
+// Query: flow (main|dev), bump, mrIid (dev), source/target (main).
+func (s *Server) previewRoutineTag(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	mrIID := 0
+	if v := q.Get("mrIid"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			mrIID = n
+		}
+	}
+	res, err := s.routines.PreviewNextTag(r.Context(), routines.PreviewInput{
+		RepoID:       r.PathValue("id"),
+		Flow:         q.Get("flow"),
+		MRIID:        mrIID,
+		Bump:         q.Get("bump"),
+		SourceBranch: q.Get("source"),
+		TargetBranch: q.Get("target"),
+	})
+	if err != nil {
+		writeErr(w, err, http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, http.StatusOK, previewTagResp{
+		NextTag: res.NextTag, LastTag: res.LastTag, FeatCount: res.FeatCount, FixCount: res.FixCount,
+	})
+}
+
 // deleteRoutine removes a routine run. A running run cannot be deleted → 409;
 // an unknown run → 404; success → 204.
 func (s *Server) deleteRoutine(w http.ResponseWriter, r *http.Request) {
@@ -235,6 +281,36 @@ func (s *Server) deleteRoutine(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// archiveRoutine soft-hides a finished run from the active list. A non-terminal
+// run → 409; an unknown run → 404; success → 200.
+func (s *Server) archiveRoutine(w http.ResponseWriter, r *http.Request) {
+	if err := s.routines.Archive(r.Context(), r.PathValue("id")); err != nil {
+		switch {
+		case errors.Is(err, routine.ErrRunActive):
+			writeErr(w, err, http.StatusConflict)
+		case errors.Is(err, routine.ErrRunNotFound):
+			writeErr(w, err, http.StatusNotFound)
+		default:
+			writeErr(w, err, http.StatusInternalServerError)
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "archived"})
+}
+
+// unarchiveRoutine restores an archived run to the active list. Unknown run → 404.
+func (s *Server) unarchiveRoutine(w http.ResponseWriter, r *http.Request) {
+	if err := s.routines.Unarchive(r.Context(), r.PathValue("id")); err != nil {
+		if errors.Is(err, routine.ErrRunNotFound) {
+			writeErr(w, err, http.StatusNotFound)
+			return
+		}
+		writeErr(w, err, http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "unarchived"})
 }
 
 // resumeRoutine re-queues a blocked run. A non-blocked run → 409.
@@ -293,6 +369,13 @@ func (s *Server) cancelRoutine(w http.ResponseWriter, r *http.Request) {
 
 // --- response DTOs ---
 
+type previewTagResp struct {
+	NextTag   string `json:"nextTag"`
+	LastTag   string `json:"lastTag"`
+	FeatCount int    `json:"featCount"`
+	FixCount  int    `json:"fixCount"`
+}
+
 type preflightCheckResp struct {
 	Capability string `json:"capability"`
 	Label      string `json:"label"`
@@ -348,6 +431,7 @@ type routineRunResp struct {
 	LastError string            `json:"lastError"`
 	CreatedAt time.Time         `json:"createdAt"`
 	UpdatedAt time.Time         `json:"updatedAt"`
+	Archived  bool              `json:"archived"`
 	// RepoName is a best-effort repo display name, populated only on the global
 	// recent-runs list (listRecentRoutines); it stays empty (and omitted) on the
 	// per-repo and single-run paths, which already know their repo context.
@@ -392,6 +476,7 @@ func toRun(run routine.Run) routineRunResp {
 		LastError: run.LastError,
 		CreatedAt: run.CreatedAt,
 		UpdatedAt: run.UpdatedAt,
+		Archived:  run.Archived,
 	}
 	// Best-effort: expose a release run's flow and branches from its immutable
 	// params (persisted for every release run, so existing runs work too). A

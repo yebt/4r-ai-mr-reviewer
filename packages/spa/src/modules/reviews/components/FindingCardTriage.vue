@@ -78,7 +78,7 @@ const { store, tabs, selectedTab, humanizing, publishedTabIdx, shown, publishing
         <input
           v-if="selectable"
           type="checkbox"
-          class="accent-accent mt-0.5 shrink-0"
+          class="accent-accent mt-0.5 shrink-0 [@media(pointer:coarse)]:h-6 [@media(pointer:coarse)]:w-6"
           :checked="selected"
           :aria-label="`Select finding ${finding.index + 1}`"
           @change="$emit('toggle', finding.index)"
@@ -125,7 +125,7 @@ const { store, tabs, selectedTab, humanizing, publishedTabIdx, shown, publishing
     <button
       v-if="isPhone && !expanded && (shown.why || shown.fix)"
       type="button"
-      class="text-muted/70 hover:text-ink -mt-1 flex items-center gap-1 text-xs"
+      class="text-muted hover:text-ink -mt-1 flex items-center gap-1 text-xs"
       @click="expanded = true"
     >
       <span class="i-lucide-chevron-down text-sm" aria-hidden="true" />

@@ -21,6 +21,11 @@ export const useRoutinesStore = defineStore('routines', () => {
   // themselves live in runsById, so the live poller's refresh() updates the same
   // objects the recent list observes.
   const recentRunIds = ref<string[]>([])
+  // Archived runs: a separate ordered list (newest first) fetched on demand, so
+  // the active views never carry them.
+  const archivedRunIds = ref<string[]>([])
+  const archivedLoading = ref(false)
+  const archivedError = ref<string | null>(null)
 
   function runsFor(repoId: string): RoutineRun[] {
     return runsByRepo.value[repoId] ?? []
@@ -30,6 +35,12 @@ export const useRoutinesStore = defineStore('routines', () => {
   // in sync with polling refreshes (which upsert runsById).
   const recentRuns = computed<RoutineRun[]>(() =>
     recentRunIds.value
+      .map((id) => runsById.value[id])
+      .filter((r): r is RoutineRun => r != null),
+  )
+
+  const archivedRuns = computed<RoutineRun[]>(() =>
+    archivedRunIds.value
       .map((id) => runsById.value[id])
       .filter((r): r is RoutineRun => r != null),
   )
@@ -82,6 +93,21 @@ export const useRoutinesStore = defineStore('routines', () => {
       listError.value = errorMessage(e)
     } finally {
       listLoading.value = false
+    }
+  }
+
+  // listRecentArchived loads the global archived-runs list (across all repos).
+  async function listRecentArchived(limit?: number) {
+    archivedLoading.value = true
+    archivedError.value = null
+    try {
+      const data = await api.listRecentRoutines(limit, true)
+      archivedRunIds.value = data.map((r) => r.id)
+      for (const run of data) runsById.value[run.id] = run
+    } catch (e) {
+      archivedError.value = errorMessage(e)
+    } finally {
+      archivedLoading.value = false
     }
   }
 
@@ -177,6 +203,30 @@ export const useRoutinesStore = defineStore('routines', () => {
     recentRunIds.value = recentRunIds.value.filter((rid) => rid !== id)
   }
 
+  // archive soft-hides a finished run: it drops from the active caches (recent +
+  // per-repo) and its cached object's archived flag flips, so it moves to the
+  // archived list. Rethrows (409 non-terminal, 404 unknown) so callers can toast.
+  async function archive(id: string) {
+    await api.archiveRoutine(id)
+    recentRunIds.value = recentRunIds.value.filter((rid) => rid !== id)
+    const nextByRepo: Record<string, RoutineRun[]> = {}
+    for (const [repoId, runs] of Object.entries(runsByRepo.value)) {
+      nextByRepo[repoId] = runs.filter((r) => r.id !== id)
+    }
+    runsByRepo.value = nextByRepo
+    const run = runsById.value[id]
+    if (run) runsById.value[id] = { ...run, archived: true }
+  }
+
+  // unarchive restores an archived run; it drops from the archived list and its
+  // cached flag clears (it reappears in the active list on the next fetch).
+  async function unarchive(id: string) {
+    await api.unarchiveRoutine(id)
+    archivedRunIds.value = archivedRunIds.value.filter((rid) => rid !== id)
+    const run = runsById.value[id]
+    if (run) runsById.value[id] = { ...run, archived: false }
+  }
+
   return {
     runsByRepo,
     runsById,
@@ -184,10 +234,14 @@ export const useRoutinesStore = defineStore('routines', () => {
     listError,
     recentRunIds,
     recentRuns,
+    archivedRuns,
+    archivedLoading,
+    archivedError,
     runsFor,
     runById,
     list,
     listRecent,
+    listRecentArchived,
     createRelease,
     createMainRelease,
     refresh,
@@ -196,5 +250,7 @@ export const useRoutinesStore = defineStore('routines', () => {
     confirm,
     cancel,
     remove,
+    archive,
+    unarchive,
   }
 })

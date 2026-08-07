@@ -10,7 +10,7 @@ import TelegramList from '@modules/telegram/components/TelegramList.vue'
 const editing = ref<TelegramTarget | null>(null)
 const open = ref(false)
 
-const title = computed(() => (editing.value ? 'Edit target' : 'New target'))
+const title = computed(() => (editing.value ? 'Edit target' : 'Add target'))
 
 function add() {
   editing.value = null
@@ -37,7 +37,7 @@ function close() {
       </template>
     </PageHeader>
 
-    <TelegramList @edit="edit" />
+    <TelegramList @edit="edit" @add="add" />
 
     <Modal :open="open" :title="title" @close="close">
       <TelegramForm :editing="editing" @done="close" />

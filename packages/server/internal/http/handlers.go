@@ -190,6 +190,29 @@ func (s *Server) deleteProvider(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *Server) testProvider(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		ID      string `json:"id"`
+		Kind    string `json:"kind"`
+		BaseURL string `json:"baseUrl"`
+		Model   string `json:"model"`
+		APIKey  string `json:"apiKey"`
+	}
+	if err := decode(r, &in); err != nil {
+		writeErr(w, err, http.StatusBadRequest)
+		return
+	}
+	// A failed probe is a valid result, not an API error: report it in the body
+	// (200 with ok:false) so the form can render it inline.
+	if err := s.providers.Test(r.Context(), providers.TestInput{
+		ID: in.ID, Kind: provider.Kind(in.Kind), BaseURL: in.BaseURL, Model: in.Model, APIKey: in.APIKey,
+	}); err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
 // --- profiles ---
 
 func (s *Server) createProfile(w http.ResponseWriter, r *http.Request) {
@@ -753,6 +776,7 @@ type reviewResp struct {
 	RepoID           string          `json:"repoId"`
 	MRIID            int             `json:"mrIid"`
 	ContextMode      string          `json:"contextMode"`
+	Model            string          `json:"model,omitempty"`
 	SourceBranch     string          `json:"sourceBranch,omitempty"`
 	TargetBranch     string          `json:"targetBranch,omitempty"`
 	Status           string          `json:"status"`
@@ -786,7 +810,7 @@ func toReview(rv review.Review) reviewResp {
 		reasonings = append(reasonings, reasoningResp{Phase: r.Phase, Content: r.Content})
 	}
 	return reviewResp{
-		ID: rv.ID, RepoID: rv.RepoID, MRIID: rv.MRIID, ContextMode: string(rv.ContextMode),
+		ID: rv.ID, RepoID: rv.RepoID, MRIID: rv.MRIID, ContextMode: string(rv.ContextMode), Model: rv.Model,
 		SourceBranch: rv.SourceBranch, TargetBranch: rv.TargetBranch,
 		Status: string(rv.Status), Phase: rv.Phase, Archived: rv.Archived, SummaryPublished: rv.SummaryPublished, Summary: rv.Summary, Recommendation: string(rv.Recommendation),
 		Score: rv.Score, Error: rv.Error, RawOutput: rv.RawOutput, InputTokens: rv.InputTokens, OutputTokens: rv.OutputTokens,

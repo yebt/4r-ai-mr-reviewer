@@ -14,6 +14,16 @@ export function isRunActive(status: RoutineRunStatus): boolean {
   return status === 'pending' || status === 'running'
 }
 
+// A run is *tracked* by the global status sheet from creation until it reaches a
+// terminal state. Unlike isRunActive (which gates the self-progressing poller),
+// this INCLUDES the resting states that are waiting on the user — `blocked` and
+// `awaiting_confirmation` — because those are exactly the moments the user needs
+// to find the run in the sheet and act on it. Terminal `done`/`cancelled` drop
+// out. (Same membership as isRunCancelable, kept separate for intent clarity.)
+export function isRunTracked(status: RoutineRunStatus): boolean {
+  return status !== 'done' && status !== 'cancelled'
+}
+
 // A run is cancelable while it has not reached a terminal state (`done` or
 // `cancelled`): pending/running are aborted mid-flight, and blocked/
 // awaiting_confirmation are aborted from their resting pause. Pure so it can
