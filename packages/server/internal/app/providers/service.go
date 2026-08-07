@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/webcloster-dev/ai-reviewer/internal/adapters/ai"
+	"github.com/webcloster-dev/ai-reviewer/internal/domain/llm"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/provider"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/secret"
 	"github.com/webcloster-dev/ai-reviewer/internal/id"
@@ -160,6 +162,58 @@ func (s *Service) APIKey(ctx context.Context, id string) (string, error) {
 		return "", err
 	}
 	return string(b), nil
+}
+
+// TestInput describes a provider configuration to probe. When ID is set and
+// APIKey is empty, the stored key for that provider is used, so an edit form can
+// test the connection without re-entering the key.
+type TestInput struct {
+	ID      string
+	Kind    provider.Kind
+	BaseURL string
+	Model   string
+	APIKey  string
+}
+
+// Test performs one minimal live call against the provider to verify that the
+// base URL, API key and model actually work — surfacing credential/endpoint/model
+// errors at configuration time instead of inside a later long-running review. It
+// persists nothing.
+func (s *Service) Test(ctx context.Context, in TestInput) error {
+	if !in.Kind.Valid() {
+		return fmt.Errorf("providers: invalid kind %q", in.Kind)
+	}
+	if in.Model == "" {
+		return fmt.Errorf("providers: a model is required to test the connection")
+	}
+	if err := netutil.RequireSecureBaseURL(in.BaseURL); err != nil {
+		return fmt.Errorf("providers: %w", err)
+	}
+
+	key := in.APIKey
+	if key == "" {
+		if in.ID == "" {
+			return fmt.Errorf("providers: an API key is required to test the connection")
+		}
+		var err error
+		if key, err = s.APIKey(ctx, in.ID); err != nil {
+			return err
+		}
+	}
+
+	client, err := ai.New(provider.Provider{Kind: in.Kind, BaseURL: in.BaseURL, Model: in.Model}, key)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	_, err = client.Complete(ctx, llm.Request{
+		Model:     in.Model,
+		Messages:  []llm.Message{{Role: llm.RoleUser, Content: "ping"}},
+		MaxTokens: 16,
+	})
+	return err
 }
 
 // Remove deletes the provider and its API key.

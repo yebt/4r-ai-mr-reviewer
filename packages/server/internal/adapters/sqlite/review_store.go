@@ -299,6 +299,23 @@ func (r *ReviewStore) SetBranches(ctx context.Context, id, source, target string
 	return nil
 }
 
+// SetModel persists the resolved model the review ran with. Called once
+// provider/model precedence is resolved, before the model runs — so the review
+// records which model produced it even when the model came from the repo or the
+// default provider rather than a launch-time override.
+func (r *ReviewStore) SetModel(ctx context.Context, id, model string) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE reviews SET model = ?, updated_at = ? WHERE id = ?`,
+		model, formatTime(time.Now().UTC()), id)
+	if err != nil {
+		return fmt.Errorf("review store: set model: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return review.ErrNotFound
+	}
+	return nil
+}
+
 // SetFailure records a parse failure in one update: status='error', the error
 // message, the raw model output, and the token counts accumulated before the
 // failure, so a failed review can surface exactly what the model returned and at

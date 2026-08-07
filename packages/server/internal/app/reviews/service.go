@@ -511,6 +511,10 @@ func (s *Service) execute(ctx context.Context, rv review.Review) (review.Review,
 	if model == "" {
 		return review.Review{}, fmt.Errorf("reviews: no model set on review, repo or provider %q", prov.Name)
 	}
+	// Persist the resolved model so the UI can show which model actually ran, even
+	// when it was resolved from the repo or default provider (best-effort; the
+	// Save at the end never touches the model column).
+	_ = s.reviews.SetModel(ctx, rv.ID, model)
 	aiClient, err := ai.New(prov, apiKey)
 	if err != nil {
 		return review.Review{}, err

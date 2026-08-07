@@ -23,7 +23,7 @@ func NewRoutineRunStore(db *sql.DB) *RoutineRunStore {
 
 var _ routine.RunStore = (*RoutineRunStore)(nil)
 
-const routineRunCols = `id, kind, repo_id, mr_iid, status, params_json, state_json, steps_json, last_error, created_at, updated_at`
+const routineRunCols = `id, kind, repo_id, mr_iid, status, params_json, state_json, steps_json, last_error, created_at, updated_at, archived`
 
 // Create inserts a new routine run.
 func (s *RoutineRunStore) Create(ctx context.Context, run routine.Run) error {
@@ -33,9 +33,10 @@ func (s *RoutineRunStore) Create(ctx context.Context, run routine.Run) error {
 	}
 	now := formatTime(time.Now().UTC())
 	_, err = s.db.ExecContext(ctx,
-		`INSERT INTO routine_run(`+routineRunCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+		`INSERT INTO routine_run(`+routineRunCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
 		run.ID, string(run.Kind), run.RepoID, mrIIDArg(run.MRIID), string(run.Status),
-		rawJSONOr(run.Params, "{}"), rawJSONOr(run.State, "{}"), string(steps), run.LastError, now, now)
+		rawJSONOr(run.Params, "{}"), rawJSONOr(run.State, "{}"), string(steps), run.LastError, now, now,
+		boolToInt(run.Archived))
 	if err != nil {
 		return fmt.Errorf("routine run store: create: %w", err)
 	}
@@ -69,9 +70,9 @@ func (s *RoutineRunStore) Delete(ctx context.Context, id string) error {
 }
 
 // ListByRepo returns a repo's runs, newest first.
-func (s *RoutineRunStore) ListByRepo(ctx context.Context, repoID string) ([]routine.Run, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT `+routineRunCols+` FROM routine_run WHERE repo_id = ? ORDER BY created_at DESC`, repoID)
+// queryRuns runs a routineRunCols SELECT and scans every row into a slice.
+func (s *RoutineRunStore) queryRuns(ctx context.Context, query string, args ...any) ([]routine.Run, error) {
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("routine run store: list: %w", err)
 	}
@@ -88,26 +89,49 @@ func (s *RoutineRunStore) ListByRepo(ctx context.Context, repoID string) ([]rout
 	return out, rows.Err()
 }
 
-// ListRecent returns the most recent runs across all repos, newest first, capped
-// at limit. It mirrors ListByRepo but is not scoped to a single repo, so the
-// global "recent runs" view can list activity across every tracked repo.
-func (s *RoutineRunStore) ListRecent(ctx context.Context, limit int) ([]routine.Run, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT `+routineRunCols+` FROM routine_run ORDER BY created_at DESC LIMIT ?`, limit)
-	if err != nil {
-		return nil, fmt.Errorf("routine run store: list recent: %w", err)
-	}
-	defer rows.Close()
+// ListByRepo returns a repo's active (non-archived) runs, newest first.
+func (s *RoutineRunStore) ListByRepo(ctx context.Context, repoID string) ([]routine.Run, error) {
+	return s.queryRuns(ctx,
+		`SELECT `+routineRunCols+` FROM routine_run WHERE repo_id = ? AND archived = 0 ORDER BY created_at DESC`,
+		repoID)
+}
 
-	var out []routine.Run
-	for rows.Next() {
-		run, err := scanRoutineRun(rows)
-		if err != nil {
-			return nil, fmt.Errorf("routine run store: scan: %w", err)
-		}
-		out = append(out, run)
+// ListArchivedByRepo returns a repo's archived runs, newest first.
+func (s *RoutineRunStore) ListArchivedByRepo(ctx context.Context, repoID string) ([]routine.Run, error) {
+	return s.queryRuns(ctx,
+		`SELECT `+routineRunCols+` FROM routine_run WHERE repo_id = ? AND archived = 1 ORDER BY created_at DESC`,
+		repoID)
+}
+
+// ListRecent returns the most recent active (non-archived) runs across all repos,
+// newest first, capped at limit.
+func (s *RoutineRunStore) ListRecent(ctx context.Context, limit int) ([]routine.Run, error) {
+	return s.queryRuns(ctx,
+		`SELECT `+routineRunCols+` FROM routine_run WHERE archived = 0 ORDER BY created_at DESC LIMIT ?`,
+		limit)
+}
+
+// ListRecentArchived returns the most recent archived runs across all repos,
+// newest first, capped at limit.
+func (s *RoutineRunStore) ListRecentArchived(ctx context.Context, limit int) ([]routine.Run, error) {
+	return s.queryRuns(ctx,
+		`SELECT `+routineRunCols+` FROM routine_run WHERE archived = 1 ORDER BY created_at DESC LIMIT ?`,
+		limit)
+}
+
+// SetArchived flips only the archived flag, mapping a missing row to
+// ErrRunNotFound.
+func (s *RoutineRunStore) SetArchived(ctx context.Context, id string, archived bool) error {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE routine_run SET archived = ?, updated_at = ? WHERE id = ?`,
+		boolToInt(archived), formatTime(time.Now().UTC()), id)
+	if err != nil {
+		return fmt.Errorf("routine run store: set archived: %w", err)
 	}
-	return out, rows.Err()
+	if n, _ := res.RowsAffected(); n == 0 {
+		return routine.ErrRunNotFound
+	}
+	return nil
 }
 
 // Save persists the run's status, steps, state, last_error and updated_at. Params
@@ -213,13 +237,15 @@ func scanRoutineRun(sc scanner) (routine.Run, error) {
 		mrIID                            sql.NullInt64
 		paramsJSON, stateJSON, stepsJSON string
 		createdAt, updatedAt             string
+		archived                         int
 	)
 	if err := sc.Scan(&run.ID, &kind, &run.RepoID, &mrIID, &status,
-		&paramsJSON, &stateJSON, &stepsJSON, &run.LastError, &createdAt, &updatedAt); err != nil {
+		&paramsJSON, &stateJSON, &stepsJSON, &run.LastError, &createdAt, &updatedAt, &archived); err != nil {
 		return routine.Run{}, err
 	}
 	run.Kind = routine.Kind(kind)
 	run.Status = routine.RunStatus(status)
+	run.Archived = archived != 0
 	if mrIID.Valid {
 		run.MRIID = int(mrIID.Int64)
 	}

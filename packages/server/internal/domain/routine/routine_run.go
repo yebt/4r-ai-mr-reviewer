@@ -82,6 +82,8 @@ type Run struct {
 	LastError string
 	CreatedAt time.Time
 	UpdatedAt time.Time
+	// Archived soft-hides the run from the active list while keeping its history.
+	Archived bool
 }
 
 // ErrRunNotFound is returned when a routine run does not exist.
@@ -135,11 +137,19 @@ type RunStore interface {
 	Get(ctx context.Context, id string) (Run, error)
 	// Delete removes a run by id, or ErrRunNotFound if missing.
 	Delete(ctx context.Context, id string) error
-	// ListByRepo returns a repo's runs, newest first.
+	// ListByRepo returns a repo's active (non-archived) runs, newest first.
 	ListByRepo(ctx context.Context, repoID string) ([]Run, error)
-	// ListRecent returns the most recent runs across all repos, newest first,
-	// capped at limit.
+	// ListRecent returns the most recent active (non-archived) runs across all
+	// repos, newest first, capped at limit.
 	ListRecent(ctx context.Context, limit int) ([]Run, error)
+	// ListArchivedByRepo returns a repo's archived runs, newest first.
+	ListArchivedByRepo(ctx context.Context, repoID string) ([]Run, error)
+	// ListRecentArchived returns the most recent archived runs across all repos,
+	// newest first, capped at limit.
+	ListRecentArchived(ctx context.Context, limit int) ([]Run, error)
+	// SetArchived flips only the archived flag; ErrRunNotFound if the run is
+	// missing.
+	SetArchived(ctx context.Context, id string, archived bool) error
 	// Save persists status, steps, state, last_error and updated_at as a
 	// compare-and-set: it never overwrites a row whose persisted status is already
 	// terminal (cancelled or done). It returns ErrRunFinalized when the row is
