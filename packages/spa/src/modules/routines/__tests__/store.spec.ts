@@ -45,6 +45,7 @@ const run = (id: string, status: RoutineRunStatus = 'pending'): RoutineRun => ({
   lastError: '',
   createdAt: '',
   updatedAt: '',
+  archived: false,
 })
 
 describe('routines store', () => {

@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import type { ConfirmDecision, RoutineRun } from '@shared/api/types'
 import { isRunCancelable, runTitle, stepLabel, stepStatusUi } from '@modules/routines/format'
+import { confirm } from '@shared/composables/useConfirm'
 import RoutineStatusChip from '@modules/routines/components/RoutineStatusChip.vue'
 import RoutineBranchChip from '@modules/routines/components/RoutineBranchChip.vue'
 
@@ -40,6 +41,21 @@ const fixCount = computed(() => props.run.state.fixCount ?? 0)
 
 const awaiting = computed(() => props.run.status === 'awaiting_confirmation')
 
+// The merge/tag is the single most irreversible action in the product — it
+// mutates a real protected branch. Gate it behind the same danger confirm as
+// Delete/Cancel, and name the concrete target so the user authorizes what they
+// can actually see (not a generic "development or main").
+async function requestMerge() {
+  const target = props.run.targetBranch || 'its protected branch'
+  const tag = props.run.state.nextTag ?? 'the new tag'
+  const ok = await confirm({
+    title: 'Merge and release',
+    message: `Merge this merge request into ${target} and push ${tag}? This merges a protected branch on your real GitLab project and cannot be undone.`,
+    danger: true,
+  })
+  if (ok) emit('confirm', props.run.id, 'merge')
+}
+
 // Steps that can be skipped client-side; the server has the final say (409 for
 // essential steps). Skip is only offered on a blocked run whose failed step is
 // one of these non-critical steps.
@@ -64,7 +80,7 @@ const skippableFailedStep = computed(() => {
         <RoutineStatusChip :status="props.run.status" />
       </div>
       <div class="flex shrink-0 items-center gap-3">
-        <span v-if="props.run.state.nextTag" class="chip text-accent">
+        <span v-if="props.run.state.nextTag" class="chip text-ink">
           <span class="i-lucide-tag text-sm" aria-hidden="true" />
           next tag: {{ props.run.state.nextTag }}
         </span>
@@ -73,7 +89,7 @@ const skippableFailedStep = computed(() => {
         <button
           v-if="cancelable"
           type="button"
-          class="btn-ghost hover:text-danger"
+          class="btn-line text-xs hover:border-danger hover:text-danger"
           :disabled="props.cancelling"
           :aria-label="`Cancel ${runTitle(props.run)}`"
           @click="emit('cancel', props.run.id)"
@@ -83,13 +99,14 @@ const skippableFailedStep = computed(() => {
             class="text-sm"
             aria-hidden="true"
           />
+          Cancel
         </button>
         <!-- Delete is offered only for a run that is not running; the backend 409
              is a backstop. -->
         <button
           v-if="props.run.status !== 'running'"
           type="button"
-          class="btn-ghost hover:text-danger"
+          class="btn-ghost text-xs hover:text-danger"
           :disabled="props.deleting"
           :aria-label="`Delete ${runTitle(props.run)}`"
           @click="emit('delete', props.run.id)"
@@ -99,6 +116,7 @@ const skippableFailedStep = computed(() => {
             class="text-sm"
             aria-hidden="true"
           />
+          Delete
         </button>
       </div>
     </div>
@@ -118,7 +136,7 @@ const skippableFailedStep = computed(() => {
       </div>
       <div class="flex items-center justify-between gap-3">
         <dt class="label-mono">Next tag</dt>
-        <dd class="text-accent font-mono">{{ props.run.state.nextTag ?? '—' }}</dd>
+        <dd class="text-ink font-mono">{{ props.run.state.nextTag ?? '—' }}</dd>
       </div>
       <div class="flex items-center justify-between gap-3">
         <dt class="label-mono">Commits</dt>
@@ -153,15 +171,17 @@ const skippableFailedStep = computed(() => {
         <span class="text-muted"> · feat {{ featCount }}, fix {{ fixCount }}</span>
       </p>
       <p class="text-muted mb-3 text-xs">
-        Merging now merges the merge request into its protected branch
-        (development or main) and pushes the new tag. This cannot be undone.
+        Merging now merges this merge request into
+        <span class="text-ink font-mono">{{ props.run.targetBranch || 'its protected branch' }}</span>
+        and pushes <span class="text-ink font-mono">{{ props.run.state.nextTag ?? 'the new tag' }}</span>
+        on your real GitLab project. This cannot be undone.
       </p>
       <div class="flex flex-col gap-2 sm:flex-row">
         <button
           type="button"
           class="btn-danger-solid text-xs"
           :disabled="props.confirming != null"
-          @click="emit('confirm', props.run.id, 'merge')"
+          @click="requestMerge"
         >
           <span
             :class="props.confirming === 'merge' ? 'i-lucide-loader-circle animate-spin' : 'i-lucide-git-merge'"
@@ -188,7 +208,8 @@ const skippableFailedStep = computed(() => {
 
     <!-- Step ledger: one row per step, its state shown by icon + label. -->
     <ul>
-      <li v-for="step in props.run.steps" :key="step.name" class="row items-start">
+      <li v-for="(step, i) in props.run.steps" :key="step.name" class="row items-start">
+        <span class="label-mono mt-1 w-4 shrink-0 text-right" aria-hidden="true">{{ i + 1 }}</span>
         <span
           :class="[
             stepStatusUi[step.status].icon,
