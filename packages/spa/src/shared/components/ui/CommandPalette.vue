@@ -6,6 +6,7 @@ import { useReposStore } from '@modules/repos/store'
 import { useReviewsStore } from '@modules/reviews/store'
 import { statusLabel } from '@modules/reviews/format'
 import { useCommandPalette } from '@shared/composables/useCommandPalette'
+import { useFlowRepo } from '@shared/composables/useFlowRepo'
 
 // Global command palette (Cmd/Ctrl+K). Essential scope: navigate to any page and
 // jump straight to a loaded review or a tracked repo by typing. Built on the same
@@ -23,6 +24,8 @@ interface Command {
   hint: string
   icon: string
   to: string
+  // When set, activating this command loads the repo into the Flow workspace.
+  flowRepoId?: string
 }
 
 const PAGES: Array<{ label: string; to: string; icon: string }> = [
@@ -44,6 +47,7 @@ const repos = useReposStore()
 const reviews = useReviewsStore()
 
 const { open, toggle, hide } = useCommandPalette()
+const { repoId: flowRepo } = useFlowRepo()
 const query = ref('')
 const activeIndex = ref(0)
 const input = ref<HTMLInputElement | null>(null)
@@ -81,9 +85,10 @@ const commands = computed<Command[]>(() => {
     id: `repo:${r.id}`,
     group: 'Repos',
     label: r.name,
-    hint: 'Repository',
+    hint: 'Open in Flow',
     icon: 'i-lucide-folder-git-2',
-    to: `/repos/${r.id}`,
+    to: '/flow',
+    flowRepoId: r.id,
   }))
   return [...pages, ...revs, ...reps]
 })
@@ -130,6 +135,8 @@ function move(delta: number) {
 function activate(cmd: Command | undefined) {
   if (!cmd) return
   hide()
+  // A repo command loads that repo into the Flow workspace.
+  if (cmd.flowRepoId) flowRepo.value = cmd.flowRepoId
   if (router.currentRoute.value.fullPath !== cmd.to) void router.push(cmd.to)
 }
 

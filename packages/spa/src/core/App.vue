@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppSidebar from '@shared/components/layout/AppSidebar.vue'
 import AppBottomNav from '@shared/components/layout/AppBottomNav.vue'
@@ -29,6 +29,17 @@ router.beforeEach(() => {
   setBreadcrumbs([])
   return true
 })
+
+// A plain "back to where I came from" affordance, more reliable than breadcrumbs
+// when a view is reached from several places. Vue Router records the previous
+// entry in history.state.back; we show the button only when there is one.
+const canGoBack = ref(false)
+router.afterEach(() => {
+  canGoBack.value = window.history.state?.back != null
+})
+function goBack() {
+  router.back()
+}
 </script>
 
 <template>
@@ -61,7 +72,19 @@ router.beforeEach(() => {
               : ''
           "
         >
-          <Breadcrumbs :items="breadcrumbs.items" />
+          <div class="flex min-w-0 items-center gap-2">
+            <button
+              v-if="canGoBack"
+              type="button"
+              class="btn-ghost shrink-0 text-xs"
+              title="Back"
+              @click="goBack"
+            >
+              <span class="i-lucide-arrow-left text-sm" aria-hidden="true" />
+              Back
+            </button>
+            <Breadcrumbs :items="breadcrumbs.items" />
+          </div>
           <button
             v-if="breadcrumbs.pinnable"
             type="button"
