@@ -27,10 +27,55 @@ const form = reactive(blank())
 const submitting = ref(false)
 const error = ref<string | null>(null)
 const showAdvanced = ref(false)
+const showKey = ref(false)
 const modelDraft = ref('')
 
 const isEdit = computed(() => !!props.editing)
 const valid = computed(() => form.name.trim() && (isEdit.value || form.apiKey.trim()))
+
+// What's still needed to enable submit, shown beside the disabled button.
+const missing = computed(() => {
+  const m: string[] = []
+  if (!form.name.trim()) m.push('name')
+  if (!isEdit.value && !form.apiKey.trim()) m.push('API key')
+  return m
+})
+
+// --- Test connection ---
+const testing = ref(false)
+const testResult = ref<{ ok: boolean; error?: string } | null>(null)
+// The probe needs a concrete model; fall back to the first preset.
+const testModel = computed(() => form.model || form.models[0] || '')
+// Testable once there's a model and either a typed key (new) or a stored one (edit).
+const canTest = computed(() => !!testModel.value && (isEdit.value || !!form.apiKey.trim()))
+
+async function testConnection() {
+  if (!canTest.value || testing.value) return
+  testing.value = true
+  testResult.value = null
+  try {
+    testResult.value = await api.testProvider({
+      id: props.editing?.id,
+      kind: form.kind,
+      baseUrl: form.baseUrl,
+      model: testModel.value,
+      apiKey: form.apiKey,
+    })
+  } catch (e) {
+    testResult.value = { ok: false, error: errorMessage(e) }
+  } finally {
+    testing.value = false
+  }
+}
+
+// Any change to what would be probed invalidates a prior result, so a stale
+// "OK" can't linger after the user edits the key, model, base URL or kind.
+watch(
+  () => [form.apiKey, form.model, form.baseUrl, form.kind, form.models.length],
+  () => {
+    testResult.value = null
+  },
+)
 
 // Selected model presets, shown alphabetically (non-mutating copy).
 const sortedModels = computed(() => [...form.models].sort(byLower))
@@ -159,14 +204,19 @@ async function submit() {
 
 <template>
   <form class="flex flex-col gap-5" @submit.prevent="submit">
+    <div class="label-mono border-line/50 mb-1 border-b pb-2">Identity</div>
+
     <div>
-      <label class="field-label" for="pv-name">Name</label>
+      <label class="field-label" for="pv-name">
+        Name <span class="text-accent" aria-hidden="true">*</span>
+      </label>
       <input
         id="pv-name"
         v-model="form.name"
         class="field-underline"
         placeholder="groq"
         autocomplete="off"
+        aria-required="true"
       />
     </div>
 
@@ -180,12 +230,17 @@ async function submit() {
         <option value="gemini">gemini (Google Gemini)</option>
         <option value="openrouter">openrouter (browse models)</option>
       </select>
+      <p class="text-muted mt-1.5 text-xs">
+        The wire protocol your provider speaks. Most OpenAI-style APIs use openai-compat.
+      </p>
     </div>
 
+    <div class="label-mono border-line/50 mb-1 border-b pb-2">Connection</div>
+
     <div>
-      <label class="field-label" for="pv-url"
-        >Base URL <span class="text-muted/60 normal-case">— optional</span></label
-      >
+      <label class="field-label" for="pv-url">
+        Base URL <span class="text-muted normal-case">— optional</span>
+      </label>
       <input
         id="pv-url"
         v-model="form.baseUrl"
@@ -261,7 +316,7 @@ async function submit() {
           </button>
         </li>
       </ul>
-      <p class="text-muted/70 mt-2 text-xs">
+      <p class="text-muted mt-2 text-xs">
         Click a model to add it to the preset list. The first one you add fills the default model
         when it's empty.
       </p>
@@ -269,16 +324,39 @@ async function submit() {
 
     <div>
       <label class="field-label" for="pv-key">
-        API key <span v-if="isEdit" class="text-muted/60 normal-case">— leave blank to keep</span>
+        API key
+        <span v-if="!isEdit" class="text-accent" aria-hidden="true">*</span>
+        <span v-else class="text-muted normal-case">— leave blank to keep</span>
       </label>
-      <input
-        id="pv-key"
-        v-model="form.apiKey"
-        type="password"
-        class="field-underline"
-        :placeholder="isEdit ? '••••••••' : 'sk-… / gsk_…'"
-        autocomplete="off"
-      />
+      <div class="flex items-center gap-2">
+        <input
+          id="pv-key"
+          v-model="form.apiKey"
+          :type="showKey ? 'text' : 'password'"
+          class="field-underline"
+          :placeholder="isEdit ? '••••••••' : 'sk-… / gsk_…'"
+          autocomplete="off"
+          spellcheck="false"
+          :aria-required="!isEdit"
+        />
+        <button
+          type="button"
+          class="btn-ghost shrink-0"
+          :aria-label="showKey ? 'Hide API key' : 'Show API key'"
+          :aria-pressed="showKey"
+          @click="showKey = !showKey"
+        >
+          <span
+            :class="showKey ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+            class="text-sm"
+            aria-hidden="true"
+          />
+        </button>
+      </div>
+      <p class="text-muted mt-1.5 text-xs">
+        Encrypted at rest on your own instance and only ever sent to your chosen provider. For your
+        security it isn't shown again after saving.
+      </p>
     </div>
 
     <label
@@ -317,7 +395,7 @@ async function submit() {
             placeholder="model default"
             autocomplete="off"
           />
-          <p class="text-muted/70 mt-1.5 text-xs">
+          <p class="text-muted mt-1.5 text-xs">
             Some models reject any value other than their default — leave blank for those.
           </p>
         </div>
@@ -351,7 +429,7 @@ async function submit() {
               </button>
             </span>
           </div>
-          <p class="text-muted/70 mt-2 text-xs">
+          <p class="text-muted mt-2 text-xs">
             Pick from these (no typos) when configuring a repository.
           </p>
         </div>
@@ -360,12 +438,43 @@ async function submit() {
 
     <p v-if="error" class="text-danger text-sm">{{ error }}</p>
 
-    <div class="flex items-center gap-3">
+    <div class="flex flex-wrap items-center gap-3">
       <button type="submit" class="btn-accent" :disabled="!valid || submitting">
         <span v-if="submitting" class="i-lucide-loader-circle animate-spin" aria-hidden="true" />
         {{ submitting ? 'Saving' : isEdit ? 'Save changes' : 'Add provider' }}
       </button>
+      <button
+        type="button"
+        class="btn-line text-xs"
+        :disabled="!canTest || testing"
+        :title="canTest ? undefined : 'Enter an API key and a model first'"
+        @click="testConnection"
+      >
+        <span v-if="testing" class="i-lucide-loader-circle animate-spin text-sm" aria-hidden="true" />
+        <span v-else class="i-lucide-plug-zap text-sm" aria-hidden="true" />
+        Test connection
+      </button>
       <button v-if="isEdit" type="button" class="btn-ghost" @click="emit('done')">Cancel</button>
+      <p v-if="!valid && missing.length" class="text-muted w-full text-xs sm:w-auto">
+        Still needed: {{ missing.join(', ') }}.
+      </p>
     </div>
+    <p
+      v-if="testResult"
+      class="flex items-center gap-1.5 text-xs"
+      :class="testResult.ok ? 'text-ok' : 'text-danger'"
+      role="status"
+    >
+      <span
+        :class="testResult.ok ? 'i-lucide-circle-check-big' : 'i-lucide-circle-x'"
+        class="shrink-0 text-sm"
+        aria-hidden="true"
+      />
+      {{
+        testResult.ok
+          ? 'Connection OK — the provider answered.'
+          : `Connection failed: ${testResult.error}`
+      }}
+    </p>
   </form>
 </template>

@@ -20,9 +20,9 @@ const showForm = ref(false)
       </template>
     </PageHeader>
 
-    <AccountList />
+    <AccountList @add="showForm = true" />
 
-    <Modal :open="showForm" title="New account" @close="showForm = false">
+    <Modal :open="showForm" title="Add account" @close="showForm = false">
       <AccountForm @done="showForm = false" />
     </Modal>
   </div>

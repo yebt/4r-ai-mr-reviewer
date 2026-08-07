@@ -10,7 +10,7 @@ import ProfileList from '@modules/profiles/components/ProfileList.vue'
 const editing = ref<Profile | null>(null)
 const open = ref(false)
 
-const title = computed(() => (editing.value ? 'Edit profile' : 'New profile'))
+const title = computed(() => (editing.value ? 'Edit profile' : 'Add profile'))
 
 function add() {
   editing.value = null
@@ -37,7 +37,7 @@ function close() {
       </template>
     </PageHeader>
 
-    <ProfileList @edit="edit" />
+    <ProfileList @edit="edit" @add="add" />
 
     <Modal :open="open" :title="title" @close="close">
       <ProfileForm :editing="editing" @done="close" />

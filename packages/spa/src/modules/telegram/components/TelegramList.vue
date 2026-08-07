@@ -7,7 +7,7 @@ import EmptyState from '@shared/components/ui/EmptyState.vue'
 import type { TelegramTarget } from '@shared/api/types'
 import { useTelegramStore } from '@modules/telegram/store'
 
-const emit = defineEmits<{ edit: [TelegramTarget] }>()
+const emit = defineEmits<{ edit: [TelegramTarget]; add: [] }>()
 
 const store = useTelegramStore()
 const busyId = ref<string | null>(null)
@@ -68,7 +68,9 @@ onMounted(() => {
 
 <template>
   <div>
-    <div class="label-mono mb-3">{{ store.items.length }} target(s)</div>
+    <div class="label-mono mb-3">
+      {{ store.items.length }} {{ store.items.length === 1 ? 'target' : 'targets' }}
+    </div>
 
     <p v-if="store.loading" class="text-muted py-3 text-sm">Loading…</p>
     <p v-else-if="store.error" class="text-danger py-3 text-sm">{{ store.error }}</p>
@@ -77,15 +79,22 @@ onMounted(() => {
       icon="i-lucide-send"
       title="No Telegram targets yet"
       hint="Add a target to receive review notifications on Telegram."
-    />
+    >
+      <template #action>
+        <button class="btn-accent text-xs" @click="emit('add')">
+          <span class="i-lucide-plus text-sm" aria-hidden="true" />
+          Add your first target
+        </button>
+      </template>
+    </EmptyState>
 
     <ul v-else class="border-line/50 border-t">
       <li v-for="t in store.items" :key="t.id" class="row flex-wrap justify-between gap-y-2">
         <div class="min-w-0">
           <div class="flex items-center gap-2">
             <span class="text-ink truncate text-sm">{{ t.name }}</span>
-            <span v-if="t.isDefault" class="chip text-accent">default</span>
-            <span v-if="t.isBot" class="chip text-accent">bot</span>
+            <span v-if="t.isDefault" class="chip text-ok">default</span>
+            <span v-if="t.isBot" class="chip text-muted">bot</span>
           </div>
           <div class="text-muted truncate font-mono text-xs">
             {{ t.chatId }}<template v-if="t.threadId"> · thread {{ t.threadId }}</template>

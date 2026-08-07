@@ -10,7 +10,7 @@ import ProviderList from '@modules/providers/components/ProviderList.vue'
 const editing = ref<Provider | null>(null)
 const open = ref(false)
 
-const title = computed(() => (editing.value ? 'Edit provider' : 'New provider'))
+const title = computed(() => (editing.value ? 'Edit provider' : 'Add provider'))
 
 function add() {
   editing.value = null

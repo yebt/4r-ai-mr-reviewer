@@ -7,7 +7,7 @@ import EmptyState from '@shared/components/ui/EmptyState.vue'
 import type { Provider } from '@shared/api/types'
 import { useProvidersStore } from '@modules/providers/store'
 
-const emit = defineEmits<{ edit: [provider: Provider] }>()
+const emit = defineEmits<{ edit: [provider: Provider]; add: [] }>()
 
 const store = useProvidersStore()
 const busyId = ref<string | null>(null)
@@ -46,7 +46,9 @@ onMounted(() => {
 
 <template>
   <div>
-    <div class="label-mono mb-3">{{ store.items.length }} provider(s)</div>
+    <div class="label-mono mb-3">
+      {{ store.items.length }} {{ store.items.length === 1 ? 'provider' : 'providers' }}
+    </div>
 
     <p v-if="store.loading" class="text-muted py-3 text-sm">Loading…</p>
     <p v-else-if="store.error" class="text-danger py-3 text-sm">{{ store.error }}</p>
@@ -54,8 +56,15 @@ onMounted(() => {
       v-else-if="store.items.length === 0"
       icon="i-lucide-cpu"
       title="No providers yet"
-      hint="Add an AI provider to run reviews."
-    />
+      hint="An AI provider is the model account (OpenAI, Groq, Claude…) 4R sends your diffs to. You need one to run reviews."
+    >
+      <template #action>
+        <button class="btn-accent text-xs" @click="emit('add')">
+          <span class="i-lucide-plus text-sm" aria-hidden="true" />
+          Add your first provider
+        </button>
+      </template>
+    </EmptyState>
 
     <ul v-else class="border-line/50 border-t">
       <li v-for="p in store.items" :key="p.id" class="row justify-between">

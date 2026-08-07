@@ -8,7 +8,7 @@ import EmptyState from '@shared/components/ui/EmptyState.vue'
 import type { Profile } from '@shared/api/types'
 import { useProfilesStore } from '@modules/profiles/store'
 
-const emit = defineEmits<{ edit: [profile: Profile] }>()
+const emit = defineEmits<{ edit: [profile: Profile]; add: [] }>()
 
 const store = useProfilesStore()
 const busyId = ref<string | null>(null)
@@ -86,7 +86,9 @@ onUnmounted(pause)
 
 <template>
   <div>
-    <div class="label-mono mb-3">{{ store.items.length }} profile(s)</div>
+    <div class="label-mono mb-3">
+      {{ store.items.length }} {{ store.items.length === 1 ? 'profile' : 'profiles' }}
+    </div>
 
     <p v-if="store.loading" class="text-muted py-3 text-sm">Loading…</p>
     <p v-else-if="store.error" class="text-danger py-3 text-sm">{{ store.error }}</p>
@@ -94,8 +96,15 @@ onUnmounted(pause)
       v-else-if="store.items.length === 0"
       icon="i-lucide-feather"
       title="No profiles yet"
-      hint="Capture your writing voice to humanize reviews."
-    />
+      hint="A profile captures your writing voice so Humanize can rewrite findings in your tone."
+    >
+      <template #action>
+        <button class="btn-accent text-xs" @click="emit('add')">
+          <span class="i-lucide-plus text-sm" aria-hidden="true" />
+          Add your first profile
+        </button>
+      </template>
+    </EmptyState>
 
     <ul v-else class="border-line/50 border-t">
       <li v-for="p in store.items" :key="p.id" class="border-line/50 border-b py-3">
@@ -167,7 +176,7 @@ onUnmounted(pause)
             {{ p.styleGuideError || 'distillation failed' }}
           </div>
 
-          <div v-else class="text-muted/70 font-mono text-xs">no samples</div>
+          <div v-else class="text-muted font-mono text-xs">no samples</div>
         </div>
       </li>
     </ul>

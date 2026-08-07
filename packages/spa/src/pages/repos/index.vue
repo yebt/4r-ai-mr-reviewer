@@ -10,7 +10,7 @@ import RepoList from '@modules/repos/components/RepoList.vue'
 const editing = ref<Repo | null>(null)
 const open = ref(false)
 
-const title = computed(() => (editing.value ? 'Reassign provider' : 'New repository'))
+const title = computed(() => (editing.value ? 'Reassign provider' : 'Track repository'))
 
 function add() {
   editing.value = null
@@ -37,7 +37,7 @@ function close() {
       </template>
     </PageHeader>
 
-    <RepoList @edit="edit" />
+    <RepoList @edit="edit" @add="add" />
 
     <Modal :open="open" :title="title" @close="close">
       <RepoForm :editing="editing" @done="close" />

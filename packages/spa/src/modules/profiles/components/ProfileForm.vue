@@ -107,19 +107,22 @@ async function submit() {
 <template>
   <form class="flex flex-col gap-5" @submit.prevent="submit">
     <div>
-      <label class="field-label" for="pf-name">Name</label>
+      <label class="field-label" for="pf-name">
+        Name <span class="text-accent" aria-hidden="true">*</span>
+      </label>
       <input
         id="pf-name"
         v-model="form.name"
         class="field-underline"
         placeholder="my voice"
         autocomplete="off"
+        aria-required="true"
       />
     </div>
 
     <div>
       <label class="field-label" for="pf-language"
-        >Language <span class="text-muted/60 normal-case">— optional</span></label
+        >Language <span class="text-muted normal-case">— optional</span></label
       >
       <input
         id="pf-language"
@@ -132,7 +135,7 @@ async function submit() {
 
     <div>
       <label class="field-label" for="pf-formality"
-        >Formality <span class="text-muted/60 normal-case">— optional</span></label
+        >Formality <span class="text-muted normal-case">— optional</span></label
       >
       <input
         id="pf-formality"
@@ -155,7 +158,7 @@ async function submit() {
           <button
             type="button"
             class="btn px-3 py-1 text-xs"
-            :class="mode === 'guided' ? 'bg-accent text-accent-ink' : 'border border-line text-muted hover:text-ink'"
+            :class="mode === 'guided' ? 'border border-accent bg-accent/10 text-ink' : 'border border-line text-muted hover:text-ink'"
             :aria-pressed="mode === 'guided'"
             @click="mode = 'guided'"
           >
@@ -164,7 +167,7 @@ async function submit() {
           <button
             type="button"
             class="btn px-3 py-1 text-xs"
-            :class="mode === 'paste' ? 'bg-accent text-accent-ink' : 'border border-line text-muted hover:text-ink'"
+            :class="mode === 'paste' ? 'border border-accent bg-accent/10 text-ink' : 'border border-line text-muted hover:text-ink'"
             :aria-pressed="mode === 'paste'"
             @click="mode = 'paste'"
           >
@@ -175,7 +178,7 @@ async function submit() {
 
       <!-- Guided: each answered scenario becomes one sample, in order. -->
       <div v-if="mode === 'guided'" class="flex flex-col gap-4">
-        <p class="text-muted/70 text-xs">
+        <p class="text-muted text-xs">
           Answer a few in your own voice — each answer becomes one writing sample. Skip any that
           don't fit.
         </p>
@@ -194,7 +197,7 @@ async function submit() {
       <div v-else>
         <label class="field-label" for="pf-samples">
           Snippets
-          <span class="text-muted/60 normal-case">— separate snippets with a blank line</span>
+          <span class="text-muted normal-case">— separate snippets with a blank line</span>
         </label>
         <textarea
           id="pf-samples"
@@ -204,19 +207,20 @@ async function submit() {
         />
       </div>
 
-      <p class="text-muted/70 text-xs">
+      <p class="text-muted text-xs">
         Saving with samples starts distillation — the style guide appears in the list when ready.
       </p>
     </div>
 
     <p v-if="error" class="text-danger text-sm">{{ error }}</p>
 
-    <div class="flex items-center gap-3">
+    <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
       <button type="submit" class="btn-accent" :disabled="!valid || submitting">
         <span v-if="submitting" class="i-lucide-loader-circle animate-spin" aria-hidden="true" />
         {{ submitting ? 'Saving' : isEdit ? 'Save changes' : 'Add profile' }}
       </button>
       <button v-if="isEdit" type="button" class="btn-ghost" @click="emit('done')">Cancel</button>
+      <p v-if="!valid" class="text-muted w-full text-xs sm:w-auto">Still needed: name.</p>
     </div>
   </form>
 </template>

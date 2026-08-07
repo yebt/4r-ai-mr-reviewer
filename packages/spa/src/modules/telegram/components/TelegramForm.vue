@@ -83,6 +83,14 @@ function useThread(chat: ResolvedChat, thread: ResolvedThread) {
 const valid = computed(
   () => form.name.trim() && form.chatId.trim() && (isEdit.value || form.botToken.trim()),
 )
+const showBotToken = ref(false)
+const missing = computed(() => {
+  const m: string[] = []
+  if (!form.name.trim()) m.push('name')
+  if (!isEdit.value && !form.botToken.trim()) m.push('bot token')
+  if (!form.chatId.trim()) m.push('chat ID')
+  return m
+})
 
 async function submit() {
   if (!valid.value || submitting.value) return
@@ -122,31 +130,50 @@ async function submit() {
 <template>
   <form class="flex flex-col gap-5" @submit.prevent="submit">
     <div>
-      <label class="field-label" for="tg-name">Name</label>
+      <label class="field-label" for="tg-name">
+        Name <span class="text-accent" aria-hidden="true">*</span>
+      </label>
       <input
         id="tg-name"
         v-model="form.name"
         class="field-underline"
         placeholder="team-channel"
         autocomplete="off"
+        aria-required="true"
       />
     </div>
 
     <div>
       <label class="field-label" for="tg-token">
         Bot token
-        <span v-if="isEdit" class="text-muted/60 normal-case">— leave blank to keep current token</span>
+        <span v-if="!isEdit" class="text-accent" aria-hidden="true">*</span>
+        <span v-else class="text-muted normal-case">— leave blank to keep current token</span>
       </label>
       <div class="flex flex-wrap items-end gap-2 sm:flex-nowrap">
-        <div class="min-w-0 flex-1">
+        <div class="flex min-w-0 flex-1 items-center gap-2">
           <input
             id="tg-token"
             v-model="form.botToken"
-            type="password"
+            :type="showBotToken ? 'text' : 'password'"
             class="field-underline"
             :placeholder="isEdit ? '••••••••' : '123456:ABC-…'"
             autocomplete="off"
+            spellcheck="false"
+            :aria-required="!isEdit"
           />
+          <button
+            type="button"
+            class="btn-ghost shrink-0"
+            :aria-label="showBotToken ? 'Hide token' : 'Show token'"
+            :aria-pressed="showBotToken"
+            @click="showBotToken = !showBotToken"
+          >
+            <span
+              :class="showBotToken ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+              class="text-sm"
+              aria-hidden="true"
+            />
+          </button>
         </div>
         <button
           type="button"
@@ -158,6 +185,10 @@ async function submit() {
           Resolve
         </button>
       </div>
+      <p class="text-muted mt-1.5 text-xs">
+        From @BotFather. Encrypted at rest on your instance; only ever sent to Telegram. Not shown
+        again after saving.
+      </p>
 
       <div v-if="resolved !== null" class="border-line/50 mt-3 border-t pt-3">
         <p v-if="resolving" class="text-muted text-sm">Resolving…</p>
@@ -202,19 +233,22 @@ async function submit() {
     </div>
 
     <div>
-      <label class="field-label" for="tg-chat">Chat ID</label>
+      <label class="field-label" for="tg-chat">
+        Chat ID <span class="text-accent" aria-hidden="true">*</span>
+      </label>
       <input
         id="tg-chat"
         v-model="form.chatId"
         class="field-underline"
         placeholder="-1001234567890"
         autocomplete="off"
+        aria-required="true"
       />
     </div>
 
     <div>
       <label class="field-label" for="tg-thread">
-        Thread ID <span class="text-muted/60 normal-case">— optional</span>
+        Thread ID <span class="text-muted normal-case">— optional</span>
       </label>
       <input
         id="tg-thread"
@@ -238,6 +272,9 @@ async function submit() {
         {{ submitting ? 'Saving' : isEdit ? 'Save changes' : 'Add target' }}
       </button>
       <button v-if="isEdit" type="button" class="btn-ghost" @click="emit('done')">Cancel</button>
+      <p v-if="!valid && missing.length" class="text-muted w-full text-xs sm:w-auto">
+        Still needed: {{ missing.join(', ') }}.
+      </p>
     </div>
   </form>
 </template>

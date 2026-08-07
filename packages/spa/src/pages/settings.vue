@@ -113,12 +113,12 @@ onMounted(() => {
 
 <template>
   <div>
-    <PageHeader title="Settings" label="Configuration" />
+    <PageHeader title="Notifications" label="Settings" />
 
     <section>
-      <h2 class="section-title mb-1">Notifications</h2>
-      <p class="text-muted mb-5 text-sm">
-        Assign an event to a Telegram target to get notified when it happens.
+      <p class="text-muted mb-5 max-w-2xl text-sm">
+        Route an event to a Telegram target to get notified when it happens. Provider keys, GitLab
+        accounts and other configuration each live on their own page.
       </p>
 
       <!-- Add rule -->
@@ -131,21 +131,27 @@ onMounted(() => {
       />
       <div v-else-if="hasTargets" class="mb-6 flex flex-wrap items-end gap-3">
         <div class="min-w-40 flex-1">
-          <label class="field-label" for="nt-event">Event</label>
+          <label class="field-label" for="nt-event">
+            Event <span class="text-accent" aria-hidden="true">*</span>
+          </label>
           <select id="nt-event" v-model="newEvent" class="field-underline">
             <option value="" disabled>Select an event…</option>
             <option v-for="ev in store.events" :key="ev" :value="ev">{{ eventLabel(ev) }}</option>
           </select>
         </div>
         <div class="min-w-40 flex-1">
-          <label class="field-label" for="nt-target">Telegram target</label>
+          <label class="field-label" for="nt-target">
+            Telegram target <span class="text-accent" aria-hidden="true">*</span>
+          </label>
           <select id="nt-target" v-model="newTarget" class="field-underline">
             <option value="" disabled>Select a target…</option>
             <option v-for="t in telegram.items" :key="t.id" :value="t.id">{{ t.name }}</option>
           </select>
         </div>
         <div class="min-w-40 flex-1">
-          <label class="field-label" for="nt-repo">Scope</label>
+          <label class="field-label" for="nt-repo">
+            Scope <span class="text-muted normal-case">— optional</span>
+          </label>
           <select id="nt-repo" v-model="newRepo" class="field-underline">
             <option value="">All repositories</option>
             <option v-for="r in repos.items" :key="r.id" :value="r.id">{{ r.name }}</option>
@@ -192,7 +198,7 @@ onMounted(() => {
               @click="toggle(rule)"
             >
               <span
-                :class="rule.enabled ? 'i-lucide-toggle-right text-accent' : 'i-lucide-toggle-left'"
+                :class="rule.enabled ? 'i-lucide-toggle-right text-ok' : 'i-lucide-toggle-left'"
                 class="text-base"
                 aria-hidden="true"
               />
