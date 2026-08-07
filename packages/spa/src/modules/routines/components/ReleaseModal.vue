@@ -33,10 +33,42 @@ const mergeWhenPipelineSucceeds = ref(true)
 // Main flow only. Empty means "use the backend default" (development → main).
 const sourceBranch = ref('')
 const targetBranch = ref('')
-// GitLab emoji NAMES (not unicode), comma-separated. Parsed on submit into a
-// string[]; left/parsed empty means "use the backend default".
-const DEFAULT_EMOJIS = 'thumbsup, seedling'
-const emojiInput = ref(DEFAULT_EMOJIS)
+// Reaction emojis posted on the released MR. GitLab uses award-emoji NAMES (not
+// unicode), so a curated quick-pick set shows the glyph for recognition while
+// storing the name; a small input adds any name not on the list. Empty selection
+// means "use the backend default".
+const EMOJI_CHOICES: { name: string; glyph: string }[] = [
+  { name: 'thumbsup', glyph: '👍' },
+  { name: 'seedling', glyph: '🌱' },
+  { name: 'rocket', glyph: '🚀' },
+  { name: 'tada', glyph: '🎉' },
+  { name: 'fire', glyph: '🔥' },
+  { name: 'white_check_mark', glyph: '✅' },
+  { name: 'eyes', glyph: '👀' },
+  { name: 'heart', glyph: '❤️' },
+  { name: 'sparkles', glyph: '✨' },
+  { name: 'raised_hands', glyph: '🙌' },
+]
+const DEFAULT_EMOJIS = ['thumbsup', 'seedling']
+const selectedEmojis = ref<Set<string>>(new Set(DEFAULT_EMOJIS))
+const customEmoji = ref('')
+function toggleEmoji(name: string) {
+  const next = new Set(selectedEmojis.value)
+  if (next.has(name)) next.delete(name)
+  else next.add(name)
+  selectedEmojis.value = next
+}
+function addCustomEmoji() {
+  const name = customEmoji.value.trim().replace(/^:|:$/g, '')
+  if (name && !selectedEmojis.value.has(name)) {
+    selectedEmojis.value = new Set([...selectedEmojis.value, name])
+  }
+  customEmoji.value = ''
+}
+// Custom (non-curated) names the user added, so they render as removable chips too.
+const customSelected = computed(() =>
+  [...selectedEmojis.value].filter((n) => !EMOJI_CHOICES.some((c) => c.name === n)),
+)
 
 // What each bump produces, so the resulting tag never surprises. Kept in sync
 // with the backend version calculator (NextRelease): major resets to
@@ -94,13 +126,6 @@ watchDebounced(
   { debounce: 350, immediate: true },
 )
 
-function parseEmojis(raw: string): string[] {
-  return raw
-    .split(',')
-    .map((name) => name.trim())
-    .filter((name) => name.length > 0)
-}
-
 // Reset to per-flow defaults every time the modal opens so a previous edit never
 // leaks into the next run. The main flow defaults mergeWhenPipelineSucceeds off.
 watch(
@@ -112,13 +137,14 @@ watch(
     mergeWhenPipelineSucceeds.value = props.flow === 'dev'
     sourceBranch.value = ''
     targetBranch.value = ''
-    emojiInput.value = DEFAULT_EMOJIS
+    selectedEmojis.value = new Set(DEFAULT_EMOJIS)
+    customEmoji.value = ''
   },
   { immediate: true },
 )
 
 function onSubmit() {
-  const emojis = parseEmojis(emojiInput.value)
+  const emojis = [...selectedEmojis.value]
   if (props.flow === 'main') {
     emit('submit', {
       flow: 'main',
@@ -181,20 +207,28 @@ function onSubmit() {
 
       <!-- Live tag preview: the exact tag this release will create. -->
       <div class="border-line bg-surface/40 border-l-2 px-3 py-2.5" aria-live="polite">
-        <div class="label-mono mb-1">Next tag</div>
-        <div v-if="previewLoading && !preview" class="text-muted flex items-center gap-2 text-sm">
-          <span class="i-lucide-loader-circle animate-spin text-sm" aria-hidden="true" />
-          Computing…
+        <div class="label-mono mb-1 flex items-center gap-1.5">
+          Next tag
+          <!-- Spinner while recomputing after a bump/branch change. -->
+          <span
+            v-if="previewLoading"
+            class="i-lucide-loader-circle text-muted animate-spin text-xs"
+            aria-hidden="true"
+          />
         </div>
+        <div v-if="previewLoading && !preview" class="text-muted text-sm">Computing…</div>
         <div v-else-if="previewError" class="text-warn text-xs">
           Couldn't preview the tag ({{ previewError }}). It's still computed and shown for approval
           at the confirmation gate.
         </div>
         <template v-else-if="preview">
-          <div class="text-ink font-mono text-lg font-semibold">{{ preview.nextTag }}</div>
-          <div class="text-muted mt-0.5 text-xs">
-            from <span class="font-mono">{{ preview.lastTag || 'no previous tag' }}</span> ·
-            {{ preview.featCount }} feat, {{ preview.fixCount }} fix
+          <!-- Dim the value while a recompute is in flight so the spinner reads. -->
+          <div class="transition-opacity" :class="previewLoading ? 'opacity-40' : ''">
+            <div class="text-ink font-mono text-lg font-semibold">{{ preview.nextTag }}</div>
+            <div class="text-muted mt-0.5 text-xs">
+              from <span class="font-mono">{{ preview.lastTag || 'no previous tag' }}</span> ·
+              {{ preview.featCount }} feat, {{ preview.fixCount }} fix
+            </div>
           </div>
         </template>
         <div v-else class="text-muted text-xs">
@@ -212,13 +246,44 @@ function onSubmit() {
 
       <label class="block">
         <span class="field-label">Reaction emojis</span>
+        <div class="mt-1.5 flex flex-wrap gap-1.5">
+          <button
+            v-for="e in EMOJI_CHOICES"
+            :key="e.name"
+            type="button"
+            class="inline-flex items-center gap-1.5 border px-2 py-1 text-xs transition-colors"
+            :class="
+              selectedEmojis.has(e.name)
+                ? 'border-accent bg-accent/10 text-ink'
+                : 'border-line text-muted hover:text-ink'
+            "
+            :aria-pressed="selectedEmojis.has(e.name)"
+            @click="toggleEmoji(e.name)"
+          >
+            <span aria-hidden="true">{{ e.glyph }}</span>
+            <span class="font-mono">{{ e.name }}</span>
+          </button>
+          <!-- Custom names the user typed -->
+          <button
+            v-for="name in customSelected"
+            :key="name"
+            type="button"
+            class="border-accent bg-accent/10 text-ink inline-flex items-center gap-1.5 border px-2 py-1 font-mono text-xs"
+            :aria-label="`Remove ${name}`"
+            @click="toggleEmoji(name)"
+          >
+            {{ name }}
+            <span class="i-lucide-x text-xs" aria-hidden="true" />
+          </button>
+        </div>
         <input
-          v-model="emojiInput"
+          v-model="customEmoji"
           type="text"
-          class="field-underline"
-          placeholder="thumbsup, seedling"
+          class="field-underline mt-2"
+          placeholder="add another emoji name…"
+          autocomplete="off"
+          @keydown.enter.prevent="addCustomEmoji"
         />
-        <span class="text-muted mt-1 block text-xs">GitLab emoji names, comma-separated</span>
       </label>
 
       <template v-if="flow === 'main'">
