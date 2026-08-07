@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { useIntervalFn } from '@vueuse/core'
 import { useRoutinesStore } from '@modules/routines/store'
-import { isRunActive, runTitle } from '@modules/routines/format'
+import { isRunActive, isRunTracked, runTitle } from '@modules/routines/format'
 import { useReviewsStore } from '@modules/reviews/store'
 import { isTerminal } from '@modules/reviews/format'
 
@@ -25,10 +25,13 @@ export const useActivityStore = defineStore('activity', () => {
   const routines = useRoutinesStore()
   const reviews = useReviewsStore()
 
-  // Active routine runs (pending/running) mapped to sheet rows.
+  // Routine runs the sheet tracks: every non-terminal run, INCLUDING the resting
+  // user-gated states (blocked, awaiting_confirmation). Those are exactly when
+  // the user must find the run and act, so they must stay visible — the poller
+  // (below) is what pauses for them, not the sheet.
   const activeRuns = computed<ActiveOp[]>(() =>
     routines.recentRuns
-      .filter((run) => isRunActive(run.status))
+      .filter((run) => isRunTracked(run.status))
       .map((run) => ({
         kind: 'action',
         id: run.id,
@@ -57,6 +60,25 @@ export const useActivityStore = defineStore('activity', () => {
   const activeOps = computed<ActiveOp[]>(() => [...activeRuns.value, ...activeReviews.value])
   const count = computed(() => activeOps.value.length)
 
+  // Ops that will progress on their own, so the 3s poller has a reason to run.
+  // The resting, user-gated states (routine blocked/awaiting_confirmation, review
+  // awaiting_approval) are still tracked and shown above, but they will not change
+  // until the user acts — so they must NOT keep the poller awake.
+  const pollableCount = computed(
+    () =>
+      routines.recentRuns.filter((run) => isRunActive(run.status)).length +
+      reviews.allReviews.filter((rv) => rv.status === 'pending' || rv.status === 'running').length,
+  )
+
+  // True while any tracked op is parked on a user gate. Used to re-reveal the
+  // sheet the moment an op starts needing the user, even if the tracked count did
+  // not grow (e.g. a running run pausing on its confirm gate).
+  const needsAttention = computed(() =>
+    routines.recentRuns.some(
+      (run) => run.status === 'blocked' || run.status === 'awaiting_confirmation',
+    ),
+  )
+
   // Dismissed hides the sheet until either the user re-opens it or a new op
   // arrives (see the watcher below), matching the Drive-style "come back when
   // something new happens" behaviour.
@@ -72,6 +94,12 @@ export const useActivityStore = defineStore('activity', () => {
   // flag so the sheet comes back on its own.
   watch(count, (next, prev) => {
     if (next > prev) dismissed.value = false
+  })
+
+  // Also re-reveal when an op transitions into a user-gated state, so a run that
+  // pauses for confirmation resurfaces even if the sheet was dismissed.
+  watch(needsAttention, (next, prev) => {
+    if (next && !prev) dismissed.value = false
   })
 
   // refresh re-pulls the global sources backing activeOps. Routines expose a
@@ -91,7 +119,7 @@ export const useActivityStore = defineStore('activity', () => {
   // something to watch. `start()`/`stop()` are the lifecycle hooks App.vue calls.
   const { pause, resume: resumePoll, isActive } = useIntervalFn(
     async () => {
-      if (count.value === 0) {
+      if (pollableCount.value === 0) {
         pause()
         return
       }
@@ -102,12 +130,12 @@ export const useActivityStore = defineStore('activity', () => {
   )
 
   function poll() {
-    if (!isActive.value && count.value > 0) resumePoll()
+    if (!isActive.value && pollableCount.value > 0) resumePoll()
   }
 
-  // Any newly-active op (re)starts the poller; it self-pauses when it next sees
-  // an empty active set.
-  watch(count, () => poll())
+  // Any newly self-progressing op (re)starts the poller; it self-pauses when it
+  // next sees nothing left that can progress on its own.
+  watch(pollableCount, () => poll())
 
   function start() {
     poll()
