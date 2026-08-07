@@ -550,6 +550,13 @@ async function runPreflight() {
               </button>
             </div>
 
+            <!-- When disabled there's no URL/secret yet; say so instead of leaving
+                 a blank section that reads as "webhook config missing". -->
+            <p v-if="!repo.webhookEnabled" class="text-muted text-xs">
+              Enable the webhook to get the URL and secret token to paste into GitLab → Settings →
+              Webhooks.
+            </p>
+
             <template v-if="repo.webhookEnabled">
               <div class="row justify-between">
                 <div class="min-w-0">
