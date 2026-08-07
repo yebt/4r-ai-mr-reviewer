@@ -44,3 +44,4 @@ __screenshots__/
 /blob-report/
 /playwright/.cache/
 /playwright/.auth/
+e2e/shots/
