@@ -117,6 +117,10 @@ type Service struct {
 	// in-flight step or poll unwinds via ctx.Done().
 	mu      sync.Mutex
 	cancels map[string]context.CancelFunc // runID -> cancel of the executing run's ctx
+	// createMu serializes the check-then-act duplicate guard when creating a main
+	// release run (which has no MR IID to dedupe on and must scan existing runs).
+	// It closes the race where two concurrent HTTP creations both pass the scan.
+	createMu sync.Mutex
 }
 
 // NewService wires the routines service. A nil logger defaults to the standard
@@ -673,10 +677,12 @@ func (s *Service) CreateMainRelease(ctx context.Context, in MainReleaseInput) (r
 	// Reject a duplicate active MAIN run for the same repo+target branch. The main
 	// flow has no MR at creation, so dedupe on flow+targetBranch rather than MR IID.
 	//
-	// TODO: this scan is check-then-act — two HTTP creations racing here could both
-	// pass the check and create two runs. The single worker limits the blast radius
-	// to two sequential releases (never a concurrent double-merge), so no store-level
-	// uniqueness constraint is added now.
+	// The scan is check-then-act, so createMu serializes it with the Create below:
+	// two concurrent HTTP creations can no longer both pass the scan and create two
+	// runs for the same repo+target branch.
+	s.createMu.Lock()
+	defer s.createMu.Unlock()
+
 	runs, err := s.runs.ListByRepo(ctx, in.RepoID)
 	if err != nil {
 		return routine.Run{}, err

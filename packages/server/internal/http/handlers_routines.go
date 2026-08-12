@@ -168,6 +168,10 @@ func (s *Server) confirmRoutine(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getRoutine(w http.ResponseWriter, r *http.Request) {
 	run, err := s.routines.Get(r.Context(), r.PathValue("id"))
 	if err != nil {
+		if errors.Is(err, routine.ErrRunNotFound) {
+			writeErr(w, err, http.StatusNotFound)
+			return
+		}
 		writeErr(w, err, http.StatusInternalServerError)
 		return
 	}

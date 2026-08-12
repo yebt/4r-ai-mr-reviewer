@@ -90,15 +90,23 @@ func (s DeepStrategy) Build(ctx context.Context, t Target) (engine.Input, func()
 	var b strings.Builder
 	b.WriteString(renderDiff(ch))
 	b.WriteString("\n\n=== Full content of changed files ===\n")
+	var omitted []string
 	for _, f := range ch.Files {
 		if f.DeletedFile || f.NewPath == "" {
 			continue
 		}
 		content, err := os.ReadFile(filepath.Join(checkout, f.NewPath))
 		if err != nil {
-			continue // file may be absent (e.g. binary or moved); skip quietly
+			// File is not readable from the checkout (e.g. binary or moved); record
+			// it so the model is told its full content is unavailable rather than
+			// silently reasoning over a diff whose file it cannot see in full.
+			omitted = append(omitted, f.NewPath)
+			continue
 		}
 		fmt.Fprintf(&b, "\n--- %s ---\n%s\n", f.NewPath, content)
+	}
+	if len(omitted) > 0 {
+		fmt.Fprintf(&b, "\n=== Files changed but full content unavailable (binary, moved, or unreadable) ===\n%s\n", strings.Join(omitted, "\n"))
 	}
 
 	return engine.Input{
