@@ -21,7 +21,10 @@ type Repo struct {
 	AccountID  string
 	ProviderID string // "" means use the default provider
 	Model      string // "" means use the provider's default model
-	CreatedAt  time.Time
+	// DefaultProfileID is the reviewer voice profile pre-selected when humanizing
+	// this repo's reviews. "" means no default (the user picks a profile ad hoc).
+	DefaultProfileID string
+	CreatedAt        time.Time
 	// WebhookSecret gates the per-repo GitLab webhook (compared against the
 	// X-Gitlab-Token header). Empty means no secret has been generated yet.
 	WebhookSecret string

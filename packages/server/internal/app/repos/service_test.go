@@ -96,7 +96,7 @@ func TestAssignProviderAndClear(t *testing.T) {
 	f := newFixture(t)
 	r, _ := f.svc.Add(ctx, AddInput{Name: "web", URL: "u", AccountID: f.accountID})
 
-	assigned, err := f.svc.Assign(ctx, r.ID, f.providerID, "gpt-4")
+	assigned, err := f.svc.Assign(ctx, r.ID, AssignInput{ProviderID: f.providerID, Model: "gpt-4"})
 	if err != nil {
 		t.Fatalf("Assign: %v", err)
 	}
@@ -104,12 +104,52 @@ func TestAssignProviderAndClear(t *testing.T) {
 		t.Fatalf("assign not applied: %+v", assigned)
 	}
 
-	cleared, err := f.svc.Assign(ctx, r.ID, "", "")
+	cleared, err := f.svc.Assign(ctx, r.ID, AssignInput{})
 	if err != nil {
 		t.Fatalf("Assign clear: %v", err)
 	}
 	if cleared.ProviderID != "" {
 		t.Fatalf("expected cleared provider, got %q", cleared.ProviderID)
+	}
+}
+
+func TestAssignReassignsAccountAndSetsProfile(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	r, _ := f.svc.Add(ctx, AddInput{Name: "web", URL: "u", AccountID: f.accountID})
+
+	// A second account to reassign to.
+	acc2 := account.Account{ID: id.New(), Name: "acc2", BaseURL: "https://gitlab.com", TokenRef: "ref2", CreatedAt: time.Now().UTC()}
+	if err := f.accountRepo.Create(ctx, acc2); err != nil {
+		t.Fatalf("seed acc2: %v", err)
+	}
+
+	got, err := f.svc.Assign(ctx, r.ID, AssignInput{AccountID: acc2.ID, ProfileID: "prof-1"})
+	if err != nil {
+		t.Fatalf("Assign: %v", err)
+	}
+	if got.AccountID != acc2.ID {
+		t.Fatalf("account not reassigned: %q", got.AccountID)
+	}
+	if got.DefaultProfileID != "prof-1" {
+		t.Fatalf("default profile not set: %q", got.DefaultProfileID)
+	}
+
+	// Empty accountID keeps the current account; empty profileID clears the profile.
+	kept, err := f.svc.Assign(ctx, r.ID, AssignInput{})
+	if err != nil {
+		t.Fatalf("Assign keep: %v", err)
+	}
+	if kept.AccountID != acc2.ID {
+		t.Fatalf("empty accountID should keep account, got %q", kept.AccountID)
+	}
+	if kept.DefaultProfileID != "" {
+		t.Fatalf("empty profileID should clear profile, got %q", kept.DefaultProfileID)
+	}
+
+	// Reassigning to an unknown account is rejected.
+	if _, err := f.svc.Assign(ctx, r.ID, AssignInput{AccountID: "nope"}); err == nil {
+		t.Fatal("expected error reassigning to unknown account")
 	}
 }
 

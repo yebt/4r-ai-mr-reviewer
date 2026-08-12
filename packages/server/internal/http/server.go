@@ -88,6 +88,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /accounts", s.createAccount)
 	mux.HandleFunc("GET /accounts", s.listAccounts)
 	mux.HandleFunc("GET /accounts/{id}/projects", s.searchAccountProjects)
+	mux.HandleFunc("PATCH /accounts/{id}", s.updateAccount)
 	mux.HandleFunc("DELETE /accounts/{id}", s.deleteAccount)
 
 	mux.HandleFunc("GET /openrouter/models", s.listOpenRouterModels)

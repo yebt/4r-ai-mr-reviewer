@@ -34,6 +34,7 @@ type AddInput struct {
 	AccountID  string
 	ProviderID string // optional; "" means use the default provider
 	Model      string // optional
+	ProfileID  string // optional; "" means no default humanization profile
 }
 
 // Add validates references and records the repo.
@@ -46,13 +47,14 @@ func (s *Service) Add(ctx context.Context, in AddInput) (repo.Repo, error) {
 	}
 
 	x := repo.Repo{
-		ID:         id.New(),
-		Name:       in.Name,
-		URL:        in.URL,
-		AccountID:  in.AccountID,
-		ProviderID: in.ProviderID,
-		Model:      in.Model,
-		CreatedAt:  time.Now().UTC(),
+		ID:               id.New(),
+		Name:             in.Name,
+		URL:              in.URL,
+		AccountID:        in.AccountID,
+		ProviderID:       in.ProviderID,
+		Model:            in.Model,
+		DefaultProfileID: in.ProfileID,
+		CreatedAt:        time.Now().UTC(),
 	}
 	if err := s.repos.Create(ctx, x); err != nil {
 		return repo.Repo{}, err
@@ -70,20 +72,41 @@ func (s *Service) Get(ctx context.Context, id string) (repo.Repo, error) {
 	return s.repos.Get(ctx, id)
 }
 
-// Assign changes the provider and model of a repo. An empty providerID clears
-// the assignment so the repo uses the default provider.
-func (s *Service) Assign(ctx context.Context, id, providerID, model string) (repo.Repo, error) {
+// AssignInput carries the editable assignment of a repo. ProviderID "" clears
+// the provider (falls back to default); ProfileID "" clears the default
+// humanization profile; AccountID "" keeps the current account (an account is
+// mandatory and cannot be cleared, only switched to another existing one).
+type AssignInput struct {
+	ProviderID string
+	Model      string
+	AccountID  string
+	ProfileID  string
+}
+
+// Assign changes a repo's provider+model, optionally its account, and its
+// default humanization profile. Referenced account/provider must exist (the
+// profile's existence is validated by the caller). An empty providerID clears
+// the assignment so the repo uses the default provider; an empty accountID keeps
+// the current account.
+func (s *Service) Assign(ctx context.Context, id string, in AssignInput) (repo.Repo, error) {
 	x, err := s.repos.Get(ctx, id)
 	if err != nil {
 		return repo.Repo{}, err
 	}
-	if providerID != "" {
-		if _, err := s.providers.Get(ctx, providerID); err != nil {
+	if in.ProviderID != "" {
+		if _, err := s.providers.Get(ctx, in.ProviderID); err != nil {
 			return repo.Repo{}, err
 		}
 	}
-	x.ProviderID = providerID
-	x.Model = model
+	if in.AccountID != "" {
+		if _, err := s.accounts.Get(ctx, in.AccountID); err != nil {
+			return repo.Repo{}, err
+		}
+		x.AccountID = in.AccountID
+	}
+	x.ProviderID = in.ProviderID
+	x.Model = in.Model
+	x.DefaultProfileID = in.ProfileID
 	if err := s.repos.Update(ctx, x); err != nil {
 		return repo.Repo{}, err
 	}

@@ -21,14 +21,15 @@ func NewRepoStore(db *sql.DB) *RepoStore {
 
 var _ repo.Repository = (*RepoStore)(nil)
 
-const repoCols = `id, name, url, account_id, provider_id, model, created_at, webhook_secret, webhook_enabled, webhook_require_confirmation`
+const repoCols = `id, name, url, account_id, provider_id, model, created_at, webhook_secret, webhook_enabled, webhook_require_confirmation, default_profile_id`
 
 // Create inserts a repo row.
 func (r *RepoStore) Create(ctx context.Context, x repo.Repo) error {
 	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO repos(`+repoCols+`) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO repos(`+repoCols+`) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		x.ID, x.Name, x.URL, x.AccountID, nullString(x.ProviderID), x.Model, formatTime(x.CreatedAt),
-		x.WebhookSecret, boolToInt(x.WebhookEnabled), boolToInt(x.WebhookRequireConfirmation))
+		x.WebhookSecret, boolToInt(x.WebhookEnabled), boolToInt(x.WebhookRequireConfirmation),
+		nullString(x.DefaultProfileID))
 	if err != nil {
 		return fmt.Errorf("repo store: create: %w", err)
 	}
@@ -67,11 +68,12 @@ func (r *RepoStore) List(ctx context.Context) ([]repo.Repo, error) {
 	return out, rows.Err()
 }
 
-// Update changes the mutable fields (name, provider assignment, model).
+// Update changes the mutable fields (name, account, provider assignment, model,
+// and the default humanization profile).
 func (r *RepoStore) Update(ctx context.Context, x repo.Repo) error {
 	res, err := r.db.ExecContext(ctx,
-		`UPDATE repos SET name = ?, provider_id = ?, model = ? WHERE id = ?`,
-		x.Name, nullString(x.ProviderID), x.Model, x.ID)
+		`UPDATE repos SET name = ?, account_id = ?, provider_id = ?, model = ?, default_profile_id = ? WHERE id = ?`,
+		x.Name, x.AccountID, nullString(x.ProviderID), x.Model, nullString(x.DefaultProfileID), x.ID)
 	if err != nil {
 		return fmt.Errorf("repo store: update: %w", err)
 	}
@@ -117,14 +119,16 @@ func scanRepo(s scanner) (repo.Repo, error) {
 	var (
 		x                  repo.Repo
 		providerID         sql.NullString
+		defaultProfileID   sql.NullString
 		createdAt          string
 		webhookEnabled     int
 		webhookRequireConf int
 	)
-	if err := s.Scan(&x.ID, &x.Name, &x.URL, &x.AccountID, &providerID, &x.Model, &createdAt, &x.WebhookSecret, &webhookEnabled, &webhookRequireConf); err != nil {
+	if err := s.Scan(&x.ID, &x.Name, &x.URL, &x.AccountID, &providerID, &x.Model, &createdAt, &x.WebhookSecret, &webhookEnabled, &webhookRequireConf, &defaultProfileID); err != nil {
 		return repo.Repo{}, err
 	}
 	x.ProviderID = providerID.String
+	x.DefaultProfileID = defaultProfileID.String
 	x.WebhookEnabled = webhookEnabled != 0
 	x.WebhookRequireConfirmation = webhookRequireConf != 0
 	t, err := parseTime(createdAt)

@@ -51,6 +51,33 @@ func (s *Service) Add(ctx context.Context, name, baseURL, token string) (account
 	return a, nil
 }
 
+// Update edits an account's name and base URL, and optionally rotates its token.
+// An empty token leaves the stored token unchanged; a non-empty token replaces
+// it under the same TokenRef. Returns account.ErrNotFound for an unknown id.
+func (s *Service) Update(ctx context.Context, id, name, baseURL, token string) (account.Account, error) {
+	if name == "" || baseURL == "" {
+		return account.Account{}, fmt.Errorf("accounts: name and baseURL are required")
+	}
+	if err := netutil.RequireSecureBaseURL(baseURL); err != nil {
+		return account.Account{}, fmt.Errorf("accounts: %w", err)
+	}
+	a, err := s.repo.Get(ctx, id)
+	if err != nil {
+		return account.Account{}, err
+	}
+	a.Name = name
+	a.BaseURL = baseURL
+	if err := s.repo.Update(ctx, a); err != nil {
+		return account.Account{}, err
+	}
+	if token != "" {
+		if err := s.secrets.Set(ctx, a.TokenRef, []byte(token)); err != nil {
+			return account.Account{}, err
+		}
+	}
+	return a, nil
+}
+
 // List returns all accounts.
 func (s *Service) List(ctx context.Context) ([]account.Account, error) {
 	return s.repo.List(ctx)

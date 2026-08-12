@@ -48,6 +48,46 @@ func TestAddAndToken(t *testing.T) {
 	}
 }
 
+func TestUpdateAccount(t *testing.T) {
+	ctx := context.Background()
+	s := newService(t)
+
+	a, err := s.Add(ctx, "work", "https://gitlab.com", "glpat-old")
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+
+	// Edit name + base URL, empty token keeps the stored token.
+	up, err := s.Update(ctx, a.ID, "work-renamed", "https://gitlab.example.org", "")
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if up.Name != "work-renamed" || up.BaseURL != "https://gitlab.example.org" {
+		t.Fatalf("edit not applied: %+v", up)
+	}
+	if tok, _ := s.Token(ctx, a.ID); tok != "glpat-old" {
+		t.Fatalf("empty token should keep stored token, got %q", tok)
+	}
+
+	// A non-empty token rotates it.
+	if _, err := s.Update(ctx, a.ID, "work-renamed", "https://gitlab.example.org", "glpat-new"); err != nil {
+		t.Fatalf("Update rotate: %v", err)
+	}
+	if tok, _ := s.Token(ctx, a.ID); tok != "glpat-new" {
+		t.Fatalf("token not rotated, got %q", tok)
+	}
+
+	// Unknown account → ErrNotFound.
+	if _, err := s.Update(ctx, "nope", "n", "https://gitlab.com", ""); !errors.Is(err, account.ErrNotFound) {
+		t.Fatalf("unknown Update = %v, want ErrNotFound", err)
+	}
+
+	// Insecure base URL is rejected.
+	if _, err := s.Update(ctx, a.ID, "n", "http://gitlab.com", ""); err == nil {
+		t.Fatal("expected insecure base URL rejection")
+	}
+}
+
 func TestAddValidation(t *testing.T) {
 	s := newService(t)
 	if _, err := s.Add(context.Background(), "", "url", "tok"); err == nil {

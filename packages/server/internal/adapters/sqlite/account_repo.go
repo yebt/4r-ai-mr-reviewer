@@ -66,6 +66,26 @@ func (r *AccountRepo) List(ctx context.Context) ([]account.Account, error) {
 	return out, rows.Err()
 }
 
+// Update changes an account's name and base URL. The token lives in the secret
+// store, so it is not touched here. Returns account.ErrNotFound if the row is
+// missing.
+func (r *AccountRepo) Update(ctx context.Context, a account.Account) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE accounts SET name = ?, base_url = ? WHERE id = ?`,
+		a.Name, a.BaseURL, a.ID)
+	if err != nil {
+		return fmt.Errorf("account repo: update: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return account.ErrNotFound
+	}
+	return nil
+}
+
 // Delete removes the account with the given id. Removing a missing account is
 // a no-op.
 func (r *AccountRepo) Delete(ctx context.Context, id string) error {

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -68,6 +69,30 @@ func (s *Server) listAccounts(w http.ResponseWriter, r *http.Request) {
 		out = append(out, toAccount(a))
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// updateAccount edits an account's name and base URL, and optionally rotates its
+// token. An empty token in the body leaves the stored token unchanged.
+func (s *Server) updateAccount(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Name    string `json:"name"`
+		BaseURL string `json:"baseUrl"`
+		Token   string `json:"token"`
+	}
+	if err := decode(r, &in); err != nil {
+		writeErr(w, err, http.StatusBadRequest)
+		return
+	}
+	a, err := s.accounts.Update(r.Context(), r.PathValue("id"), in.Name, in.BaseURL, in.Token)
+	if err != nil {
+		if errors.Is(err, account.ErrNotFound) {
+			writeErr(w, err, http.StatusNotFound)
+			return
+		}
+		writeErr(w, err, http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, http.StatusOK, toAccount(a))
 }
 
 func (s *Server) deleteAccount(w http.ResponseWriter, r *http.Request) {
@@ -308,19 +333,37 @@ func (s *Server) createRepo(w http.ResponseWriter, r *http.Request) {
 		AccountID  string `json:"accountId"`
 		ProviderID string `json:"providerId"`
 		Model      string `json:"model"`
+		ProfileID  string `json:"profileId"`
 	}
 	if err := decode(r, &in); err != nil {
 		writeErr(w, err, http.StatusBadRequest)
 		return
 	}
+	if err := s.assertProfileExists(r.Context(), in.ProfileID); err != nil {
+		writeErr(w, err, http.StatusBadRequest)
+		return
+	}
 	rp, err := s.repos.Add(r.Context(), repos.AddInput{
 		Name: in.Name, URL: in.URL, AccountID: in.AccountID, ProviderID: in.ProviderID, Model: in.Model,
+		ProfileID: in.ProfileID,
 	})
 	if err != nil {
 		writeErr(w, err, http.StatusBadRequest)
 		return
 	}
 	writeJSON(w, http.StatusCreated, toRepo(rp))
+}
+
+// assertProfileExists returns an error when a non-empty profile id does not
+// resolve to a profile. An empty id is valid (no default profile). It lets the
+// repo handlers validate the profile without giving the repos service a
+// dependency on the profiles service.
+func (s *Server) assertProfileExists(ctx context.Context, profileID string) error {
+	if profileID == "" {
+		return nil
+	}
+	_, err := s.profiles.Get(ctx, profileID)
+	return err
 }
 
 func (s *Server) listRepos(w http.ResponseWriter, r *http.Request) {
@@ -340,12 +383,20 @@ func (s *Server) assignRepo(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		ProviderID string `json:"providerId"`
 		Model      string `json:"model"`
+		AccountID  string `json:"accountId"`
+		ProfileID  string `json:"profileId"`
 	}
 	if err := decode(r, &in); err != nil {
 		writeErr(w, err, http.StatusBadRequest)
 		return
 	}
-	rp, err := s.repos.Assign(r.Context(), r.PathValue("id"), in.ProviderID, in.Model)
+	if err := s.assertProfileExists(r.Context(), in.ProfileID); err != nil {
+		writeErr(w, err, http.StatusBadRequest)
+		return
+	}
+	rp, err := s.repos.Assign(r.Context(), r.PathValue("id"), repos.AssignInput{
+		ProviderID: in.ProviderID, Model: in.Model, AccountID: in.AccountID, ProfileID: in.ProfileID,
+	})
 	if err != nil {
 		writeErr(w, err, http.StatusBadRequest)
 		return
@@ -710,6 +761,9 @@ type repoResp struct {
 	AccountID  string `json:"accountId"`
 	ProviderID string `json:"providerId"`
 	Model      string `json:"model"`
+	// DefaultProfileID is the reviewer voice profile pre-selected when humanizing
+	// this repo's reviews; empty means no default.
+	DefaultProfileID string `json:"defaultProfileId"`
 	// WebhookEnabled toggles the per-repo GitLab auto-review webhook.
 	WebhookEnabled bool `json:"webhookEnabled"`
 	// WebhookRequireConfirmation holds webhook-triggered reviews for manual
@@ -728,7 +782,7 @@ type repoResp struct {
 func toRepo(rp domainrepo.Repo) repoResp {
 	return repoResp{
 		ID: rp.ID, Name: rp.Name, URL: rp.URL, AccountID: rp.AccountID,
-		ProviderID: rp.ProviderID, Model: rp.Model,
+		ProviderID: rp.ProviderID, Model: rp.Model, DefaultProfileID: rp.DefaultProfileID,
 		WebhookEnabled: rp.WebhookEnabled, WebhookRequireConfirmation: rp.WebhookRequireConfirmation,
 		WebhookSecret: rp.WebhookSecret,
 		WebhookPath:   "/webhooks/gitlab/" + rp.ID,

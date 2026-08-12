@@ -25,5 +25,9 @@ type Repository interface {
 	Create(ctx context.Context, a Account) error
 	Get(ctx context.Context, id string) (Account, error)
 	List(ctx context.Context) ([]Account, error)
+	// Update changes an account's editable fields (name, base URL). The token is
+	// not stored here, so it is rotated separately via the secret store. Returns
+	// ErrNotFound when the account does not exist.
+	Update(ctx context.Context, a Account) error
 	Delete(ctx context.Context, id string) error
 }
