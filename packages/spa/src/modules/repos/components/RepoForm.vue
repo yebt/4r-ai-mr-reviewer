@@ -8,6 +8,7 @@ import DependencyAlert from '@shared/components/ui/DependencyAlert.vue'
 import { useReposStore } from '@modules/repos/store'
 import { useAccountsStore } from '@modules/accounts/store'
 import { useProvidersStore } from '@modules/providers/store'
+import { useProfilesStore } from '@modules/profiles/store'
 import { matchAccountId, parseRepoUrl } from '@modules/repos/url'
 
 const props = defineProps<{ editing?: Repo | null }>()
@@ -16,13 +17,15 @@ const emit = defineEmits<{ done: [] }>()
 const repos = useReposStore()
 const accounts = useAccountsStore()
 const providers = useProvidersStore()
+const profiles = useProfilesStore()
 
 onMounted(() => {
   if (accounts.items.length === 0) accounts.fetchAll()
   if (providers.items.length === 0) providers.fetchAll()
+  if (profiles.items.length === 0) profiles.fetchAll()
 })
 
-const blank = () => ({ name: '', url: '', accountId: '', providerId: '', model: '' })
+const blank = () => ({ name: '', url: '', accountId: '', providerId: '', model: '', profileId: '' })
 const form = reactive(blank())
 const submitting = ref(false)
 const error = ref<string | null>(null)
@@ -156,6 +159,7 @@ watch(
       form.accountId = r.accountId
       form.providerId = r.providerId
       form.model = r.model
+      form.profileId = r.defaultProfileId
     } else {
       Object.assign(form, blank())
       lastAutoName.value = ''
@@ -179,6 +183,8 @@ async function submit() {
       await repos.assign(props.editing.id, {
         providerId: form.providerId,
         model: form.model.trim(),
+        accountId: form.accountId,
+        profileId: form.profileId,
       })
       toast.success('Repository updated')
     } else {
@@ -188,6 +194,7 @@ async function submit() {
         accountId: form.accountId,
         providerId: form.providerId,
         model: form.model.trim(),
+        profileId: form.profileId,
       })
       toast.success('Repository added')
     }
@@ -330,6 +337,19 @@ async function submit() {
 
     <template v-else>
       <div class="text-muted font-mono text-xs">{{ form.name }} · {{ form.url }}</div>
+
+      <div class="label-mono border-line/50 mb-1 border-b pb-2">GitLab connection</div>
+
+      <div>
+        <label class="field-label" for="rp-account-edit">
+          Account <span class="text-muted normal-case">— reassign this repo to another account</span>
+        </label>
+        <select id="rp-account-edit" v-model="form.accountId" class="field-underline">
+          <option v-for="a in accounts.items" :key="a.id" :value="a.id">
+            {{ a.name }} — {{ a.baseUrl }}
+          </option>
+        </select>
+      </div>
     </template>
 
     <!-- Reviews depend on an AI provider; a repo with no provider available can't
@@ -373,6 +393,19 @@ async function submit() {
       <p v-if="modelPresets.length" class="text-muted/70 mt-1.5 text-xs">
         Presets: {{ modelPresets.join(', ') }}
       </p>
+    </div>
+
+    <div>
+      <label class="field-label" for="rp-profile">
+        Default review voice
+        <span class="text-muted normal-case">— optional, pre-selected when humanizing reviews</span>
+      </label>
+      <select id="rp-profile" v-model="form.profileId" class="field-underline">
+        <option value="">No default</option>
+        <option v-for="p in profiles.items" :key="p.id" :value="p.id">
+          {{ p.name }}
+        </option>
+      </select>
     </div>
 
     <p v-if="error" class="text-danger text-sm">{{ error }}</p>

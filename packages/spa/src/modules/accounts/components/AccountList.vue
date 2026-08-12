@@ -4,9 +4,10 @@ import { errorMessage } from '@shared/api/client'
 import { confirm } from '@shared/composables/useConfirm'
 import { toast } from '@shared/composables/useToast'
 import EmptyState from '@shared/components/ui/EmptyState.vue'
+import type { Account } from '@shared/api/types'
 import { useAccountsStore } from '@modules/accounts/store'
 
-const emit = defineEmits<{ add: [] }>()
+const emit = defineEmits<{ add: []; edit: [account: Account] }>()
 
 const store = useAccountsStore()
 const removingId = ref<string | null>(null)
@@ -64,14 +65,23 @@ async function remove(id: string) {
           <div class="text-ink truncate text-sm">{{ acc.name }}</div>
           <div class="text-muted truncate font-mono text-xs">{{ acc.baseUrl }}</div>
         </div>
-        <button
-          class="btn-ghost hover:text-danger shrink-0"
-          :disabled="removingId === acc.id"
-          :aria-label="`Delete ${acc.name}`"
-          @click="remove(acc.id)"
-        >
-          <span class="i-lucide-trash-2 text-sm" aria-hidden="true" />
-        </button>
+        <div class="flex shrink-0 items-center gap-1">
+          <button
+            class="btn-ghost"
+            :aria-label="`Edit ${acc.name}`"
+            @click="emit('edit', acc)"
+          >
+            <span class="i-lucide-pencil text-sm" aria-hidden="true" />
+          </button>
+          <button
+            class="btn-ghost hover:text-danger"
+            :disabled="removingId === acc.id"
+            :aria-label="`Delete ${acc.name}`"
+            @click="remove(acc.id)"
+          >
+            <span class="i-lucide-trash-2 text-sm" aria-hidden="true" />
+          </button>
+        </div>
       </li>
     </ul>
   </div>

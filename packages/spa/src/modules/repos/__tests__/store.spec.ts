@@ -30,6 +30,7 @@ const repo = (id: string, over: Partial<Record<string, unknown>> = {}) => ({
   accountId: 'acc',
   providerId: '',
   model: '',
+  defaultProfileId: '',
   webhookEnabled: false,
   webhookRequireConfirmation: false,
   webhookSecret: '',

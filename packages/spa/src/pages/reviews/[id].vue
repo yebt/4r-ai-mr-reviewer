@@ -34,12 +34,36 @@ const profiles = useProfilesStore()
 
 // Only profiles whose style guide finished distilling can rewrite text.
 const readyProfiles = computed(() => profiles.items.filter((p) => p.styleGuideStatus === 'ready'))
-// Globally selected humanization profile — drives every card's Humanize button
-// and "Humanize all". Defaults to the first ready profile once they load.
-const profileId = ref('')
-watch(readyProfiles, (list) => {
-  if (list.length && !list.some((p) => p.id === profileId.value)) profileId.value = list[0]?.id ?? ''
+// The review's repo default review-voice profile, when it is one of the ready
+// profiles — used to pre-select the humanize picker.
+const repoDefaultProfileId = computed(() => {
+  // Read store.current directly (not the `review` computed declared below) so
+  // the immediate watch can run during setup without a temporal-dead-zone error.
+  const rv = store.current
+  if (!rv) return ''
+  const def = repos.items.find((r) => r.id === rv.repoId)?.defaultProfileId ?? ''
+  return def && readyProfiles.value.some((p) => p.id === def) ? def : ''
 })
+// Globally selected humanization profile — drives every card's Humanize button
+// and "Humanize all". Pre-selects the repo's default review voice when set,
+// otherwise the first ready profile once they load. Once the user picks a
+// profile, that choice is kept.
+const profileId = ref('')
+const profilePicked = ref(false)
+watch(
+  [readyProfiles, repoDefaultProfileId],
+  ([list, repoDefault]) => {
+    if (!list.length) return
+    // Preserve a valid user (or already-applied) selection.
+    if (profilePicked.value && list.some((p) => p.id === profileId.value)) return
+    if (repoDefault) {
+      profileId.value = repoDefault
+      return
+    }
+    if (!list.some((p) => p.id === profileId.value)) profileId.value = list[0]?.id ?? ''
+  },
+  { immediate: true },
+)
 
 const humanizingAll = ref(false)
 
@@ -277,6 +301,9 @@ watch(
     pause()
     sawInProgress = false
     selected.value = []
+    // A fresh review may belong to a different repo — let its default review
+    // voice pre-select again until the user picks explicitly.
+    profilePicked.value = false
     if (repos.items.length === 0) repos.fetchAll()
     if (profiles.items.length === 0) profiles.fetchAll()
     await store.load(id)
@@ -722,7 +749,11 @@ async function remove() {
             <template v-if="readyProfiles.length">
               <label class="block w-full sm:w-auto">
                 <span class="field-label">Humanize profile</span>
-                <select v-model="profileId" class="field-underline sm:min-w-48">
+                <select
+                  v-model="profileId"
+                  class="field-underline sm:min-w-48"
+                  @change="profilePicked = true"
+                >
                   <option v-for="p in readyProfiles" :key="p.id" :value="p.id">{{ p.name }}</option>
                 </select>
               </label>

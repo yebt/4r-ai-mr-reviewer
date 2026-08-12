@@ -123,6 +123,10 @@ export const api = {
   listAccounts: () => request<Account[]>('GET', '/accounts'),
   createAccount: (input: { name: string; baseUrl: string; token: string }) =>
     request<Account>('POST', '/accounts', input),
+  // Edit an account's name/base URL, and optionally rotate its token. An empty
+  // token keeps the stored one server-side; only a non-empty value rotates it.
+  updateAccount: (id: string, input: { name: string; baseUrl: string; token: string }) =>
+    request<Account>('PATCH', `/accounts/${id}`, input),
   deleteAccount: (id: string) => request<void>('DELETE', `/accounts/${id}`),
   // Search the GitLab projects an account's token can see, to power the add-repo
   // picker. An empty search returns the most-recently-active membership
@@ -240,9 +244,22 @@ export const api = {
     accountId: string
     providerId: string
     model: string
-  }) => request<Repo>('POST', '/repos', input),
-  assignRepo: (id: string, input: { providerId: string; model: string }) =>
-    request<Repo>('PATCH', `/repos/${id}/assign`, input),
+    // Optional default review-voice profile. Empty/omitted means none.
+    profileId?: string
+  }) => request<Repo>('POST', '/repos', { ...input, profileId: input.profileId ?? '' }),
+  // Reassign a repo's provider/model, and optionally its account and default
+  // review-voice profile. An empty accountId KEEPS the current account (only a
+  // non-empty value reassigns it); an empty profileId CLEARS the default profile.
+  assignRepo: (
+    id: string,
+    input: { providerId: string; model: string; accountId?: string; profileId?: string },
+  ) =>
+    request<Repo>('PATCH', `/repos/${id}/assign`, {
+      providerId: input.providerId,
+      model: input.model,
+      accountId: input.accountId ?? '',
+      profileId: input.profileId ?? '',
+    }),
   // Enable/disable the per-repo GitLab auto-review webhook, and set whether a
   // webhook-triggered review must be manually confirmed before it runs. Enabling
   // generates a secret token server-side on first use; the updated repo (with

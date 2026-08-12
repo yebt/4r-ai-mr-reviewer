@@ -26,13 +26,17 @@ export const useReposStore = defineStore('repos', () => {
     accountId: string
     providerId: string
     model: string
+    profileId?: string
   }) {
     const created = await api.createRepo(input)
     items.value = [...items.value, created]
     return created
   }
 
-  async function assign(id: string, input: { providerId: string; model: string }) {
+  async function assign(
+    id: string,
+    input: { providerId: string; model: string; accountId?: string; profileId?: string },
+  ) {
     const updated = await api.assignRepo(id, input)
     items.value = items.value.map((r) => (r.id === id ? updated : r))
     return updated

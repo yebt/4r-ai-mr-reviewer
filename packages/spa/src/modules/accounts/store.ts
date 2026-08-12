@@ -26,10 +26,16 @@ export const useAccountsStore = defineStore('accounts', () => {
     return created
   }
 
+  async function edit(id: string, input: { name: string; baseUrl: string; token: string }) {
+    const updated = await api.updateAccount(id, input)
+    items.value = items.value.map((a) => (a.id === id ? updated : a))
+    return updated
+  }
+
   async function remove(id: string) {
     await api.deleteAccount(id)
     items.value = items.value.filter((a) => a.id !== id)
   }
 
-  return { items, loading, error, fetchAll, add, remove }
+  return { items, loading, error, fetchAll, add, edit, remove }
 })
