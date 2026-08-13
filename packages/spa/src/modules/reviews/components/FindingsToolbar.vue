@@ -23,8 +23,11 @@ const emit = defineEmits<{
 
 <template>
   <div class="mb-4 flex flex-col gap-3">
-    <!-- Counts readout: always legible, independent of what is filtered out. -->
-    <p class="text-muted text-xs">
+    <!-- Counts readout — phone only. On desktop the page's own findings summary
+         line ("N findings · N blocking · Showing X of Y") already carries it, so
+         showing it here too would duplicate it; the phone filter sheet has no
+         such line, so it keeps this one. -->
+    <p class="text-muted text-xs sm:hidden">
       <span class="text-ink font-medium">{{ props.counts.total }}</span> findings
       <span aria-hidden="true">·</span>
       <span class="text-flame font-medium">{{ props.counts.blocking }}</span> blocking
