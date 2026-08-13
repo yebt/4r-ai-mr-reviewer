@@ -39,7 +39,18 @@ const busy = () => props.busy ?? false
         </RouterLink>
         <ReviewStatusChip :status="review.status" />
       </div>
-      <div class="label-mono mt-0.5 flex flex-wrap gap-x-2">
+      <div class="label-mono mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+        <!-- Model chip: leads the meta so two reviews of the same MR run on
+             different models are told apart at a glance. Bordered mono pill,
+             normal-cased so long slugs stay readable. -->
+        <span
+          v-if="review.model"
+          class="border-line text-ink inline-flex items-center gap-1 border px-1.5 py-px font-mono text-[0.6rem] tracking-normal normal-case"
+          :title="`Model: ${review.model}`"
+        >
+          <span class="i-lucide-cpu text-muted" aria-hidden="true" />
+          {{ review.model }}
+        </span>
         <span class="text-muted">#{{ shortId(review.id) }}</span>
         <span>{{ review.contextMode }}</span>
         <span v-if="review.createdAt">{{ formatDateTime(review.createdAt) }}</span>

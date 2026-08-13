@@ -25,6 +25,7 @@ import FindingCard from '@modules/reviews/components/FindingCard.vue'
 import FindingCardTriage from '@modules/reviews/components/FindingCardTriage.vue'
 import FindingsToolbar from '@modules/reviews/components/FindingsToolbar.vue'
 import { useFindingFilters } from '@modules/reviews/useFindingFilters'
+import type { ActiveFilter } from '@shared/components/ui/filter-builder'
 
 const route = useRoute()
 const router = useRouter()
@@ -178,6 +179,13 @@ const findingsView = useLocalStorage<'classic' | 'triage'>('reviews:findingsView
 
 // Triage state (filters/sort/counts/visible) over the review's findings.
 const triage = useFindingFilters(() => review.value?.findings ?? [])
+
+// FilterBuilder chip model for the findings filter. This ref is the authoritative
+// source of the visible chips (it can hold an added-but-empty chip the typed state
+// cannot represent), and a watcher writes each change onto the typed triage state.
+// Shared by the desktop toolbar and the phone bottom-sheet so both stay in sync.
+const filterModel = ref<ActiveFilter[]>([])
+watch(filterModel, (m) => triage.applyModel(m), { deep: true })
 
 // Phone-only progressive disclosure. On desktop (`!isPhone`) the humanize bar and
 // filter toolbar always render, so these refs only affect the < sm layout.
@@ -992,18 +1000,11 @@ async function remove() {
             <FindingsToolbar
               v-if="!isPhone && filtersShown"
               id="triage-filters"
+              v-model="filterModel"
+              :fields="triage.fields.value"
               :counts="triage.counts.value"
-              :filters="triage.filters"
               :sort="triage.sort.value"
-              :dimensions="triage.dimensions"
-              :severities="triage.severities"
-              :active="triage.active.value"
-              @toggle-dimension="triage.toggleDimension"
-              @toggle-severity="triage.toggleSeverity"
-              @toggle-blocking-only="triage.toggleBlockingOnly"
-              @set-status="triage.setStatus"
               @set-sort="triage.setSort"
-              @reset="triage.reset"
             />
 
             <!-- Phone: the same toolbar lives in a bottom-sheet modal, opened by
@@ -1011,18 +1012,11 @@ async function remove() {
             <Modal v-if="isPhone" :open="filtersOpen" title="Filters" @close="filtersOpen = false">
               <FindingsToolbar
                 id="triage-filters"
+                v-model="filterModel"
+                :fields="triage.fields.value"
                 :counts="triage.counts.value"
-                :filters="triage.filters"
                 :sort="triage.sort.value"
-                :dimensions="triage.dimensions"
-                :severities="triage.severities"
-                :active="triage.active.value"
-                @toggle-dimension="triage.toggleDimension"
-                @toggle-severity="triage.toggleSeverity"
-                @toggle-blocking-only="triage.toggleBlockingOnly"
-                @set-status="triage.setStatus"
                 @set-sort="triage.setSort"
-                @reset="triage.reset"
               />
             </Modal>
 

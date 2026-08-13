@@ -37,15 +37,25 @@ test('groups retry/webhook clones of the same MR under the latest', async ({ pag
   await expect(page.getByRole('link', { name: /!120/ })).toHaveCount(2)
 })
 
-test('review detail: findings filters are grouped by lens, severity and status', async ({ page }) => {
+test('review detail: the + Filter builder adds a chip and narrows the findings', async ({ page }) => {
   await page.goto('/reviews/rev3')
-  // The redesigned toolbar labels its groups clearly.
-  await expect(page.getByText('Lens', { exact: true })).toBeVisible()
-  await expect(page.getByText('Severity', { exact: true }).first()).toBeVisible()
-  await expect(page.getByText('Status', { exact: true })).toBeVisible()
-  // Lens chips carry the 4R codes; severity reads as words, not raw keys.
-  await expect(page.getByRole('button', { name: /^R1/ })).toBeVisible()
-  await expect(page.getByRole('button', { name: /high/i })).toBeVisible()
+  // Triage view counts readout — rev3 has 6 findings across dimensions/severities.
+  await expect(page.getByText('Showing 6 of 6')).toBeVisible()
+
+  // The progressive builder offers Lens / Severity / Status fields.
+  await page.getByRole('button', { name: 'Add filter' }).click()
+  await expect(page.getByRole('menuitem', { name: 'Lens' })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: 'Severity' })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: 'Status' })).toBeVisible()
+
+  // Adding a Lens filter creates a chip (removable) and opens its value popover.
+  await page.getByRole('menuitem', { name: 'Lens' }).click()
+  await expect(page.getByRole('button', { name: 'Remove Lens filter' })).toBeVisible()
+
+  // Selecting Risk narrows the list to the 2 risk findings; counts stay honest.
+  await page.getByRole('option', { name: 'Risk' }).click()
+  await expect(page.getByText('Showing 2 of 6')).toBeVisible()
+
   // No stray humanize tabs (regression: a bad response rendered dozens).
   await expect(page.getByRole('button', { name: 'V9' })).toBeHidden()
 })

@@ -1,6 +1,18 @@
 import { computed, reactive, ref, toValue, type MaybeRefOrGetter } from 'vue'
 import type { Dimension, Finding, Severity } from '@shared/api/types'
+import type { ActiveFilter, FilterField } from '@shared/components/ui/filter-builder'
 import { severityRank } from './format'
+
+// FilterBuilder chip keys for the finding filters. Kept as constants so the
+// to/from-model mapping and the field definitions never drift apart.
+const LENS = 'lens'
+const SEVERITY = 'severity'
+const STATUS = 'status'
+const BLOCKING = 'blocking'
+
+function titleCase(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}
 
 export type FindingStatus = 'all' | 'published' | 'unpublished'
 export type FindingSort = 'severity' | 'file'
@@ -123,7 +135,68 @@ export function useFindingFilters(source: MaybeRefOrGetter<Finding[]>) {
     sort.value = 'severity'
   }
 
+  // --- FilterBuilder bridge ---
+  // The FilterBuilder speaks in `Array<{ key, values }>`; the composable keeps the
+  // typed Set/boolean/status model (and its unit-tested toggles). These helpers
+  // translate between the two so the presentational builder stays state-agnostic.
+
+  // Field definitions for the builder. Options are static (the full domain), so a
+  // filter can be re-selected even after it has hidden every finding.
+  const fields = computed<FilterField[]>(() => [
+    {
+      key: LENS,
+      label: 'Lens',
+      multi: true,
+      options: DIMENSIONS.map((d) => ({ value: d, label: titleCase(d) })),
+    },
+    {
+      key: SEVERITY,
+      label: 'Severity',
+      multi: true,
+      options: SEVERITIES.map((s) => ({ value: s, label: titleCase(s) })),
+    },
+    {
+      key: STATUS,
+      label: 'Status',
+      options: [
+        { value: 'all', label: 'All' },
+        { value: 'published', label: 'Published' },
+        { value: 'unpublished', label: 'Unpublished' },
+      ],
+    },
+    {
+      key: BLOCKING,
+      label: 'Blocking',
+      options: [{ value: 'blocking', label: 'Blocking only' }],
+    },
+  ])
+
+  // Current filter state expressed as builder chips (only active dimensions show).
+  const model = computed<ActiveFilter[]>(() => {
+    const m: ActiveFilter[] = []
+    if (filters.dimensions.size) m.push({ key: LENS, values: [...filters.dimensions] })
+    if (filters.severities.size) m.push({ key: SEVERITY, values: [...filters.severities] })
+    if (filters.status !== 'all') m.push({ key: STATUS, values: [filters.status] })
+    if (filters.blockingOnly) m.push({ key: BLOCKING, values: [BLOCKING] })
+    return m
+  })
+
+  // Apply a builder model back onto the typed state. A field absent from the model
+  // clears that filter (removing its chip). The model is authoritative, so this is
+  // a one-way write from the builder into the composable.
+  function applyModel(next: ActiveFilter[]) {
+    const byKey = new Map(next.map((f) => [f.key, f.values]))
+    filters.dimensions = new Set((byKey.get(LENS) ?? []) as Dimension[])
+    filters.severities = new Set((byKey.get(SEVERITY) ?? []) as Severity[])
+    const status = (byKey.get(STATUS) ?? [])[0]
+    filters.status = (status as FindingStatus) ?? 'all'
+    filters.blockingOnly = (byKey.get(BLOCKING) ?? []).length > 0
+  }
+
   return {
+    fields,
+    model,
+    applyModel,
     filters,
     sort,
     visible,
