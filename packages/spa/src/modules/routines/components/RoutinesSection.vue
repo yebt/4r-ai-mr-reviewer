@@ -12,7 +12,14 @@ import ReleaseModal, {
 } from '@modules/routines/components/ReleaseModal.vue'
 import RoutineRunList from '@modules/routines/components/RoutineRunList.vue'
 
-const props = defineProps<{ repoId: string; mergeRequests: MergeRequest[] }>()
+// showTriggers gates the release launchers (the "Release to main" button, the
+// intro copy, and the per-MR "Release from merge request" list). The Flow
+// workspace turns them off because it owns those launchers itself; the repo
+// detail page leaves them on (default) for its unchanged behavior.
+const props = withDefaults(
+  defineProps<{ repoId: string; mergeRequests: MergeRequest[]; showTriggers?: boolean }>(),
+  { showTriggers: true },
+)
 
 const router = useRouter()
 const store = useRoutinesStore()
@@ -142,18 +149,23 @@ async function onArchivedChanged() {
         <span class="bg-line inline-block h-3.5 w-0.5" aria-hidden="true" />
         Routines
       </h2>
-      <button type="button" class="btn-line text-xs" @click="openMainRelease">
+      <button
+        v-if="showTriggers"
+        type="button"
+        class="btn-line text-xs"
+        @click="openMainRelease"
+      >
         <span class="i-lucide-rocket text-sm" aria-hidden="true" />
         Release to main
       </button>
     </div>
-    <p class="text-muted mb-4 text-xs">
+    <p v-if="showTriggers" class="text-muted mb-4 text-xs">
       Start a release from a merge request (dev flow) or cut a development → main release, then open
       its run to watch the step ledger update live and answer its confirmation gate.
     </p>
 
     <!-- Dev-flow triggers: one Release action per development-targeting MR. -->
-    <div class="mb-6">
+    <div v-if="showTriggers" class="mb-6">
       <h3 class="label-mono mb-2">Release from merge request</h3>
       <p v-if="releasableMrs.length === 0" class="text-muted py-2 text-sm">
         No open merge requests targeting <span class="font-mono">development</span>.

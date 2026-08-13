@@ -2,7 +2,8 @@ import { test, expect } from '@playwright/test'
 import { mockApi, preloadFlowRepo } from './support'
 
 // Render tests for the Flow workspace against mocked API data. Chromium only and
-// headless so it runs without a display.
+// headless so it runs without a display. The route now splits in two: /flow is a
+// repo selector and /flow/:repoId is the per-repo workspace.
 test.use({ headless: true })
 
 test.beforeEach(async ({ page }) => {
@@ -10,51 +11,69 @@ test.beforeEach(async ({ page }) => {
   await preloadFlowRepo(page)
 })
 
-test('loads a repo with the Needs-you band and open MRs', async ({ page }) => {
+test('the selector lists repos and opens a workspace', async ({ page }) => {
   await page.goto('/flow')
-  await expect(page.getByRole('button', { name: /web-app/ })).toBeVisible()
 
-  // Attention-first band with its three actionable item types (scoped to the
-  // band region — the reviews list below also has an Approve on the held review).
-  const band = page.getByRole('region', { name: /Needs you/ })
-  await expect(band).toBeVisible()
-  await expect(band.getByRole('button', { name: 'Approve' }).first()).toBeVisible()
-  await expect(band.getByRole('button', { name: 'Retry' }).first()).toBeVisible()
-  await expect(band.getByRole('button', { name: 'Skip' }).first()).toBeVisible()
+  // Both tracked repos appear as pickable rows; there is no auto-redirect.
+  const webApp = page.getByRole('button', { name: /web-app/ })
+  await expect(webApp).toBeVisible()
+  await expect(page.getByRole('button', { name: /api-service/ })).toBeVisible()
 
-  // Open MRs are launchable and the reviewed one is cross-linked. (v-show keeps
-  // both tabs' MR lists in the DOM, so scope to the first match.)
-  await expect(
-    page.getByText('Add OpenRouter provider with live model browser').first(),
-  ).toBeVisible()
-  await expect(page.getByText('reviewed', { exact: false }).first()).toBeVisible()
+  // Search filters the list by name.
+  await page.getByRole('textbox', { name: 'Search repositories' }).fill('web')
+  await expect(page.getByRole('button', { name: /api-service/ })).toBeHidden()
+
+  // Picking a repo routes to its workspace URL.
+  await webApp.click()
+  await expect(page).toHaveURL(/\/flow\/repoA/)
+  await expect(page.getByText('https://gitlab.com/acme/web-app')).toBeVisible()
 })
 
-test('Settings tab shows the full webhook config with a reveal', async ({ page }) => {
-  await page.goto('/flow')
-  await page.getByRole('tab', { name: 'Settings' }).click()
+test('the workspace shows the sticky tabs and the open MRs', async ({ page }) => {
+  await page.goto('/flow/repoA')
 
-  await expect(page.getByText('Webhook URL')).toBeVisible()
-  await expect(page.getByText('Secret token')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Rotate' })).toBeVisible()
+  // The three-tab bar is present and MRs is the default tab.
+  const tablist = page.getByRole('tablist', { name: 'Workspace' })
+  await expect(tablist.getByRole('tab', { name: /MRs/ })).toBeVisible()
+  await expect(tablist.getByRole('tab', { name: /Reviews/ })).toBeVisible()
+  await expect(tablist.getByRole('tab', { name: /Actions/ })).toBeVisible()
+
+  // The open-MR list renders and the reviewed one is cross-linked.
+  await expect(
+    page.getByText('Add OpenRouter provider with live model browser'),
+  ).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Release to main' })).toBeVisible()
+})
+
+test('the settings modal shows the full webhook config with a reveal', async ({ page }) => {
+  await page.goto('/flow/repoA')
+  await page.getByRole('button', { name: 'Repository settings' }).click()
+
+  const dialog = page.getByRole('dialog', { name: 'Repository settings' })
+  await expect(dialog.getByText('Webhook URL')).toBeVisible()
+  await expect(dialog.getByText('Secret token')).toBeVisible()
+  await expect(dialog.getByRole('button', { name: 'Rotate secret token' })).toBeVisible()
 
   // The secret is masked until revealed.
   await expect(page.getByText('whsec_9f3c1a7b2e4d8065')).toBeHidden()
-  await page.getByRole('button', { name: 'Show' }).click()
+  await dialog.getByRole('button', { name: 'Show secret token' }).click()
   await expect(page.getByText('whsec_9f3c1a7b2e4d8065')).toBeVisible()
 })
 
-test('Release tab previews the exact next tag before launch', async ({ page }) => {
-  await page.goto('/flow')
-  await page.getByRole('tab', { name: 'Release' }).click()
-
+test('Release to main previews the exact next tag before launch', async ({ page }) => {
+  await page.goto('/flow/repoA')
   await page.getByRole('button', { name: 'Release to main' }).click()
+
+  // Scope to the release dialog — the hidden Actions tab also lists a run titled
+  // "Release v1.0.0", so an unscoped v1.0.0 match would resolve there.
+  const dialog = page.getByRole('dialog', { name: 'Release to main' })
+
   // The dry-run preview endpoint is mocked to v1.0.0.
-  await expect(page.getByText('Next tag')).toBeVisible()
-  await expect(page.getByText('v1.0.0').first()).toBeVisible()
+  await expect(dialog.getByText('Next tag')).toBeVisible()
+  await expect(dialog.getByText('v1.0.0').first()).toBeVisible()
 
   // Branch pickers are populated from the repo's branches; the fixture repo is
   // missing 'development', so the modal warns and offers a picker.
-  await expect(page.getByText(/branch not found/)).toBeVisible()
-  await expect(page.getByRole('option', { name: 'develop', exact: true }).first()).toBeAttached()
+  await expect(dialog.getByText(/branch not found/)).toBeVisible()
+  await expect(dialog.getByRole('option', { name: 'develop', exact: true }).first()).toBeAttached()
 })

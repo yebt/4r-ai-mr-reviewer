@@ -59,11 +59,18 @@ declare module 'vue-router/auto-routes' {
       { id: ParamValue<false> },
       | never
     >,
-    '/flow': RouteRecordInfo<
-      '/flow',
+    '/flow/': RouteRecordInfo<
+      '/flow/',
       '/flow',
       Record<never, never>,
       Record<never, never>,
+      | never
+    >,
+    '/flow/[repoId]': RouteRecordInfo<
+      '/flow/[repoId]',
+      '/flow/:repoId',
+      { repoId: ParamValue<true> },
+      { repoId: ParamValue<false> },
       | never
     >,
     '/home-old': RouteRecordInfo<
@@ -195,13 +202,21 @@ declare module 'vue-router/auto-routes' {
       pathParamNames:
         | 'id'
     }
-    'src/pages/flow.vue': {
+    'src/pages/flow/index.vue': {
       routes:
-        | '/flow'
+        | '/flow/'
       views:
         | never
       pathParamNames:
         | never
+    }
+    'src/pages/flow/[repoId].vue': {
+      routes:
+        | '/flow/[repoId]'
+      views:
+        | never
+      pathParamNames:
+        | 'repoId'
     }
     'src/pages/home-old.vue': {
       routes:

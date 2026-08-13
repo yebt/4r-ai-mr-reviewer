@@ -14,9 +14,13 @@ const props = defineProps<{
   // Latest review per MR iid, so a row can show it's already reviewed and link
   // to the verdict instead of the same MR silently appearing in two sections.
   reviewByMr?: Record<number, Review>
+  // When true, development-targeting MRs also get a "Release" action so the Flow
+  // workspace can launch a dev-flow release straight from the open-MR list.
+  showRelease?: boolean
 }>()
 const emit = defineEmits<{
   review: [iid: number, mode: string, providerId: string, model: string]
+  release: [iid: number]
 }>()
 
 // Per-MR context mode, chosen at the moment of triggering (default fast).
@@ -124,6 +128,15 @@ function providerModelsFor(iid: number) {
               aria-hidden="true"
             />
             Review
+          </button>
+          <button
+            v-if="showRelease && mr.targetBranch === 'development'"
+            class="btn-line text-xs"
+            :aria-label="`Release !${mr.iid}`"
+            @click="emit('release', mr.iid)"
+          >
+            <span class="i-lucide-rocket text-sm" aria-hidden="true" />
+            Release
           </button>
         </div>
       </li>
