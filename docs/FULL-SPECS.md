@@ -376,7 +376,7 @@ flip observed by polling), `Archive`/`Unarchive`, `Publish` (§11.8),
 **Gaps / projection**
 - 🟡 A single-pass `Engine` (all-rules-in-one-call + model-authored summary) exists but is **not wired** — tests only.
 - 🔭 No prompt caching / synthesis pass — MultiPass re-sends the full diff + system prompt each lens.
-- 🟡 Humanize `FindingIndex` can go stale after a Retry regenerates findings (intentionally unreconciled).
+- ✅ Humanize `FindingIndex` is stable by construction: a humanization is bound to one done review, a done review's findings never change in place, and a Retry forks a *new* review (with its own empty humanization set) rather than regenerating findings — so an index can never rebind. (No reconciliation needed; earlier drafts of this spec wrongly listed this as a gap.)
 - 🟡 Cancellation is cooperative only — a provider call ignoring `ctx` runs to completion; MultiPass checks cancel only between passes.
 - 🟡 Deep mode silently omits unreadable/binary/moved files from full-content context.
 - 🟡 A success-then-persist-failure marks the review `error` and loses the paid result (surfaced for retry).
@@ -661,7 +661,7 @@ and always surfaces.
 | Preflight | ✅ | Fail-closed capability report |
 | Reviews (create/run) | ✅ | MultiPass 4R; cooperative cancel |
 | Review publish | ✅ | Inline + note fallback; idempotent |
-| Humanize | ✅ | Persisted tabs; index can go stale |
+| Humanize | ✅ | Persisted tabs; finding index stable by construction |
 | 4R rubric | ✅ | Overridable at runtime |
 | Routines: approve-and-tag | ✅ | |
 | Routines: release (dev) | ✅ | |
@@ -689,8 +689,6 @@ design should account for — not a commitment.
 **Reviews**
 - Wire (or delete) the single-pass engine; add prompt caching + an optional
   synthesis pass to cut cost/latency of the N-call MultiPass.
-- Reconcile humanize finding indices across a Retry (or move to stable finding IDs).
-- Signal omitted deep-mode files to the model instead of silent skips.
 - Debounce / smarter webhook triggering beyond the active-review guard.
 
 **Routines**

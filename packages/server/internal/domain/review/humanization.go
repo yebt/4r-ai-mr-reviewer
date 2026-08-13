@@ -22,9 +22,13 @@ const SummaryFindingIndex = -1
 // Humanization is one persisted humanize run: either a summary rewrite or a
 // single finding rewrite, kept so the paid LLM output survives a page reload.
 //
-// Known limitation: FindingIndex is the finding position at rewrite time. A
-// review retry regenerates findings, so pre-retry finding humanizations may end
-// up pointing at a stale index. Reconciliation is intentionally not handled here.
+// FindingIndex is stable for the life of a humanization: a humanization always
+// belongs to one ReviewID, humanize only runs on a review whose status is done
+// (see the humanize service), and a done review's findings never change in place
+// — a retry FORKS a brand-new review with its own id and its own (empty)
+// humanization set (see reviews.Service.Retry / TestRetryClonesReview) rather
+// than regenerating this review's findings. So a stored FindingIndex can never
+// come to point at a different finding, and no reconciliation is needed.
 type Humanization struct {
 	ID        string
 	ReviewID  string
