@@ -409,3 +409,20 @@ export interface AuthStatus {
   authEnabled: boolean
   authenticated: boolean
 }
+
+// Vault (secret encryption) status. `initialized` is false when the vault has
+// never been set up. `passwordProtected` is true when the master key is derived
+// from a password (AIR_PASSWORD); false means key-file mode (a key file stored
+// beside the database, needing no restart-time secret).
+export interface VaultStatus {
+  initialized: boolean
+  passwordProtected: boolean
+}
+
+// Result of changing the vault master key. `passwordProtected` reflects the new
+// mode. `warning`, when present, MUST be surfaced prominently: it tells the
+// operator to update AIR_PASSWORD before the next restart or the vault won't open.
+export interface ChangeVaultPasswordResult {
+  passwordProtected: boolean
+  warning?: string
+}

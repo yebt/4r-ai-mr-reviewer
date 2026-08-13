@@ -121,7 +121,7 @@ the *HTTP API*.
   reference (`account:<id>:token`, `provider:<id>:apikey`, etc.).
 
 **Gaps / projection**
-- 🔭 No HTTP surface — no runtime unlock, re-key, or change-password.
+- ✅ Runtime key management — `GET /vault/status` and `POST /vault/password` change the master password, set/remove it, or re-key the key file, re-encrypting every secret in one transaction (auth-gated). 🔭 No runtime *lock* state (the vault stays unlocked after boot). A password change requires updating `AIR_PASSWORD` before the next restart (surfaced as a warning); key-file re-key needs no config change.
 - 🟡 Key-file mode keeps the master key next to the data (encrypted at rest but not operator-gated) — a documented trade-off.
 
 ---
@@ -708,7 +708,7 @@ design should account for — not a commitment.
 - More channels (email/Slack/webhook-out) and finer events (per-severity, per-step).
 
 **Platform**
-- Runtime vault management (unlock / re-key / change password).
+- Runtime vault *lock* state (lock/unlock after boot) — change-password and re-key already shipped; a lockable state is the remaining piece.
 - Multi-user / roles if the tool ever leaves single-user scope.
 
 ---

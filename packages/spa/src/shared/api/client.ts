@@ -3,6 +3,7 @@
 import type {
   Account,
   AuthStatus,
+  ChangeVaultPasswordResult,
   ConfirmDecision,
   CreateReviewInput,
   FindingHumanized,
@@ -26,6 +27,7 @@ import type {
   TelegramTarget,
   TelegramTargetInput,
   TelegramTargetUpdateInput,
+  VaultStatus,
 } from '@shared/api/types'
 
 // Create/update body for a humanization profile. styleGuide* fields are
@@ -391,6 +393,19 @@ export const api = {
   // Delete a routine run. 404 when unknown, 409 when the run is still running
   // (a running action can't be deleted) — both throw ApiError for the caller.
   deleteRoutine: (id: string) => request<void>('DELETE', `/routines/${id}`),
+
+  // vault (master key / secret encryption)
+  // Report whether the vault is initialized and whether its master key is
+  // password-derived (vs. key-file mode).
+  vaultStatus: () => request<VaultStatus>('GET', '/vault/status'),
+  // Change the master key. A non-empty newPassword sets/changes the password;
+  // an empty newPassword switches to key-file mode (removes the password).
+  // oldPassword is the current vault password (required in password mode,
+  // ignored in key-file mode). 401 = wrong current password, 409 = not
+  // initialized, 501 = vault management unavailable. Every secret is
+  // re-encrypted server-side; the result may carry a `warning` to surface.
+  changeVaultPassword: (input: { oldPassword: string; newPassword: string }) =>
+    request<ChangeVaultPasswordResult>('POST', '/vault/password', input),
 
   // skills
   getSkills: () =>

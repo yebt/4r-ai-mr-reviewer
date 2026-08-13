@@ -1,13 +1,14 @@
 <script setup lang="ts">
 definePage({ meta: { title: 'Settings' } })
-import { computed, onMounted, ref } from 'vue'
-import { errorMessage } from '@shared/api/client'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { api, ApiError, errorMessage } from '@shared/api/client'
 import { confirm } from '@shared/composables/useConfirm'
 import { toast } from '@shared/composables/useToast'
 import PageHeader from '@shared/components/ui/PageHeader.vue'
 import EmptyState from '@shared/components/ui/EmptyState.vue'
 import DependencyAlert from '@shared/components/ui/DependencyAlert.vue'
-import type { NotificationRule } from '@shared/api/types'
+import Alert from '@shared/components/ui/Alert.vue'
+import type { NotificationRule, VaultStatus } from '@shared/api/types'
 import { useNotificationsStore } from '@modules/notifications/store'
 import { useTelegramStore } from '@modules/telegram/store'
 import { useReposStore } from '@modules/repos/store'
@@ -101,8 +102,120 @@ async function removeRule(rule: NotificationRule) {
   }
 }
 
+// --- Vault / Security ---
+// Current vault mode. `null` until the first status load resolves.
+const vault = ref<VaultStatus | null>(null)
+const vaultLoading = ref(false)
+// True when the backend reports vault management is unavailable (501). The whole
+// section is disabled with a note in that case.
+const vaultUnavailable = ref(false)
+const vaultLoadError = ref<string | null>(null)
+
+// Change-master-key form. Passwords live only in this reactive state; they are
+// never logged, persisted, or put in the URL, and are cleared after submit.
+const vaultForm = reactive({
+  oldPassword: '',
+  newPassword: '',
+  confirmPassword: '',
+  // When checked, the new-password fields are ignored and an empty newPassword
+  // is submitted — switching the vault to key-file mode (no password).
+  useKeyFile: false,
+})
+const showOld = ref(false)
+const showNew = ref(false)
+const vaultSubmitting = ref(false)
+const vaultFormError = ref<string | null>(null)
+// Persistent warning returned by a successful change (e.g. "update AIR_PASSWORD
+// before the next restart"). Kept as an inline alert until the next change.
+const vaultWarning = ref<string | null>(null)
+
+const vaultReady = computed(() => vault.value !== null && !vaultUnavailable.value)
+const passwordProtected = computed(() => vault.value?.passwordProtected ?? false)
+
+async function loadVaultStatus() {
+  vaultLoading.value = true
+  vaultLoadError.value = null
+  try {
+    vault.value = await api.vaultStatus()
+    vaultUnavailable.value = false
+  } catch (e) {
+    // 501 = vault management unavailable on this build/instance: hide the form
+    // and show a note instead of an error.
+    if (e instanceof ApiError && e.status === 501) {
+      vaultUnavailable.value = true
+      vault.value = null
+    } else {
+      vaultLoadError.value = errorMessage(e)
+    }
+  } finally {
+    vaultLoading.value = false
+  }
+}
+
+function clearVaultPasswords() {
+  vaultForm.oldPassword = ''
+  vaultForm.newPassword = ''
+  vaultForm.confirmPassword = ''
+}
+
+async function submitVault() {
+  if (vaultSubmitting.value || !vaultReady.value) return
+  vaultFormError.value = null
+
+  // Key-file mode submits an empty newPassword; otherwise validate the new pair.
+  if (!vaultForm.useKeyFile) {
+    if (!vaultForm.newPassword) {
+      vaultFormError.value = 'Enter a new password, or choose key-file mode below.'
+      return
+    }
+    if (vaultForm.newPassword !== vaultForm.confirmPassword) {
+      vaultFormError.value = 'The new password and its confirmation do not match.'
+      return
+    }
+  }
+  // The current password authorizes the change while in password mode.
+  if (passwordProtected.value && !vaultForm.oldPassword) {
+    vaultFormError.value = 'Enter the current password to authorize this change.'
+    return
+  }
+
+  vaultSubmitting.value = true
+  try {
+    const result = await api.changeVaultPassword({
+      oldPassword: vaultForm.oldPassword,
+      newPassword: vaultForm.useKeyFile ? '' : vaultForm.newPassword,
+    })
+    toast.success(
+      result.passwordProtected ? 'Master password updated' : 'Switched to key-file mode',
+    )
+    // Surface the restart warning as a persistent inline alert, not just a toast.
+    vaultWarning.value = result.warning ?? null
+    clearVaultPasswords()
+    vaultForm.useKeyFile = false
+    await loadVaultStatus()
+  } catch (e) {
+    if (e instanceof ApiError) {
+      if (e.status === 401) {
+        vaultFormError.value = 'The current password is incorrect.'
+      } else if (e.status === 409) {
+        vaultFormError.value = 'The vault is not initialized.'
+      } else if (e.status === 501) {
+        vaultUnavailable.value = true
+        vaultFormError.value = null
+      } else {
+        vaultFormError.value = errorMessage(e)
+      }
+    } else {
+      vaultFormError.value = errorMessage(e)
+    }
+  } finally {
+    vaultSubmitting.value = false
+  }
+}
+
 onMounted(() => {
   store.fetchAll()
+  loadVaultStatus()
   // Always refetch targets so a name resolved here can't go stale (e.g. a target
   // deleted in another tab) and silently show a name for a deleted notifier.
   telegram.fetchAll()
@@ -246,6 +359,180 @@ onMounted(() => {
             <span v-else class="text-muted shrink-0 text-xs">routed</span>
           </li>
         </ul>
+      </template>
+    </section>
+
+    <!-- Vault / Security: master key mode + change form -->
+    <section class="border-line/50 mt-12 border-t pt-8">
+      <h2 class="text-ink flex items-center gap-2 text-lg font-semibold">
+        <span class="i-lucide-shield-check text-muted text-base" aria-hidden="true" />
+        Security
+      </h2>
+      <p class="text-muted mt-1 mb-5 max-w-2xl text-sm">
+        Every stored secret (provider keys, GitLab tokens, bot tokens) is encrypted at rest with the
+        vault's master key. Change how that key is derived below.
+      </p>
+
+      <p v-if="vaultLoading && !vault" class="text-muted py-3 text-sm">Loading vault status…</p>
+
+      <Alert v-else-if="vaultUnavailable" variant="info" icon="i-lucide-lock">
+        Vault management isn't available on this instance. The master key can only be changed from
+        the server environment.
+      </Alert>
+
+      <p v-else-if="vaultLoadError" class="text-danger py-3 text-sm">{{ vaultLoadError }}</p>
+
+      <template v-else-if="vaultReady">
+        <!-- Current mode -->
+        <div class="border-line/50 bg-surface/40 mb-6 flex items-start gap-3 border px-4 py-3">
+          <span
+            :class="passwordProtected ? 'i-lucide-lock-keyhole text-ok' : 'i-lucide-key-round text-muted'"
+            class="mt-0.5 shrink-0 text-base"
+            aria-hidden="true"
+          />
+          <div class="min-w-0 text-sm">
+            <p class="text-ink font-medium">
+              {{ passwordProtected ? 'Protected by a password' : 'Key-file mode (no password)' }}
+            </p>
+            <p class="text-muted mt-0.5 text-xs">
+              <template v-if="passwordProtected">
+                The master key is derived from AIR_PASSWORD, which must be supplied at every start.
+              </template>
+              <template v-else>
+                The master key lives in a key file stored beside the database — no password is
+                needed to start.
+              </template>
+            </p>
+          </div>
+        </div>
+
+        <!-- Persistent post-change warning (must not be missed) -->
+        <Alert v-if="vaultWarning" variant="warn" class="mb-6">
+          {{ vaultWarning }}
+        </Alert>
+
+        <!-- Change master key -->
+        <form class="flex max-w-xl flex-col gap-5" @submit.prevent="submitVault">
+          <div class="label-mono border-line/50 border-b pb-2">Change the master key</div>
+
+          <!-- Current password: only when the vault is password-protected -->
+          <div v-if="passwordProtected">
+            <label class="field-label" for="vault-old">
+              Current password <span class="text-accent" aria-hidden="true">*</span>
+            </label>
+            <div class="flex items-center gap-2">
+              <input
+                id="vault-old"
+                v-model="vaultForm.oldPassword"
+                :type="showOld ? 'text' : 'password'"
+                class="field-underline"
+                placeholder="current vault password"
+                autocomplete="current-password"
+                spellcheck="false"
+                aria-required="true"
+              />
+              <button
+                type="button"
+                class="btn-ghost shrink-0"
+                :aria-label="showOld ? 'Hide current password' : 'Show current password'"
+                :aria-pressed="showOld"
+                @click="showOld = !showOld"
+              >
+                <span
+                  :class="showOld ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+                  class="text-sm"
+                  aria-hidden="true"
+                />
+              </button>
+            </div>
+          </div>
+
+          <!-- Key-file mode toggle -->
+          <label class="text-muted flex cursor-pointer items-start gap-2 text-sm select-none">
+            <input
+              v-model="vaultForm.useKeyFile"
+              type="checkbox"
+              class="accent-accent mt-0.5"
+            />
+            <span>
+              Use a key file instead (no password)
+              <span class="text-muted/70 mt-0.5 block text-xs">
+                Switching to key-file mode needs no restart change. Setting a password requires
+                updating AIR_PASSWORD before the next restart, or the vault won't open.
+              </span>
+            </span>
+          </label>
+
+          <!-- New password pair: disabled in key-file mode -->
+          <div :class="vaultForm.useKeyFile ? 'pointer-events-none opacity-40' : ''">
+            <label class="field-label" for="vault-new">
+              New password <span class="text-accent" aria-hidden="true">*</span>
+            </label>
+            <div class="flex items-center gap-2">
+              <input
+                id="vault-new"
+                v-model="vaultForm.newPassword"
+                :type="showNew ? 'text' : 'password'"
+                class="field-underline"
+                placeholder="new vault password"
+                autocomplete="new-password"
+                spellcheck="false"
+                :disabled="vaultForm.useKeyFile"
+              />
+              <button
+                type="button"
+                class="btn-ghost shrink-0"
+                :aria-label="showNew ? 'Hide new password' : 'Show new password'"
+                :aria-pressed="showNew"
+                :disabled="vaultForm.useKeyFile"
+                @click="showNew = !showNew"
+              >
+                <span
+                  :class="showNew ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+                  class="text-sm"
+                  aria-hidden="true"
+                />
+              </button>
+            </div>
+          </div>
+
+          <div :class="vaultForm.useKeyFile ? 'pointer-events-none opacity-40' : ''">
+            <label class="field-label" for="vault-confirm">
+              Confirm new password <span class="text-accent" aria-hidden="true">*</span>
+            </label>
+            <input
+              id="vault-confirm"
+              v-model="vaultForm.confirmPassword"
+              :type="showNew ? 'text' : 'password'"
+              class="field-underline"
+              placeholder="repeat the new password"
+              autocomplete="new-password"
+              spellcheck="false"
+              :disabled="vaultForm.useKeyFile"
+            />
+          </div>
+
+          <p v-if="vaultFormError" class="text-danger text-sm" role="alert">{{ vaultFormError }}</p>
+
+          <div>
+            <button type="submit" class="btn-accent" :disabled="vaultSubmitting">
+              <span
+                v-if="vaultSubmitting"
+                class="i-lucide-loader-circle animate-spin"
+                aria-hidden="true"
+              />
+              {{
+                vaultSubmitting
+                  ? 'Applying'
+                  : vaultForm.useKeyFile
+                    ? 'Switch to key-file mode'
+                    : passwordProtected
+                      ? 'Change password'
+                      : 'Set a password'
+              }}
+            </button>
+          </div>
+        </form>
       </template>
     </section>
   </div>
