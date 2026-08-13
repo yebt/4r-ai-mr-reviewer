@@ -5,7 +5,64 @@ import (
 	"errors"
 	"path/filepath"
 	"testing"
+
+	"github.com/webcloster-dev/ai-reviewer/internal/adapters/crypto"
 )
+
+// fakeRekeyer stands in for the secret store: it applies the meta updates to the
+// shared MetaStore (so the vault's Verify/Status see the new key material) and
+// records the last cipher it was handed.
+type fakeRekeyer struct {
+	meta *fakeMeta
+	last *crypto.Cipher
+}
+
+func (r *fakeRekeyer) Rekey(_ context.Context, newCipher *crypto.Cipher, meta map[string][]byte) error {
+	for k, v := range meta {
+		r.meta.m[k] = v
+	}
+	r.last = newCipher
+	return nil
+}
+
+func TestServiceChangeSecret(t *testing.T) {
+	ctx := context.Background()
+	meta := newFakeMeta()
+	v := New(meta, filepath.Join(t.TempDir(), "master.key"))
+	if _, err := v.Initialize(ctx, "old-pass"); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+	svc := NewService(v, &fakeRekeyer{meta: meta})
+
+	// The current password gates the change.
+	if _, err := svc.ChangeSecret(ctx, "wrong", "new-pass"); !errors.Is(err, ErrWrongPassword) {
+		t.Fatalf("ChangeSecret with wrong old password = %v, want ErrWrongPassword", err)
+	}
+
+	// Change the password: still protected, and only the NEW password verifies.
+	st, err := svc.ChangeSecret(ctx, "old-pass", "new-pass")
+	if err != nil {
+		t.Fatalf("ChangeSecret: %v", err)
+	}
+	if !st.PasswordProtected {
+		t.Fatal("want password-protected after a password change")
+	}
+	if err := v.Verify(ctx, "new-pass"); err != nil {
+		t.Fatalf("new password should verify: %v", err)
+	}
+	if err := v.Verify(ctx, "old-pass"); !errors.Is(err, ErrWrongPassword) {
+		t.Fatalf("old password should no longer verify: %v", err)
+	}
+
+	// Switch to key-file mode (empty new password): no longer password-protected.
+	st, err = svc.ChangeSecret(ctx, "new-pass", "")
+	if err != nil {
+		t.Fatalf("ChangeSecret to key-file: %v", err)
+	}
+	if st.PasswordProtected {
+		t.Fatal("want key-file mode (not password-protected)")
+	}
+}
 
 // fakeMeta is an in-memory MetaStore for unit tests.
 type fakeMeta struct{ m map[string][]byte }

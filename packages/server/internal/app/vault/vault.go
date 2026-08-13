@@ -184,3 +184,113 @@ func (v *Vault) unlockKeyfile() (*crypto.Cipher, error) {
 	}
 	return crypto.NewCipher(key)
 }
+
+// Verify reports whether password unlocks the current vault. Key-file mode has no
+// password, so it always succeeds there; password mode returns ErrWrongPassword
+// on a mismatch. Used to gate a runtime key change behind the current password.
+func (v *Vault) Verify(ctx context.Context, password string) error {
+	mode, found, err := v.meta.Get(ctx, metaMode)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return ErrNotInitialized
+	}
+	if string(mode) != modePassword {
+		return nil
+	}
+	_, err = v.unlockPassword(ctx, password)
+	return err
+}
+
+// newKeyMaterial builds the cipher and the app_meta updates for a NEW master key.
+// A non-empty password selects password mode (fresh salt + verifier); an empty
+// password selects key-file mode and writes a fresh 0600 key file. It does not
+// touch stored secrets — the caller re-encrypts them under the returned cipher in
+// one transaction (see SecretStore.Rekey).
+func (v *Vault) newKeyMaterial(password string) (*crypto.Cipher, map[string][]byte, error) {
+	if password == "" {
+		key := make([]byte, crypto.KeyLen)
+		if _, err := rand.Read(key); err != nil {
+			return nil, nil, fmt.Errorf("vault: generate key: %w", err)
+		}
+		if err := os.WriteFile(v.keyfilePath, key, 0o600); err != nil {
+			return nil, nil, fmt.Errorf("vault: write keyfile: %w", err)
+		}
+		cipher, err := crypto.NewCipher(key)
+		if err != nil {
+			return nil, nil, err
+		}
+		return cipher, map[string][]byte{metaMode: []byte(modeKeyfile)}, nil
+	}
+	salt, err := crypto.NewSalt()
+	if err != nil {
+		return nil, nil, err
+	}
+	key, err := crypto.DeriveKey(password, salt)
+	if err != nil {
+		return nil, nil, err
+	}
+	cipher, err := crypto.NewCipher(key)
+	if err != nil {
+		return nil, nil, err
+	}
+	verifier, err := cipher.Seal([]byte(verifierText))
+	if err != nil {
+		return nil, nil, err
+	}
+	return cipher, map[string][]byte{
+		metaSalt:     salt,
+		metaVerifier: verifier,
+		metaMode:     []byte(modePassword),
+	}, nil
+}
+
+// Rekeyer re-encrypts every stored secret under a new cipher and applies the
+// given app_meta updates atomically, then swaps its live cipher. SecretStore
+// implements it; the interface keeps this package free of the sqlite adapter.
+type Rekeyer interface {
+	Rekey(ctx context.Context, newCipher *crypto.Cipher, meta map[string][]byte) error
+}
+
+// Service coordinates a runtime master-key change: it verifies the current
+// password, derives the new key material, and hands both to the Rekeyer so every
+// secret is re-encrypted in one transaction.
+type Service struct {
+	vault   *Vault
+	secrets Rekeyer
+}
+
+// NewService wires the vault Service over a Vault and a Rekeyer (the secret store).
+func NewService(v *Vault, secrets Rekeyer) *Service {
+	return &Service{vault: v, secrets: secrets}
+}
+
+// Status reports whether the vault is initialized and password-protected.
+func (s *Service) Status(ctx context.Context) (Status, error) {
+	return s.vault.Status(ctx)
+}
+
+// ChangeSecret rotates the master key. oldPassword must unlock the current vault
+// (ignored in key-file mode). An empty newPassword switches to key-file mode
+// (rotating the key file); a non-empty newPassword sets/changes the password.
+// Every secret is re-encrypted under the new key in one transaction; on any
+// failure nothing changes. Returns the resulting vault status.
+//
+// Operational note for the caller: after switching to (or changing) a password,
+// the boot-time AIR_PASSWORD must be updated to the new value before the next
+// restart, or the vault will not unlock. Switching to key-file mode needs no
+// config change.
+func (s *Service) ChangeSecret(ctx context.Context, oldPassword, newPassword string) (Status, error) {
+	if err := s.vault.Verify(ctx, oldPassword); err != nil {
+		return Status{}, err
+	}
+	newCipher, meta, err := s.vault.newKeyMaterial(newPassword)
+	if err != nil {
+		return Status{}, err
+	}
+	if err := s.secrets.Rekey(ctx, newCipher, meta); err != nil {
+		return Status{}, err
+	}
+	return s.vault.Status(ctx)
+}

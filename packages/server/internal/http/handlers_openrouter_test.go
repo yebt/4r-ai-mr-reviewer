@@ -31,7 +31,7 @@ func TestListOpenRouterModelsSortsByID(t *testing.T) {
 	}}
 
 	var set skills.Set
-	s := NewServer(nil, nil, nil, nil, nil, nil, nil, nil, nil, set, nil, "", nil, false)
+	s := NewServer(nil, nil, nil, nil, nil, nil, nil, nil, nil, set, nil, "", nil, false, nil)
 	s.openrouter = stub
 	srv := httptest.NewServer(s.Routes())
 	defer srv.Close()

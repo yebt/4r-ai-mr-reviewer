@@ -62,13 +62,17 @@ func run() error {
 	}
 	defer db.Close()
 
-	cipher, err := unlockVault(ctx, sqlite.NewMetaStore(db), cfg)
+	vlt := vault.New(sqlite.NewMetaStore(db), cfg.KeyfilePath)
+	cipher, err := unlockVault(ctx, vlt, cfg)
 	if err != nil {
 		return err
 	}
 
 	// Stores.
 	secrets := sqlite.NewSecretStore(db, cipher)
+	// Runtime master-key management (status + change password / re-key), wired over
+	// the same vault and secret store so a password change re-encrypts every secret.
+	vaultSvc := vault.NewService(vlt, secrets)
 	accountRepo := sqlite.NewAccountRepo(db)
 	providerRepo := sqlite.NewProviderRepo(db)
 	profileStore := sqlite.NewProfileStore(db)
@@ -114,7 +118,7 @@ func run() error {
 		log.Print("ai-reviewer: WARNING — API authentication is DISABLED; set AIR_AUTH_PASSWORD to require a password")
 	}
 
-	api := httpapi.NewServer(accountSvc, providerSvc, profileSvc, repoSvc, reviewSvc, routinesSvc, humanizeSvc, telegramSvc, notificationsSvc, ruleSet, botSvc, cfg.TelegramWebhookSecret, authMgr, cfg.TrustProxyHeaders)
+	api := httpapi.NewServer(accountSvc, providerSvc, profileSvc, repoSvc, reviewSvc, routinesSvc, humanizeSvc, telegramSvc, notificationsSvc, ruleSet, botSvc, cfg.TelegramWebhookSecret, authMgr, cfg.TrustProxyHeaders, vaultSvc)
 	srv := &http.Server{Addr: cfg.HTTPAddr, Handler: api.Routes()}
 
 	go func() {
@@ -148,8 +152,7 @@ func (n releaseNotifier) Notify(ctx context.Context, repoID, text string) error 
 
 // unlockVault initializes the secret vault on first run, or unlocks it, and
 // returns the cipher used to protect stored secrets.
-func unlockVault(ctx context.Context, meta *sqlite.MetaStore, cfg config.Config) (*crypto.Cipher, error) {
-	v := vault.New(meta, cfg.KeyfilePath)
+func unlockVault(ctx context.Context, v *vault.Vault, cfg config.Config) (*crypto.Cipher, error) {
 	status, err := v.Status(ctx)
 	if err != nil {
 		return nil, err

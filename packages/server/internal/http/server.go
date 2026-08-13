@@ -20,6 +20,7 @@ import (
 	"github.com/webcloster-dev/ai-reviewer/internal/app/reviews"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/routines"
 	apptelegram "github.com/webcloster-dev/ai-reviewer/internal/app/telegram"
+	appvault "github.com/webcloster-dev/ai-reviewer/internal/app/vault"
 	"github.com/webcloster-dev/ai-reviewer/internal/auth"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/account"
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/job"
@@ -64,15 +65,19 @@ type Server struct {
 	trustProxy bool
 	// loginLimiter throttles POST /auth/login per client IP.
 	loginLimiter *rateLimiter
+	// vault manages the master key at runtime (status + change password / re-key).
+	// nil disables the /vault endpoints (e.g. in tests that do not wire it).
+	vault *appvault.Service
 }
 
 // NewServer wires a Server. A nil authMgr is treated as auth-disabled (replaced
-// with a disabled Manager) so handlers never have to nil-check s.auth.
-func NewServer(a *accounts.Service, p *providers.Service, pr *profiles.Service, r *repos.Service, rv *reviews.Service, rt *routines.Service, hz *apphumanize.Service, tg *apptelegram.Service, nt *notifications.Service, sk skills.Set, bt *bot.Service, telegramWebhookSecret string, authMgr *auth.Manager, trustProxy bool) *Server {
+// with a disabled Manager) so handlers never have to nil-check s.auth. A nil vlt
+// disables the /vault endpoints.
+func NewServer(a *accounts.Service, p *providers.Service, pr *profiles.Service, r *repos.Service, rv *reviews.Service, rt *routines.Service, hz *apphumanize.Service, tg *apptelegram.Service, nt *notifications.Service, sk skills.Set, bt *bot.Service, telegramWebhookSecret string, authMgr *auth.Manager, trustProxy bool, vlt *appvault.Service) *Server {
 	if authMgr == nil {
 		authMgr = auth.NewManager("", defaultSessionLifetime)
 	}
-	return &Server{accounts: a, providers: p, profiles: pr, repos: r, reviews: rv, routines: rt, humanize: hz, telegram: tg, notifications: nt, skills: sk, openrouter: openrouter.NewCachedClient(openRouterCacheTTL), bot: bt, telegramWebhookSecret: telegramWebhookSecret, auth: authMgr, trustProxy: trustProxy, loginLimiter: newRateLimiter(maxLoginAttempts, loginWindow)}
+	return &Server{accounts: a, providers: p, profiles: pr, repos: r, reviews: rv, routines: rt, humanize: hz, telegram: tg, notifications: nt, skills: sk, openrouter: openrouter.NewCachedClient(openRouterCacheTTL), bot: bt, telegramWebhookSecret: telegramWebhookSecret, auth: authMgr, trustProxy: trustProxy, loginLimiter: newRateLimiter(maxLoginAttempts, loginWindow), vault: vlt}
 }
 
 // Routes returns the HTTP handler with every endpoint registered.
@@ -156,6 +161,9 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /auth/login", s.authLogin)
 	mux.HandleFunc("POST /auth/logout", s.authLogout)
 	mux.HandleFunc("GET /auth/status", s.authStatus)
+
+	mux.HandleFunc("GET /vault/status", s.vaultStatus)
+	mux.HandleFunc("POST /vault/password", s.changeVaultSecret)
 
 	mux.HandleFunc("POST /reviews", s.createReview)
 	mux.HandleFunc("GET /reviews/{id}", s.getReview)
