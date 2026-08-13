@@ -45,7 +45,7 @@ const busy = () => props.busy ?? false
              normal-cased so long slugs stay readable. -->
         <span
           v-if="review.model"
-          class="border-line text-ink inline-flex items-center gap-1 border px-1.5 py-px font-mono text-[0.6rem] tracking-normal normal-case"
+          class="border-line text-ink inline-flex items-center gap-1 border px-2 py-0.5 font-mono text-xs tracking-normal normal-case"
           :title="`Model: ${review.model}`"
         >
           <span class="i-lucide-cpu text-muted" aria-hidden="true" />

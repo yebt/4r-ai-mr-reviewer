@@ -45,6 +45,29 @@ test('the workspace shows the sticky tabs and the open MRs', async ({ page }) =>
   await expect(page.getByRole('button', { name: 'Release to main' })).toBeVisible()
 })
 
+test('the Review button opens the launch modal with provider/model/mode', async ({ page }) => {
+  await page.goto('/flow/repoA')
+
+  // The MR row now carries a single Review button (no inline selects); clicking
+  // it opens the launch modal where provider/model/mode are chosen.
+  await page.getByRole('button', { name: 'Review !128' }).click()
+
+  const dialog = page.getByRole('dialog', { name: 'Start a review' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByText('Add OpenRouter provider with live model browser')).toBeVisible()
+  await expect(dialog.getByText('Provider', { exact: true })).toBeVisible()
+  await expect(dialog.getByText('Context mode', { exact: true })).toBeVisible()
+  // Provider, Model and Context mode selects are present (the fixture provider
+  // declares models, so the model field renders as a select too).
+  await expect(dialog.getByRole('combobox')).toHaveCount(3)
+  await expect(dialog.getByRole('button', { name: 'Start review' })).toBeVisible()
+
+  // Cancel closes it without launching a review (still on the workspace).
+  await dialog.getByRole('button', { name: 'Cancel' }).click()
+  await expect(dialog).toBeHidden()
+  await expect(page).toHaveURL(/\/flow\/repoA/)
+})
+
 test('the settings modal shows the full webhook config with a reveal', async ({ page }) => {
   await page.goto('/flow/repoA')
   await page.getByRole('button', { name: 'Repository settings' }).click()

@@ -193,12 +193,6 @@ const isPhone = useIsPhone()
 const humanizeOpen = ref(false)
 const filtersOpen = ref(false)
 
-// Desktop toolbar visibility, persisted so a collapsed toolbar stays collapsed
-// across navigation/reload. Hiding the toolbar never touches the active filters,
-// so the visible findings slice keeps its filtering while the controls are away.
-// The phone layout keeps using `filtersOpen` (a transient bottom-sheet modal).
-const filtersShown = useLocalStorage('reviews:filtersShown', true)
-
 // Count of active filter dimensions for the phone Filters toggle badge.
 const activeFilterCount = computed(
   () =>
@@ -931,22 +925,6 @@ async function remove() {
               class="border-line/50 mb-4 hidden flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t pt-4 sm:flex"
             >
               <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
-                <button
-                  type="button"
-                  class="btn-line text-xs"
-                  :aria-expanded="filtersShown"
-                  aria-controls="triage-filters"
-                  @click="filtersShown = !filtersShown"
-                >
-                  <span class="i-lucide-sliders-horizontal text-sm" aria-hidden="true" />
-                  {{ filtersShown ? 'Hide filters' : 'Filters' }}
-                  <span
-                    v-if="activeFilterCount"
-                    class="border-accent/40 bg-accent/15 text-accent border px-1 font-mono"
-                  >
-                    {{ activeFilterCount }}
-                  </span>
-                </button>
                 <p class="text-muted text-xs">
                   <span class="text-ink font-medium">{{ triage.counts.value.total }}</span> findings
                   <span aria-hidden="true">·</span>
@@ -995,10 +973,10 @@ async function remove() {
               </div>
             </div>
 
-            <!-- Desktop: collapsible filter bar, toggled by the Filters button
-                 above. Hidden state persists; filters stay applied while away. -->
+            <!-- Desktop: the filter bar is always shown (the chip filter is
+                 compact). The phone bottom-sheet path below is unchanged. -->
             <FindingsToolbar
-              v-if="!isPhone && filtersShown"
+              v-if="!isPhone"
               id="triage-filters"
               v-model="filterModel"
               :fields="triage.fields.value"

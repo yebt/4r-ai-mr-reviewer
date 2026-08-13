@@ -2,13 +2,15 @@
 definePage({ meta: { title: 'Flow' } })
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useTitle } from '@vueuse/core'
+import { createReusableTemplate, useLocalStorage, useTitle } from '@vueuse/core'
+import { useIsPhone } from '@shared/composables/useIsPhone'
 import { errorMessage } from '@shared/api/client'
 import { confirm } from '@shared/composables/useConfirm'
 import { toast } from '@shared/composables/useToast'
 import type { Review } from '@shared/api/types'
 import EmptyState from '@shared/components/ui/EmptyState.vue'
 import MergeRequestList from '@modules/reviews/components/MergeRequestList.vue'
+import ReviewLaunchModal from '@modules/reviews/components/ReviewLaunchModal.vue'
 import ReviewList from '@modules/reviews/components/ReviewList.vue'
 import RoutinesSection from '@modules/routines/components/RoutinesSection.vue'
 import RepoSettingsModal from '@modules/repos/components/RepoSettingsModal.vue'
@@ -73,6 +75,31 @@ const tab = ref<Tab>(isTab(route.query.tab) ? route.query.tab : 'mrs')
 watch(tab, (t) => {
   router.replace({ query: { ...route.query, tab: t } })
 })
+
+// --- Tab layout preference (desktop only) ---
+// '3' = MRs · Reviews · Actions as three tabs (the default). '2' = the MRs block
+// lives as a persistent section on top, with only Reviews · Actions as tabs.
+// Phone is ALWAYS the 3-tab layout; the preference only steers desktop.
+const isPhone = useIsPhone()
+const tabLayout = useLocalStorage<'2' | '3'>('flow.tabLayout', '3')
+const effectiveLayout = computed(() => (isPhone.value ? '3' : tabLayout.value))
+// In the 2-tab layout only Reviews · Actions are tabs; MRs is a persistent block.
+const visibleTabs = computed(() =>
+  effectiveLayout.value === '2' ? TABS.filter((t) => t.id !== 'mrs') : TABS,
+)
+// If MRs was the active tab when switching to the 2-tab layout, fall back to
+// Reviews so the tab bar never highlights a tab it no longer renders.
+watch(
+  effectiveLayout,
+  (layout) => {
+    if (layout === '2' && tab.value === 'mrs') tab.value = 'reviews'
+  },
+  { immediate: true },
+)
+
+// Reusable MRs block so the 2-tab and 3-tab layouts share the exact same markup
+// and handlers (rendered in a different position, never duplicated logic).
+const [DefineMrsBlock, MrsBlock] = createReusableTemplate()
 
 // --- Working data ---
 const mrs = computed(() => reviews.mergeRequestsFor(repoId.value))
@@ -162,8 +189,21 @@ async function discardReview(id: string, mrIid: number) {
   await withBusy(id, () => reviews.remove(id), 'Review discarded')
 }
 
-// --- Launch a review on an open MR ---
+// --- Launch a review on an open MR (provider/model/mode chosen in the modal) ---
 const creatingIid = ref<number | null>(null)
+const launchOpen = ref(false)
+const launchIid = ref<number | null>(null)
+const launchMr = computed(() => mrs.value.find((mr) => mr.iid === launchIid.value) ?? null)
+function openLaunch(iid: number) {
+  launchIid.value = iid
+  launchOpen.value = true
+}
+async function submitLaunch(payload: { mode: string; providerId: string; model: string }) {
+  const iid = launchIid.value
+  if (iid == null) return
+  await startReview(iid, payload.mode, payload.providerId, payload.model)
+  launchOpen.value = false
+}
 async function startReview(iid: number, mode: string, providerId: string, model: string) {
   let watchNow = true
   if (repoReviews.value.some((r) => !isTerminal(r.status))) {
@@ -325,36 +365,9 @@ async function submit(payload: ReleaseSubmit) {
         </div>
       </div>
 
-      <!-- Sticky tab bar: stays put on scroll (matters on mobile). Bleeds to the
-           content edges with a solid page background so rows never show through. -->
-      <div
-        class="bg-canvas border-line/50 sticky top-0 z-10 -mx-4 mb-6 flex gap-1 border-b px-4 md:-mx-8 md:px-8"
-        role="tablist"
-        aria-label="Workspace"
-      >
-        <button
-          v-for="t in TABS"
-          :key="t.id"
-          type="button"
-          role="tab"
-          :aria-selected="tab === t.id"
-          class="-mb-px inline-flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors"
-          :class="tab === t.id ? 'border-accent text-ink' : 'text-muted hover:text-ink border-transparent'"
-          @click="tab = t.id"
-        >
-          <span :class="t.icon" class="text-sm" aria-hidden="true" />
-          {{ t.label }}
-          <span
-            v-if="(t.id === 'reviews' && reviewsBadge > 0) || (t.id === 'actions' && actionsBadge > 0)"
-            class="bg-warn/15 text-warn inline-flex min-w-4 items-center justify-center px-1 font-mono text-[0.6rem]"
-          >
-            {{ t.id === 'reviews' ? reviewsBadge : actionsBadge }}
-          </span>
-        </button>
-      </div>
-
-      <!-- MRs -->
-      <div v-show="tab === 'mrs'">
+      <!-- The MRs block, defined once and rendered either as its own tab panel
+           (3-tab layout) or as a persistent section above the tabs (2-tab). -->
+      <DefineMrsBlock>
         <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
           <h2 class="section-title flex items-center gap-2">
             <span class="bg-line inline-block h-3.5 w-0.5" aria-hidden="true" />
@@ -370,14 +383,81 @@ async function submit(payload: ReleaseSubmit) {
           :loading="mrsLoading"
           :error="reviews.mrsError"
           :busy-iid="creatingIid"
-          :providers="providers.items"
-          :default-provider-id="defaultProviderId"
           :review-by-mr="reviewByMr"
           show-release
-          @review="startReview"
+          @review="openLaunch"
           @release="openDevRelease"
         />
+      </DefineMrsBlock>
+
+      <!-- 2-tab layout (desktop only): MRs stay pinned above the tab bar. -->
+      <section v-if="effectiveLayout === '2'" class="mb-6">
+        <MrsBlock />
+      </section>
+
+      <!-- Sticky tab bar: stays put on scroll (matters on mobile). Bleeds to the
+           content edges with a solid page background so rows never show through.
+           The tablist holds only tabs; the desktop layout switch sits beside it. -->
+      <div
+        class="bg-canvas border-line/50 sticky top-0 z-10 -mx-4 mb-6 flex items-stretch border-b px-4 md:-mx-8 md:px-8"
+      >
+        <div class="flex gap-1" role="tablist" aria-label="Workspace">
+          <button
+            v-for="t in visibleTabs"
+            :key="t.id"
+            type="button"
+            role="tab"
+            :aria-selected="tab === t.id"
+            class="-mb-px inline-flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors"
+            :class="tab === t.id ? 'border-accent text-ink' : 'text-muted hover:text-ink border-transparent'"
+            @click="tab = t.id"
+          >
+            <span :class="t.icon" class="text-sm" aria-hidden="true" />
+            {{ t.label }}
+            <span
+              v-if="(t.id === 'reviews' && reviewsBadge > 0) || (t.id === 'actions' && actionsBadge > 0)"
+              class="bg-warn/15 text-warn inline-flex min-w-4 items-center justify-center px-1 font-mono text-[0.6rem]"
+            >
+              {{ t.id === 'reviews' ? reviewsBadge : actionsBadge }}
+            </span>
+          </button>
+        </div>
+
+        <!-- Desktop-only layout switch: 3 tabs vs MRs-on-top. Hidden on phone,
+             which is always the 3-tab layout. -->
+        <div class="ml-auto hidden items-center sm:flex" role="group" aria-label="Tab layout">
+          <button
+            type="button"
+            class="btn-ghost text-xs"
+            :class="effectiveLayout === '3' ? 'text-accent' : 'text-muted'"
+            :aria-pressed="effectiveLayout === '3'"
+            title="MRs as a tab"
+            aria-label="MRs as a tab"
+            @click="tabLayout = '3'"
+          >
+            <span class="i-lucide-layout-list text-sm" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            class="btn-ghost text-xs"
+            :class="effectiveLayout === '2' ? 'text-accent' : 'text-muted'"
+            :aria-pressed="effectiveLayout === '2'"
+            title="MRs on top"
+            aria-label="MRs on top"
+            @click="tabLayout = '2'"
+          >
+            <span class="i-lucide-panel-top text-sm" aria-hidden="true" />
+          </button>
+        </div>
       </div>
+
+      <!-- MRs tab panel (3-tab layout only). Gated with v-if so the block never
+           mounts twice in the 2-tab layout (where it lives in the section above). -->
+      <template v-if="effectiveLayout === '3'">
+        <div v-show="tab === 'mrs'">
+          <MrsBlock />
+        </div>
+      </template>
 
       <!-- Reviews -->
       <div v-show="tab === 'reviews'">
@@ -403,6 +483,15 @@ async function submit(payload: ReleaseSubmit) {
       </div>
 
       <RepoSettingsModal :open="settingsOpen" :repo="repo" @close="settingsOpen = false" />
+      <ReviewLaunchModal
+        :open="launchOpen"
+        :merge-request="launchMr"
+        :providers="providers.items"
+        :default-provider-id="defaultProviderId"
+        :submitting="creatingIid === launchIid"
+        @submit="submitLaunch"
+        @close="launchOpen = false"
+      />
       <ReleaseModal
         :open="modalOpen"
         :flow="modalFlow"

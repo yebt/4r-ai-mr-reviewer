@@ -42,6 +42,10 @@ test('review detail: the + Filter builder adds a chip and narrows the findings',
   // Triage view counts readout — rev3 has 6 findings across dimensions/severities.
   await expect(page.getByText('Showing 6 of 6')).toBeVisible()
 
+  // On desktop the filter toolbar is always shown — there is no "Hide filters"
+  // toggle anymore, and the + Filter builder is immediately available.
+  await expect(page.getByRole('button', { name: 'Hide filters' })).toBeHidden()
+
   // The progressive builder offers Lens / Severity / Status fields.
   await page.getByRole('button', { name: 'Add filter' }).click()
   await expect(page.getByRole('menuitem', { name: 'Lens' })).toBeVisible()

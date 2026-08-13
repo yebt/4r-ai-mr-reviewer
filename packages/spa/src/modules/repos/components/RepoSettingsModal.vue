@@ -58,11 +58,12 @@ async function saveProvider() {
 const webhookBusy = ref(false)
 const showWebhookSecret = ref(false)
 const webhookUrl = computed(() => window.location.origin + props.repo.webhookPath)
-async function setWebhook(enabled: boolean, requireConfirmation: boolean) {
+async function setWebhook(enabled: boolean, requireConfirmation: boolean, success: string) {
   if (webhookBusy.value) return
   webhookBusy.value = true
   try {
     await repos.setWebhook(props.repo.id, enabled, requireConfirmation)
+    toast.success(success)
   } catch (e) {
     toast.error(errorMessage(e))
   } finally {
@@ -70,9 +71,17 @@ async function setWebhook(enabled: boolean, requireConfirmation: boolean) {
   }
 }
 const toggleWebhook = () =>
-  setWebhook(!props.repo.webhookEnabled, props.repo.webhookRequireConfirmation ?? false)
+  setWebhook(
+    !props.repo.webhookEnabled,
+    props.repo.webhookRequireConfirmation ?? false,
+    props.repo.webhookEnabled ? 'Webhook disabled' : 'Webhook enabled',
+  )
 const toggleRequireConfirmation = () =>
-  setWebhook(true, !props.repo.webhookRequireConfirmation)
+  setWebhook(
+    true,
+    !props.repo.webhookRequireConfirmation,
+    props.repo.webhookRequireConfirmation ? 'Reviews will run automatically' : 'Confirmation required',
+  )
 async function rotateWebhook() {
   if (webhookBusy.value) return
   webhookBusy.value = true

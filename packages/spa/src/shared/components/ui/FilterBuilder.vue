@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
+import { useIsPhone } from '@shared/composables/useIsPhone'
 import type { ActiveFilter, FilterField } from '@shared/components/ui/filter-builder'
 
 // Reusable, presentational Linear-style filter builder. A "+ Filter" button adds
@@ -120,14 +121,22 @@ function hasSearch(field: FilterField): boolean {
   return field.options.length > 6
 }
 
-const popoverClass =
-  'border-line bg-surface absolute left-0 top-full z-30 mt-1.5 flex max-h-80 w-56 flex-col overflow-hidden border shadow-lg shadow-black/40'
+// On desktop the popover floats over the toolbar (absolute, fixed width). On
+// phone the builder lives inside a bottom-sheet Modal whose short, overflow-auto
+// panel would clip a floating popover in either direction; there it renders
+// in-flow (full width) so the sheet grows and scrolls to reveal the whole menu.
+const isPhone = useIsPhone()
+const popoverClass = computed(() =>
+  isPhone.value
+    ? 'border-line bg-surface relative z-30 mt-1.5 flex max-h-72 w-full flex-col overflow-hidden border shadow-lg shadow-black/40'
+    : 'border-line bg-surface absolute left-0 top-full z-30 mt-1.5 flex max-h-80 w-56 flex-col overflow-hidden border shadow-lg shadow-black/40',
+)
 </script>
 
 <template>
   <div ref="root" class="flex flex-wrap items-center gap-2">
     <!-- Active filter chips -->
-    <div v-for="f in props.modelValue" :key="f.key" class="relative">
+    <div v-for="f in props.modelValue" :key="f.key" class="relative w-full sm:w-auto">
       <div class="border-line bg-surface inline-flex items-stretch border text-xs">
         <button
           type="button"
@@ -215,7 +224,7 @@ const popoverClass =
     </div>
 
     <!-- + Filter (field picker) -->
-    <div v-if="availableFields.length" class="relative">
+    <div v-if="availableFields.length" class="relative w-full sm:w-auto">
       <button
         type="button"
         class="btn-line text-xs"

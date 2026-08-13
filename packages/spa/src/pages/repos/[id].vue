@@ -17,6 +17,7 @@ import { useReviewsStore } from '@modules/reviews/store'
 import { useProvidersStore } from '@modules/providers/store'
 import { isTerminal } from '@modules/reviews/format'
 import MergeRequestList from '@modules/reviews/components/MergeRequestList.vue'
+import ReviewLaunchModal from '@modules/reviews/components/ReviewLaunchModal.vue'
 import ReviewList from '@modules/reviews/components/ReviewList.vue'
 import RoutinesSection from '@modules/routines/components/RoutinesSection.vue'
 
@@ -122,6 +123,21 @@ onMounted(async () => {
   reviews.fetchMergeRequests(repoId)
   reviews.fetchReviews(repoId)
 })
+
+// --- Review launch modal (provider/model/mode chosen here) ---
+const launchOpen = ref(false)
+const launchIid = ref<number | null>(null)
+const launchMr = computed(() => mrs.value.find((mr) => mr.iid === launchIid.value) ?? null)
+function openLaunch(iid: number) {
+  launchIid.value = iid
+  launchOpen.value = true
+}
+async function submitLaunch(payload: { mode: string; providerId: string; model: string }) {
+  const iid = launchIid.value
+  if (iid == null) return
+  await startReview(iid, payload.mode, payload.providerId, payload.model)
+  launchOpen.value = false
+}
 
 async function startReview(iid: number, mode: string, providerId: string, model: string) {
   // If other reviews are already in progress, let the user choose to watch this
@@ -307,10 +323,8 @@ async function copyText(text: string, label: string) {
           :loading="mrsLoading"
           :error="reviews.mrsError"
           :busy-iid="creatingIid"
-          :providers="providers.items"
-          :default-provider-id="defaultProviderId"
           :review-by-mr="reviewByMr"
-          @review="startReview"
+          @review="openLaunch"
         />
       </section>
 
@@ -542,5 +556,15 @@ async function copyText(text: string, label: string) {
         </template>
       </section>
     </div>
+
+    <ReviewLaunchModal
+      :open="launchOpen"
+      :merge-request="launchMr"
+      :providers="providers.items"
+      :default-provider-id="defaultProviderId"
+      :submitting="creatingIid === launchIid"
+      @submit="submitLaunch"
+      @close="launchOpen = false"
+    />
   </div>
 </template>
