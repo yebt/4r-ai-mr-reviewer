@@ -47,9 +47,15 @@ router.beforeEach(async (to) => {
   return true
 })
 
-// Keep the browser tab title in sync with the active page's meta.title.
+// Keep the browser tab title in sync with the active page's meta.title. Pages
+// that derive their title from loaded data (a repo name, a review) set
+// `meta.dynamicTitle` and own the title via useTitle; skipping them here stops
+// this hook from clobbering their title back to the static meta value — which
+// otherwise happens on entry when the data is already cached (no later reactive
+// update to correct it).
 router.afterEach((to) => {
   NProgress.done()
+  if ((to.meta as { dynamicTitle?: boolean }).dynamicTitle) return
   const t = to.meta.title as string | undefined
   document.title = t ? `${t} - AI Review` : 'AI Review'
 })

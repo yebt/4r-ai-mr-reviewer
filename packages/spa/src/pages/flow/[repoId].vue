@@ -1,5 +1,7 @@
 <script setup lang="ts">
-definePage({ meta: { title: 'Flow' } })
+// dynamicTitle: the tab title comes from the loaded repo (useTitle below), so the
+// router's afterEach must not overwrite it with the static "Flow".
+definePage({ meta: { title: 'Flow', dynamicTitle: true } })
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { createReusableTemplate, useLocalStorage, useTitle } from '@vueuse/core'
