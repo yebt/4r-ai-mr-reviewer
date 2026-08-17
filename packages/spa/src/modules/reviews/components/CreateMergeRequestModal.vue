@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import Modal from '@shared/components/ui/Modal.vue'
+import SearchableSelect from '@shared/components/ui/SearchableSelect.vue'
 import { api, errorMessage } from '@shared/api/client'
 import { toast } from '@shared/composables/useToast'
 import type { MergeRequest, Profile } from '@shared/api/types'
@@ -105,23 +106,29 @@ async function onCreate() {
     <form class="flex flex-col gap-4" @submit.prevent="onCreate">
       <!-- Direction: source → target -->
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_auto_1fr] sm:items-end">
-        <label class="block">
+        <div class="block">
           <span class="field-label">Source branch</span>
-          <select v-model="source" class="field-underline" :disabled="branchesLoading">
-            <option value="">{{ branchesLoading ? 'Loading…' : 'Select branch' }}</option>
-            <option v-for="b in branches" :key="b" :value="b">{{ b }}</option>
-          </select>
-        </label>
+          <SearchableSelect
+            v-model="source"
+            :options="branches"
+            :disabled="branchesLoading"
+            :placeholder="branchesLoading ? 'Loading…' : 'Select branch'"
+            aria-label="Source branch"
+          />
+        </div>
         <span class="text-muted hidden pb-2 sm:block" aria-hidden="true">
           <span class="i-lucide-arrow-right text-sm" />
         </span>
-        <label class="block">
+        <div class="block">
           <span class="field-label">Target branch</span>
-          <select v-model="target" class="field-underline" :disabled="branchesLoading">
-            <option value="">{{ branchesLoading ? 'Loading…' : 'Select branch' }}</option>
-            <option v-for="b in branches" :key="b" :value="b">{{ b }}</option>
-          </select>
-        </label>
+          <SearchableSelect
+            v-model="target"
+            :options="branches"
+            :disabled="branchesLoading"
+            :placeholder="branchesLoading ? 'Loading…' : 'Select branch'"
+            aria-label="Target branch"
+          />
+        </div>
       </div>
       <p v-if="sameBranch" class="text-warn text-xs">
         Source and target must be different branches.
