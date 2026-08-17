@@ -13,6 +13,7 @@ import (
 	"github.com/webcloster-dev/ai-reviewer/internal/app/accounts"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/bot"
 	apphumanize "github.com/webcloster-dev/ai-reviewer/internal/app/humanize"
+	"github.com/webcloster-dev/ai-reviewer/internal/app/mergerequests"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/notifications"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/profiles"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/providers"
@@ -43,6 +44,7 @@ type Server struct {
 	repos         *repos.Service
 	reviews       *reviews.Service
 	routines      *routines.Service
+	mergeRequests *mergerequests.Service
 	humanize      *apphumanize.Service
 	telegram      *apptelegram.Service
 	notifications *notifications.Service
@@ -73,11 +75,11 @@ type Server struct {
 // NewServer wires a Server. A nil authMgr is treated as auth-disabled (replaced
 // with a disabled Manager) so handlers never have to nil-check s.auth. A nil vlt
 // disables the /vault endpoints.
-func NewServer(a *accounts.Service, p *providers.Service, pr *profiles.Service, r *repos.Service, rv *reviews.Service, rt *routines.Service, hz *apphumanize.Service, tg *apptelegram.Service, nt *notifications.Service, sk skills.Set, bt *bot.Service, telegramWebhookSecret string, authMgr *auth.Manager, trustProxy bool, vlt *appvault.Service) *Server {
+func NewServer(a *accounts.Service, p *providers.Service, pr *profiles.Service, r *repos.Service, rv *reviews.Service, rt *routines.Service, mr *mergerequests.Service, hz *apphumanize.Service, tg *apptelegram.Service, nt *notifications.Service, sk skills.Set, bt *bot.Service, telegramWebhookSecret string, authMgr *auth.Manager, trustProxy bool, vlt *appvault.Service) *Server {
 	if authMgr == nil {
 		authMgr = auth.NewManager("", defaultSessionLifetime)
 	}
-	return &Server{accounts: a, providers: p, profiles: pr, repos: r, reviews: rv, routines: rt, humanize: hz, telegram: tg, notifications: nt, skills: sk, openrouter: openrouter.NewCachedClient(openRouterCacheTTL), bot: bt, telegramWebhookSecret: telegramWebhookSecret, auth: authMgr, trustProxy: trustProxy, loginLimiter: newRateLimiter(maxLoginAttempts, loginWindow), vault: vlt}
+	return &Server{accounts: a, providers: p, profiles: pr, repos: r, reviews: rv, routines: rt, mergeRequests: mr, humanize: hz, telegram: tg, notifications: nt, skills: sk, openrouter: openrouter.NewCachedClient(openRouterCacheTTL), bot: bt, telegramWebhookSecret: telegramWebhookSecret, auth: authMgr, trustProxy: trustProxy, loginLimiter: newRateLimiter(maxLoginAttempts, loginWindow), vault: vlt}
 }
 
 // Routes returns the HTTP handler with every endpoint registered.
@@ -140,6 +142,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /repos/{id}/webhook/rotate", s.rotateRepoWebhookSecret)
 	mux.HandleFunc("DELETE /repos/{id}", s.deleteRepo)
 	mux.HandleFunc("GET /repos/{id}/merge-requests", s.listMergeRequests)
+	mux.HandleFunc("POST /repos/{id}/merge-requests/generate", s.generateMergeRequest)
+	mux.HandleFunc("POST /repos/{id}/merge-requests", s.createMergeRequest)
 	mux.HandleFunc("GET /repos/{id}/preflight", s.repoPreflight)
 	mux.HandleFunc("GET /repos/{id}/reviews", s.listReviews)
 	mux.HandleFunc("POST /repos/{id}/routines/approve-and-tag", s.createApproveAndTagRoutine)

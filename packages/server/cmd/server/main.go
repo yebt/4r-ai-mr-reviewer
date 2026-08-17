@@ -18,6 +18,7 @@ import (
 	"github.com/webcloster-dev/ai-reviewer/internal/app/accounts"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/bot"
 	apphumanize "github.com/webcloster-dev/ai-reviewer/internal/app/humanize"
+	"github.com/webcloster-dev/ai-reviewer/internal/app/mergerequests"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/notifications"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/profiles"
 	"github.com/webcloster-dev/ai-reviewer/internal/app/providers"
@@ -95,6 +96,7 @@ func run() error {
 		return err
 	}
 	reviewSvc := reviews.NewService(reviewStore, repoStore, accountSvc, providerSvc, engine.NewMultiPass(ruleSet), cfg.ReasoningBudget)
+	mergeRequestSvc := mergerequests.NewService(repoStore, accountSvc, providerSvc, profileStore)
 	humanizeSvc := apphumanize.NewService(reviewStore, profileStore, humanizationStore, providerSvc, nil)
 	telegramSvc := apptelegram.NewService(telegramStore, secrets)
 	notificationsSvc := notifications.NewService(notificationRuleStore, telegramSvc)
@@ -118,7 +120,7 @@ func run() error {
 		log.Print("ai-reviewer: WARNING — API authentication is DISABLED; set AIR_AUTH_PASSWORD to require a password")
 	}
 
-	api := httpapi.NewServer(accountSvc, providerSvc, profileSvc, repoSvc, reviewSvc, routinesSvc, humanizeSvc, telegramSvc, notificationsSvc, ruleSet, botSvc, cfg.TelegramWebhookSecret, authMgr, cfg.TrustProxyHeaders, vaultSvc)
+	api := httpapi.NewServer(accountSvc, providerSvc, profileSvc, repoSvc, reviewSvc, routinesSvc, mergeRequestSvc, humanizeSvc, telegramSvc, notificationsSvc, ruleSet, botSvc, cfg.TelegramWebhookSecret, authMgr, cfg.TrustProxyHeaders, vaultSvc)
 	srv := &http.Server{Addr: cfg.HTTPAddr, Handler: api.Routes()}
 
 	go func() {

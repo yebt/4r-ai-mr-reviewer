@@ -445,7 +445,7 @@ func newRoutineServerWithRunningRun(t *testing.T) (*httptest.Server, string) {
 
 	routinesSvc := routines.NewService(sqlite.NewRepoStore(db), nil, runStore, time.Minute, nil, log.New(io.Discard, "", 0))
 	var set skills.Set
-	srv := httptest.NewServer(NewServer(nil, nil, nil, nil, nil, routinesSvc, nil, nil, nil, set, nil, "", nil, false, nil).Routes())
+	srv := httptest.NewServer(NewServer(nil, nil, nil, nil, nil, routinesSvc, nil, nil, nil, nil, set, nil, "", nil, false, nil).Routes())
 	t.Cleanup(srv.Close)
 	return srv, runID
 }

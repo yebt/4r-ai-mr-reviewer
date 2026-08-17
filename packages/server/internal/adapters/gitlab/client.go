@@ -245,9 +245,12 @@ func (c *Client) MergeRequestPipelines(ctx context.Context, projectID string, ii
 }
 
 // Compare is the result of comparing two refs: the commits reachable from `to`
-// but not from `from`.
+// but not from `from`, and the per-file diffs between them. GitLab's compare
+// endpoint returns both by default; Diffs carries the same unified-diff text as
+// an MR's changes, so it can feed an LLM prompt that drafts an MR description.
 type Compare struct {
-	Commits []Commit `json:"commits"`
+	Commits []Commit     `json:"commits"`
+	Diffs   []FileChange `json:"diffs"`
 }
 
 // Commit is a single commit in a comparison. Title is the subject line; Message

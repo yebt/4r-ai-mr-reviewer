@@ -6,13 +6,14 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { createReusableTemplate, useLocalStorage, useTitle } from '@vueuse/core'
 import { useIsPhone } from '@shared/composables/useIsPhone'
-import { errorMessage } from '@shared/api/client'
+import { api, errorMessage } from '@shared/api/client'
 import { confirm } from '@shared/composables/useConfirm'
 import { toast } from '@shared/composables/useToast'
-import type { Review } from '@shared/api/types'
+import type { MergeRequest, Review } from '@shared/api/types'
 import EmptyState from '@shared/components/ui/EmptyState.vue'
 import MergeRequestList from '@modules/reviews/components/MergeRequestList.vue'
 import ReviewLaunchModal from '@modules/reviews/components/ReviewLaunchModal.vue'
+import CreateMergeRequestModal from '@modules/reviews/components/CreateMergeRequestModal.vue'
 import ReviewList from '@modules/reviews/components/ReviewList.vue'
 import RoutinesSection from '@modules/routines/components/RoutinesSection.vue'
 import RepoSettingsModal from '@modules/repos/components/RepoSettingsModal.vue'
@@ -21,6 +22,7 @@ import { isTerminal } from '@modules/reviews/format'
 import { useReposStore } from '@modules/repos/store'
 import { useReviewsStore } from '@modules/reviews/store'
 import { useProvidersStore } from '@modules/providers/store'
+import { useProfilesStore } from '@modules/profiles/store'
 import { useRoutinesStore } from '@modules/routines/store'
 
 // The Flow workspace for a single repository: the repo lives in the URL
@@ -32,6 +34,7 @@ const router = useRouter()
 const repos = useReposStore()
 const reviews = useReviewsStore()
 const providers = useProvidersStore()
+const profiles = useProfilesStore()
 const routines = useRoutinesStore()
 
 const repoId = computed(() => (route.params as { repoId: string }).repoId)
@@ -58,10 +61,41 @@ onMounted(async () => {
 })
 
 // Switching repos navigates to a new /flow/:repoId; this component is reused, so
-// react to the id change by (re)loading the new repo's data.
+// react to the id change by (re)loading the new repo's data. Branches are
+// per-repo and lazily loaded, so drop the old repo's list on switch.
 watch(repoId, (id) => {
   if (id && repo.value) loadRepoData(id)
+  branches.value = []
 })
+
+// --- New merge request (AI-drafted title + description) ---
+const newMrOpen = ref(false)
+const branches = ref<string[]>([])
+const branchesLoading = ref(false)
+// Preselect a conventional integration branch as the target when present.
+const defaultTargetBranch = computed(() =>
+  ['main', 'master', 'development'].find((b) => branches.value.includes(b)),
+)
+async function openNewMr() {
+  newMrOpen.value = true
+  if (profiles.items.length === 0) void profiles.fetchAll()
+  await loadBranches()
+}
+async function loadBranches() {
+  branchesLoading.value = true
+  try {
+    branches.value = await api.listRepoBranches(repoId.value)
+  } catch (e) {
+    toast.error(errorMessage(e))
+  } finally {
+    branchesLoading.value = false
+  }
+}
+function onMrCreated(mr: MergeRequest) {
+  newMrOpen.value = false
+  toast.success(`Merge request !${mr.iid} created`)
+  void reviews.fetchMergeRequests(repoId.value)
+}
 
 // --- Tabs (synced to ?tab= so refresh/back keep the active tab) ---
 type Tab = 'mrs' | 'reviews' | 'actions'
@@ -375,10 +409,16 @@ async function submit(payload: ReleaseSubmit) {
             <span class="bg-line inline-block h-3.5 w-0.5" aria-hidden="true" />
             Open merge requests
           </h2>
-          <button type="button" class="btn-line text-xs" @click="openMainRelease">
-            <span class="i-lucide-rocket text-sm" aria-hidden="true" />
-            Release to main
-          </button>
+          <div class="flex items-center gap-2">
+            <button type="button" class="btn-line text-xs" @click="openNewMr">
+              <span class="i-lucide-git-pull-request-create text-sm" aria-hidden="true" />
+              New MR
+            </button>
+            <button type="button" class="btn-line text-xs" @click="openMainRelease">
+              <span class="i-lucide-rocket text-sm" aria-hidden="true" />
+              Release to main
+            </button>
+          </div>
         </div>
         <MergeRequestList
           :items="mrs"
@@ -485,6 +525,16 @@ async function submit(payload: ReleaseSubmit) {
       </div>
 
       <RepoSettingsModal :open="settingsOpen" :repo="repo" @close="settingsOpen = false" />
+      <CreateMergeRequestModal
+        :open="newMrOpen"
+        :repo-id="repoId"
+        :branches="branches"
+        :branches-loading="branchesLoading"
+        :profiles="profiles.items"
+        :default-target-branch="defaultTargetBranch"
+        @created="onMrCreated"
+        @close="newMrOpen = false"
+      />
       <ReviewLaunchModal
         :open="launchOpen"
         :merge-request="launchMr"

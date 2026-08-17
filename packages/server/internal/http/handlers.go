@@ -793,6 +793,7 @@ func toRepo(rp domainrepo.Repo) repoResp {
 type mrResp struct {
 	IID          int    `json:"iid"`
 	Title        string `json:"title"`
+	Description  string `json:"description,omitempty"`
 	State        string `json:"state"`
 	SourceBranch string `json:"sourceBranch"`
 	TargetBranch string `json:"targetBranch"`
@@ -802,8 +803,9 @@ type mrResp struct {
 
 func toMR(m gitlab.MergeRequest) mrResp {
 	return mrResp{
-		IID: m.IID, Title: m.Title, State: m.State, SourceBranch: m.SourceBranch,
-		TargetBranch: m.TargetBranch, WebURL: m.WebURL, Author: m.Author.Username,
+		IID: m.IID, Title: m.Title, Description: m.Description, State: m.State,
+		SourceBranch: m.SourceBranch, TargetBranch: m.TargetBranch,
+		WebURL: m.WebURL, Author: m.Author.Username,
 	}
 }
 

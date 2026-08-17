@@ -12,6 +12,7 @@ import type {
   HumanizeFindingText,
   MainReleaseInput,
   MergeRequest,
+  MergeRequestDraft,
   NotificationRule,
   OpenRouterModel,
   Preflight,
@@ -278,6 +279,20 @@ export const api = {
   deleteRepo: (id: string) => request<void>('DELETE', `/repos/${id}`),
   listMergeRequests: (repoId: string) =>
     request<MergeRequest[]>('GET', `/repos/${repoId}/merge-requests`),
+  // Draft an MR title+description with AI from the diff between two branches.
+  // profileId is optional: when set (and its style guide is ready) the
+  // description is written in that author's voice; otherwise plain English.
+  // Runs a synchronous LLM completion so it may be slow. Does not open the MR.
+  generateMergeRequest: (
+    repoId: string,
+    input: { sourceBranch: string; targetBranch: string; profileId?: string },
+  ) => request<MergeRequestDraft>('POST', `/repos/${repoId}/merge-requests/generate`, input),
+  // Open an MR with the (possibly edited) title+description. 400 on a bad branch
+  // selection or an upstream GitLab error (e.g. an MR already exists).
+  createMergeRequest: (
+    repoId: string,
+    input: { sourceBranch: string; targetBranch: string; title: string; description: string },
+  ) => request<MergeRequest>('POST', `/repos/${repoId}/merge-requests`, input),
   listRepoReviews: (repoId: string, archived = false) =>
     request<Review[]>('GET', `/repos/${repoId}/reviews${archived ? '?archived=1' : ''}`),
 

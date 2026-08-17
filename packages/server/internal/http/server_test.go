@@ -96,7 +96,7 @@ func newTestServerFullWithLifetime(t *testing.T, webhookSecret, authPassword str
 	botSvc := bot.NewService(bot.NewAPIClient(), telegramSvc, reviewSvc, repoSvc)
 
 	authMgr := auth.NewManager(authPassword, lifetime)
-	srv := httptest.NewServer(NewServer(accountSvc, providerSvc, profileSvc, repoSvc, reviewSvc, routinesSvc, humanizeSvc, telegramSvc, notificationsSvc, set, botSvc, webhookSecret, authMgr, false, nil).Routes())
+	srv := httptest.NewServer(NewServer(accountSvc, providerSvc, profileSvc, repoSvc, reviewSvc, routinesSvc, nil, humanizeSvc, telegramSvc, notificationsSvc, set, botSvc, webhookSecret, authMgr, false, nil).Routes())
 	t.Cleanup(srv.Close)
 	return srv
 }
@@ -124,7 +124,7 @@ func decodeBody(t *testing.T, resp *http.Response, dst any) {
 // nil and the session gate passes every request through instead of nil-panicking.
 func TestNewServerNilAuthManagerPassthrough(t *testing.T) {
 	var set skills.Set
-	s := NewServer(nil, nil, nil, nil, nil, nil, nil, nil, nil, set, nil, "", nil, false, nil)
+	s := NewServer(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, set, nil, "", nil, false, nil)
 	if s.auth == nil {
 		t.Fatal("NewServer left s.auth nil for a nil authMgr; want a substituted disabled manager")
 	}

@@ -166,11 +166,20 @@ export interface Preflight {
 export interface MergeRequest {
   iid: number
   title: string
+  // Present on a just-created MR; omitted from the open-MR list payload.
+  description?: string
   state: string
   sourceBranch: string
   targetBranch: string
   webUrl: string
   author: string
+}
+
+// An AI-drafted MR title+description, returned by generateMergeRequest before
+// the MR is opened so the user can review and edit it.
+export interface MergeRequestDraft {
+  title: string
+  description: string
 }
 
 // --- Routines (automated GitLab actions driven by a step ledger) ---

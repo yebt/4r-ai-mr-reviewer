@@ -1,8 +1,14 @@
 <script setup lang="ts">
-import { nextTick, onUnmounted, ref, useId, watch } from 'vue'
+import { computed, nextTick, onUnmounted, ref, useId, watch } from 'vue'
 
-const props = defineProps<{ open: boolean; title?: string }>()
+// size steers the panel's max width: 'md' (default) suits short forms; 'lg'
+// gives roomier surfaces (e.g. editing an MR title + Markdown description).
+const props = withDefaults(defineProps<{ open: boolean; title?: string; size?: 'md' | 'lg' }>(), {
+  size: 'md',
+})
 const emit = defineEmits<{ close: [] }>()
+
+const maxWidth = computed(() => (props.size === 'lg' ? 'sm:max-w-2xl' : 'sm:max-w-md'))
 
 const panel = ref<HTMLElement | null>(null)
 const titleId = useId()
@@ -91,7 +97,8 @@ function onKeydown(e: KeyboardEvent) {
         <div
           ref="panel"
           tabindex="-1"
-          class="border-line bg-surface relative max-h-[90vh] w-full overflow-y-auto border p-6 outline-none sm:max-w-md"
+          class="border-line bg-surface relative max-h-[90vh] w-full overflow-y-auto border p-6 outline-none"
+          :class="maxWidth"
           role="dialog"
           aria-modal="true"
           :aria-labelledby="title ? titleId : undefined"
