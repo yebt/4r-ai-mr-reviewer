@@ -34,6 +34,12 @@ body {
 .fade-leave-to {
   opacity: 0;
 }
+/* A fading-out overlay must not intercept pointer events: while it lingers for
+   the leave animation it would otherwise swallow the click meant for whatever
+   sits beneath it (e.g. a confirm dialog closing back onto its parent modal). */
+.fade-leave-active {
+  pointer-events: none;
+}
 
 /* View Transitions API — same-document navigation.
    The JS integration only calls startViewTransition when motion is allowed, so

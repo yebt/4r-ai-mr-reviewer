@@ -23,9 +23,14 @@ function onKeydown(e: KeyboardEvent) {
 <template>
   <Teleport to="body">
     <Transition name="fade">
+      <!-- z-[60] keeps a confirmation above any open Modal (z-50): a confirm is
+           the most-blocking surface, e.g. "discard this draft?" fired from inside
+           a modal, and must never render behind the modal it guards. The closing
+           overlay is made click-through via .fade-leave-active (main.css) so it
+           never swallows the next click meant for the modal underneath it. -->
       <div
         v-if="state.open"
-        class="fixed inset-0 z-50 flex items-center justify-center p-4"
+        class="fixed inset-0 z-[60] flex items-center justify-center p-4"
         @keydown="onKeydown"
       >
         <div

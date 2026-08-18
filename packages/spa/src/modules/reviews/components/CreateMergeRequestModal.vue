@@ -4,6 +4,7 @@ import Modal from '@shared/components/ui/Modal.vue'
 import SearchableSelect from '@shared/components/ui/SearchableSelect.vue'
 import { api, errorMessage } from '@shared/api/client'
 import { toast } from '@shared/composables/useToast'
+import { confirm } from '@shared/composables/useConfirm'
 import type { MergeRequest, Profile } from '@shared/api/types'
 
 // Create a merge request between two existing branches, with an AI-drafted
@@ -45,6 +46,18 @@ const canGenerate = computed(
 )
 const canCreate = computed(() => canGenerate.value && !!title.value.trim())
 
+// The form holds work worth protecting once a draft exists or a request is in
+// flight — a stray backdrop click / Escape must not silently discard it. The
+// auto-preselected target branch alone does not count as edited.
+const isDirty = computed(
+  () =>
+    generating.value ||
+    creating.value ||
+    !!source.value ||
+    !!title.value.trim() ||
+    !!description.value.trim(),
+)
+
 // Reset every time the modal opens so a previous draft never leaks into the
 // next one; preselect the target to the repo's default branch when known.
 watch(
@@ -82,6 +95,22 @@ async function onGenerate() {
   }
 }
 
+// Guard every close path (backdrop, Escape, the X, Cancel): confirm first when
+// there is unsaved work, so an accidental click-away never throws away a draft.
+async function requestClose() {
+  if (isDirty.value) {
+    const ok = await confirm({
+      title: 'Discard merge request?',
+      message: 'You have an unsaved draft. Discard it and close?',
+      danger: true,
+      confirmText: 'Discard',
+      cancelText: 'Keep editing',
+    })
+    if (!ok) return
+  }
+  emit('close')
+}
+
 async function onCreate() {
   if (!canCreate.value) return
   creating.value = true
@@ -102,7 +131,7 @@ async function onCreate() {
 </script>
 
 <template>
-  <Modal :open="open" title="New merge request" size="lg" @close="emit('close')">
+  <Modal :open="open" title="New merge request" size="lg" @close="requestClose">
     <form class="flex flex-col gap-4" @submit.prevent="onCreate">
       <!-- Direction: source → target -->
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_auto_1fr] sm:items-end">
@@ -195,7 +224,7 @@ async function onCreate() {
           <span v-else class="i-lucide-git-pull-request-create text-sm" aria-hidden="true" />
           Create merge request
         </button>
-        <button type="button" class="btn-ghost w-full text-xs" @click="emit('close')">Cancel</button>
+        <button type="button" class="btn-ghost w-full text-xs" @click="requestClose">Cancel</button>
       </div>
     </form>
   </Modal>
