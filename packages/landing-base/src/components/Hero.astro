@@ -3,6 +3,10 @@ import { SITE } from "../config";
 ---
 
 <section class="hero" id="top">
+  <!-- Ambient instrument-panel texture (AI-generated, near-black). Sits far
+       behind the content at low opacity, faded out at the edges so it adds depth
+       without competing with the headline or the readout panel. -->
+  <div class="hero-bg" aria-hidden="true"></div>
   <div class="wrap hero-grid">
     <div class="hero-copy">
       <p class="eyebrow">
@@ -85,7 +89,19 @@ import { SITE } from "../config";
 </section>
 
 <style>
-  .hero { padding-block: clamp(3rem, 8vw, 6rem) clamp(3.5rem, 9vw, 6.5rem); }
+  .hero { position: relative; padding-block: clamp(3rem, 8vw, 6rem) clamp(3.5rem, 9vw, 6.5rem); overflow: hidden; }
+  .hero-bg {
+    position: absolute;
+    inset: 0;
+    background: url("/hero-bg.png") center right / cover no-repeat;
+    opacity: 0.5;
+    pointer-events: none;
+    z-index: 0;
+    /* Fade the texture out toward the bottom and left so it never fights the copy. */
+    -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 55%, transparent 100%);
+    mask-image: linear-gradient(180deg, #000 0%, #000 55%, transparent 100%);
+  }
+  .hero-grid { position: relative; z-index: 1; }
   .hero-grid {
     display: grid;
     grid-template-columns: 1.05fr 0.95fr;
