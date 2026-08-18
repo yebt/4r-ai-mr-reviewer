@@ -5,7 +5,7 @@ import { SITE } from "../config";
 <section class="section selfhost" id="self-host">
   <div class="wrap sh-grid">
     <div class="sh-copy">
-      <p class="eyebrow"><span class="tick">04</span> Self-hosted</p>
+      <p class="eyebrow"><span class="tick">06</span> Self-hosted</p>
       <h2 class="head">Your code never leaves your infrastructure.</h2>
       <p class="lede">
         The backend is a single Go binary with an embedded SQLite database — no
@@ -47,6 +47,10 @@ import { SITE } from "../config";
     gap: clamp(2rem, 5vw, 3.5rem);
     align-items: center;
   }
+  /* min-width:0 lets the columns shrink below their content's intrinsic width, so
+     the terminal's non-wrapping <pre> scrolls inside .term-body instead of pushing
+     the whole column past the viewport (mobile horizontal-scroll fix). */
+  .sh-grid > * { min-width: 0; }
   @media (max-width: 860px) { .sh-grid { grid-template-columns: 1fr; } }
   .sh-copy .cta { margin-top: 2rem; display: flex; flex-wrap: wrap; gap: 0.75rem; }
 

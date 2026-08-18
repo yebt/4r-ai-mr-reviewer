@@ -58,6 +58,11 @@ import { SITE } from "../config";
   .foot-links { display: flex; flex-direction: column; gap: 0.6rem; font-family: var(--font-mono); font-size: 0.82rem; }
   .foot-links a { color: var(--muted); transition: color 0.15s ease; }
   .foot-links a:hover { color: var(--accent); }
+  /* Touch floor (WCAG 2.5.5): >=44px hit target on coarse pointers. */
+  @media (pointer: coarse) {
+    .foot-links { gap: 0; }
+    .foot-links a { display: flex; align-items: center; min-height: 44px; }
+  }
 
   .foot-base {
     display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem;

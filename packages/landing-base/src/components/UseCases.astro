@@ -1,0 +1,71 @@
+---
+const cases = [
+  {
+    k: "solo / small team",
+    t: "Ship without a reviewer on call",
+    d: "Get a rigorous four-lens read on every merge request before you merge — even when no one else is free to review. The score and recommendation are deterministic, so \"looks fine\" becomes a real gate.",
+  },
+  {
+    k: "security-sensitive",
+    t: "Guard the risky diffs",
+    d: "The R1 · Risk lens zeroes in on auth, secrets, and data paths. Timing side-channels, missing checks, and privilege leaks get located to the exact line before they reach production.",
+  },
+  {
+    k: "teams",
+    t: "One consistent review voice",
+    d: "Humanize rewrites findings in a shared voice profile, so feedback across reviewers reads the same — direct, kind, on-brand — instead of a different tone on every thread.",
+  },
+  {
+    k: "private / regulated",
+    t: "Keep private code private",
+    d: "Self-hosted on your own infrastructure, secrets AES-256-GCM encrypted at rest. The only thing that leaves your network is the diff you choose to send to the model you chose.",
+  },
+];
+---
+
+<section class="section" id="use-cases">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow"><span class="tick">02</span> Where it fits</p>
+      <h2 class="head">Built for the reviews you can't always staff.</h2>
+    </div>
+
+    <div class="cases">
+      {
+        cases.map((c) => (
+          <article class="case">
+            <span class="case-k mono">{c.k}</span>
+            <h3 class="case-t">{c.t}</h3>
+            <p class="case-d">{c.d}</p>
+          </article>
+        ))
+      }
+    </div>
+  </div>
+</section>
+
+<style>
+  .cases {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    border-top: 1px solid var(--line);
+    border-left: 1px solid var(--line);
+  }
+  @media (max-width: 700px) { .cases { grid-template-columns: 1fr; } }
+
+  .case {
+    border-right: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    padding: 1.9rem 1.75rem 2rem;
+    transition: background 0.15s ease;
+  }
+  .case:hover { background: var(--surface); }
+  .case-k {
+    font-size: 0.62rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .case-t { font-size: 1.25rem; letter-spacing: -0.02em; margin: 0.75rem 0 0.6rem; }
+  .case-d { margin: 0; color: var(--muted); font-size: 0.94rem; line-height: 1.6; }
+</style>

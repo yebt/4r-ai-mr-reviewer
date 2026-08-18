@@ -61,12 +61,31 @@ import { SITE } from "../config";
     color: var(--muted);
     transition: color 0.15s ease;
   }
+  /* Touch floor (WCAG 2.5.5): pad links to a >=44px hit target on coarse
+     pointers, without disturbing the tight desktop-mouse nav. */
+  @media (pointer: coarse) {
+    .nav-links a { display: inline-flex; align-items: center; min-height: 44px; }
+  }
   .nav-links a:hover { color: var(--ink); }
   .nav-links .gh { color: var(--ink); }
   .nav-links .gh:hover { color: var(--accent); }
 
+  /* Mobile: keep every section anchor reachable in a horizontal scroll strip
+     (a hidden nav on a one-page scroller strands the anchors the page is built
+     around). Edge mask hints the overflow is scrollable. */
   @media (max-width: 720px) {
-    .nav-links a:not(.gh):not([href="/docs"]) { display: none; }
     .brand-sub { display: none; }
+    .nav-links {
+      gap: 1.1rem;
+      font-size: 0.75rem;
+      margin-left: 1rem;
+      overflow-x: auto;
+      scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
+      -webkit-mask-image: linear-gradient(to right, transparent, #000 0.5rem, #000 calc(100% - 1.25rem), transparent);
+      mask-image: linear-gradient(to right, transparent, #000 0.5rem, #000 calc(100% - 1.25rem), transparent);
+    }
+    .nav-links::-webkit-scrollbar { display: none; }
+    .nav-links a { white-space: nowrap; }
   }
 </style>

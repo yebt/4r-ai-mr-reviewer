@@ -26,10 +26,31 @@ const {
     <meta property="og:type" content="website" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
+    <meta property="og:image" content="/og.png" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="/og.png" />
     <meta name="theme-color" content="#0a0a0b" />
+
+    <style>
+      /* Skip link — visually hidden until keyboard focus. */
+      .skip-link {
+        position: fixed;
+        top: 0.5rem;
+        left: 0.5rem;
+        z-index: 100;
+        transform: translateY(-150%);
+        padding: 0.6rem 1rem;
+        background: var(--accent);
+        color: var(--accent-ink);
+        font-family: var(--font-mono);
+        font-size: 0.8rem;
+        transition: transform 0.15s ease;
+      }
+      .skip-link:focus { transform: translateY(0); }
+    </style>
   </head>
   <body>
+    <a href="#top" class="skip-link">Skip to content</a>
     <slot />
   </body>
 </html>

@@ -1,0 +1,18 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "design-system-font-size",
+        "value": "*",
+        "files": [
+          "packages/documentation/**",
+          "packages/landing-base/**"
+        ],
+        "createdAt": "2026-08-18T21:06:45.241Z",
+        "reason": "Separate Astro sites (landing + docs) with their own display type scale; DESIGN.md's ramp governs the SPA only"
+      }
+    ]
+  }
+}

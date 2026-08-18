@@ -1,0 +1,94 @@
+---
+const stages = [
+  { n: "in", t: "Merge request", d: "An open MR on GitLab." },
+  { n: "context", t: "Context", d: "Diff (fast) or shallow clone (deep).", lenses: false },
+  { n: "engine", t: "4R engine", d: "Four lenses, four passes.", lenses: true },
+  { n: "findings", t: "Findings + score", d: "Located issues · deterministic 0–100.", lenses: false },
+  { n: "out", t: "Publish", d: "Selected inline discussions.", lenses: false },
+];
+---
+
+<section class="section" id="pipeline">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow"><span class="tick">05</span> What the engine does</p>
+      <h2 class="head">One diff in, located findings out.</h2>
+      <p class="lede">
+        Every review runs the same deterministic pipeline. The model finds and locates
+        problems; the score and verdict are computed from what it found — never asked
+        of it.
+      </p>
+    </div>
+
+    <div class="rail" role="list" aria-label="Review pipeline">
+      {
+        stages.map((s, i) => (
+          <>
+            <div class="node" role="listitem">
+              <span class="node-n mono">{s.n}</span>
+              <h3 class="node-t">{s.t}</h3>
+              {s.lenses ? (
+                <div class="lenses" aria-label="R1 R2 R3 R4">
+                  <span>R1</span><span>R2</span><span>R3</span><span>R4</span>
+                </div>
+              ) : (
+                <p class="node-d">{s.d}</p>
+              )}
+            </div>
+            {i < stages.length - 1 && <span class="arrow mono" aria-hidden="true">→</span>}
+          </>
+        ))
+      }
+    </div>
+  </div>
+</section>
+
+<style>
+  .rail {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr auto) 1fr;
+    align-items: stretch;
+    border-top: 1px solid var(--line);
+    padding-top: 2rem;
+  }
+
+  .node {
+    border: 1px solid var(--line);
+    background: var(--surface);
+    padding: 1.1rem 1.15rem 1.25rem;
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+  .node-n {
+    font-size: 0.6rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .node-t { font-size: 1rem; letter-spacing: -0.01em; }
+  .node-d { margin: 0; color: var(--muted); font-size: 0.82rem; line-height: 1.5; }
+
+  .lenses { display: flex; gap: 0.35rem; margin-top: 0.15rem; }
+  .lenses span {
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    color: var(--accent);
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+    padding: 0.15rem 0.4rem;
+  }
+
+  .arrow {
+    align-self: center;
+    color: var(--muted-dim);
+    font-size: 1.1rem;
+    padding-inline: 0.6rem;
+  }
+
+  /* Stack vertically on narrow screens; the arrows rotate to point down. */
+  @media (max-width: 780px) {
+    .rail { grid-template-columns: 1fr; gap: 0; }
+    .arrow { transform: rotate(90deg); padding-block: 0.5rem; }
+  }
+</style>
