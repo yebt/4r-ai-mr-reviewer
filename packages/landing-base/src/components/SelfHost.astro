@@ -1,0 +1,67 @@
+---
+import { SITE } from "../config";
+---
+
+<section class="section selfhost" id="self-host">
+  <div class="wrap sh-grid">
+    <div class="sh-copy">
+      <p class="eyebrow"><span class="tick">04</span> Self-hosted</p>
+      <h2 class="head">Your code never leaves your infrastructure.</h2>
+      <p class="lede">
+        The backend is a single Go binary with an embedded SQLite database — no
+        external services, no telemetry, no third parties in the loop but the AI
+        provider you choose. Run it on a laptop, a VM, or behind your own proxy.
+      </p>
+      <div class="cta">
+        <a class="btn btn-accent" href={`${SITE.docs}/self-hosting/deploy`}>
+          Deployment guide <span class="arrow">→</span>
+        </a>
+        <a class="btn btn-line" href={`${SITE.docs}/getting-started/quick-start`}>Quick start</a>
+      </div>
+    </div>
+
+    <div class="terminal" aria-hidden="true">
+      <div class="term-head">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <span class="term-title mono">bash — ai-reviewer</span>
+      </div>
+      <pre class="term-body mono"><code><span class="c">## run backend + SPA together</span>
+<span class="p">$</span> make dev
+<span class="o">→ server  :8080   spa  :5173</span>
+
+<span class="c">## or ship the single binary</span>
+<span class="p">$</span> make build && ./bin/ai-reviewer
+<span class="o">→ listening on :8080  ·  db ai-reviewer.db</span>
+
+<span class="c">## secrets stay encrypted at rest (AES-256-GCM)</span>
+<span class="p">$</span> export AIR_PASSWORD=…   <span class="c"># unlocks the vault</span></code></pre>
+    </div>
+  </div>
+</section>
+
+<style>
+  .selfhost { background: var(--surface); }
+  .sh-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: clamp(2rem, 5vw, 3.5rem);
+    align-items: center;
+  }
+  @media (max-width: 860px) { .sh-grid { grid-template-columns: 1fr; } }
+  .sh-copy .cta { margin-top: 2rem; display: flex; flex-wrap: wrap; gap: 0.75rem; }
+
+  .terminal { border: 1px solid var(--line); background: var(--canvas); }
+  .term-head {
+    display: flex; align-items: center; gap: 0.4rem;
+    padding: 0.65rem 0.9rem; border-bottom: 1px solid var(--line);
+  }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--line); }
+  .term-title { margin-left: 0.6rem; font-size: 0.68rem; color: var(--muted); }
+  .term-body {
+    margin: 0; padding: 1.1rem 1.2rem; overflow-x: auto;
+    font-size: 0.8rem; line-height: 1.75; color: var(--ink);
+  }
+  .term-body .p { color: var(--accent); }
+  .term-body .c { color: var(--muted-dim); }
+  .term-body .o { color: var(--muted); }
+</style>

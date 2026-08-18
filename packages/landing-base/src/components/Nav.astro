@@ -1,0 +1,72 @@
+---
+import { SITE } from "../config";
+---
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a href="#top" class="brand" aria-label="4R home">
+      <span class="brand-mark">4R</span>
+      <span class="brand-sub mono">/ mr-reviewer</span>
+    </a>
+
+    <nav class="nav-links" aria-label="Primary">
+      <a href="#framework">Framework</a>
+      <a href="#features">Features</a>
+      <a href="#flow">How it works</a>
+      <a href={SITE.docs}>Docs</a>
+      <a href={SITE.github} class="gh" rel="noopener" target="_blank">GitHub&nbsp;↗</a>
+    </nav>
+  </div>
+</header>
+
+<style>
+  .nav {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: color-mix(in srgb, var(--canvas) 82%, transparent);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .nav-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 60px;
+  }
+  .brand {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.5rem;
+  }
+  .brand-mark {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: 1.05rem;
+    letter-spacing: -0.02em;
+  }
+  .brand-sub {
+    font-size: 0.72rem;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+  }
+  .nav-links {
+    display: flex;
+    align-items: center;
+    gap: 1.6rem;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+  }
+  .nav-links a {
+    color: var(--muted);
+    transition: color 0.15s ease;
+  }
+  .nav-links a:hover { color: var(--ink); }
+  .nav-links .gh { color: var(--ink); }
+  .nav-links .gh:hover { color: var(--accent); }
+
+  @media (max-width: 720px) {
+    .nav-links a:not(.gh):not([href="/docs"]) { display: none; }
+    .brand-sub { display: none; }
+  }
+</style>

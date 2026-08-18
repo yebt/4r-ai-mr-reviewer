@@ -1,0 +1,86 @@
+---
+const lenses = [
+  {
+    id: "R1",
+    name: "Risk",
+    q: "Can this harm security, data, or production stability?",
+  },
+  {
+    id: "R2",
+    name: "Readability",
+    q: "Will the next engineer understand it without an hour of digging?",
+  },
+  {
+    id: "R3",
+    name: "Reliability",
+    q: "Does it behave correctly across the realistic range of inputs?",
+  },
+  {
+    id: "R4",
+    name: "Resilience",
+    q: "Does it degrade gracefully when dependencies fail or slow down?",
+  },
+];
+---
+
+<section class="section" id="framework">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow"><span class="tick">01</span> The framework</p>
+      <h2 class="head">Four lenses, run as four passes.</h2>
+      <p class="lede">
+        Every change is examined through four independent lenses, so the issues that
+        matter most surface first — without slowing down changes that are genuinely
+        safe. Each lens runs as its own pass, streaming results as they land.
+      </p>
+    </div>
+
+    <ol class="lenses" role="list">
+      {
+        lenses.map((l) => (
+          <li class="lens">
+            <span class="lens-id mono">{l.id}</span>
+            <span class="lens-name">{l.name}</span>
+            <span class="lens-q">{l.q}</span>
+          </li>
+        ))
+      }
+    </ol>
+  </div>
+</section>
+
+<style>
+  .lenses { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+  .lens {
+    display: grid;
+    grid-template-columns: 4rem minmax(9rem, 14rem) 1fr;
+    align-items: baseline;
+    gap: 1.5rem;
+    padding: 1.5rem 0;
+    border-bottom: 1px solid var(--line);
+    transition: background 0.15s ease;
+  }
+  .lens:hover { background: var(--surface); }
+  .lens-id {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: -0.02em;
+  }
+  .lens-name {
+    font-size: 1.15rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .lens-q { color: var(--muted); font-size: 1rem; line-height: 1.5; }
+
+  @media (max-width: 680px) {
+    .lens {
+      grid-template-columns: 3rem 1fr;
+      gap: 0.4rem 1rem;
+      row-gap: 0.5rem;
+    }
+    .lens-id { grid-row: span 2; font-size: 1.25rem; }
+    .lens-q { grid-column: 2; }
+  }
+</style>

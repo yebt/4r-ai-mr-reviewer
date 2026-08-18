@@ -1,0 +1,82 @@
+---
+const steps = [
+  {
+    n: "01",
+    t: "Configure",
+    d: "Add a GitLab account and an AI provider, then track a repository. Tokens and keys are encrypted the moment they land.",
+    note: "GitLab · provider · repo",
+  },
+  {
+    n: "02",
+    t: "Review",
+    d: "Pick an open merge request and launch. The engine loads the 4R rule sets, reads the diff (fast) or a shallow clone (deep), and runs each lens as a pass.",
+    note: "fast / deep · 4 passes",
+  },
+  {
+    n: "03",
+    t: "Publish",
+    d: "Read the located findings and the deterministic score, humanize what you want in your own voice, then post the ones that matter as inline discussions.",
+    note: "select · humanize · comment",
+  },
+];
+---
+
+<section class="section" id="flow">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow"><span class="tick">03</span> The loop</p>
+      <h2 class="head">From merge request to published review.</h2>
+    </div>
+
+    <ol class="steps" role="list">
+      {
+        steps.map((s) => (
+          <li class="step">
+            <span class="step-n mono">{s.n}</span>
+            <div class="step-body">
+              <h3 class="step-t">{s.t}</h3>
+              <p class="step-d">{s.d}</p>
+              <span class="step-note mono">{s.note}</span>
+            </div>
+          </li>
+        ))
+      }
+    </ol>
+  </div>
+</section>
+
+<style>
+  .steps {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0;
+  }
+  @media (max-width: 800px) { .steps { grid-template-columns: 1fr; } }
+
+  .step {
+    padding: 1.75rem 1.75rem 1.75rem 0;
+    border-top: 2px solid var(--line);
+    margin-right: 1.75rem;
+  }
+  @media (max-width: 800px) {
+    .step { margin-right: 0; padding-right: 0; }
+  }
+  .step-n {
+    font-size: 0.8rem;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+  }
+  .step-t { font-size: 1.4rem; margin: 1rem 0 0.6rem; letter-spacing: -0.02em; }
+  .step-d { margin: 0; color: var(--muted); font-size: 0.95rem; line-height: 1.6; }
+  .step-note {
+    display: inline-block;
+    margin-top: 1rem;
+    font-size: 0.66rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted-dim);
+  }
+</style>

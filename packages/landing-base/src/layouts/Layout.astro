@@ -1,0 +1,35 @@
+---
+import "../styles/global.css";
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const {
+  title = "4R — Self-hosted AI Merge Request Reviewer",
+  description = "Self-hosted AI code review for GitLab merge requests, built around the 4R quality framework: Risk, Readability, Reliability, Resilience. Located findings, deterministic scoring, your infrastructure.",
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="generator" content={Astro.generator} />
+
+    <title>{title}</title>
+    <meta name="description" content={description} />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="theme-color" content="#0a0a0b" />
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>

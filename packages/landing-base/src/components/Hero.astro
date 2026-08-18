@@ -1,0 +1,184 @@
+---
+import { SITE } from "../config";
+---
+
+<section class="hero" id="top">
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <p class="eyebrow">
+        Self-hosted · GitLab-first · <span class="tick">the 4R framework</span>
+      </p>
+
+      <h1 class="hero-title">
+        Code review,<br />through <span class="accent">four lenses</span>.
+      </h1>
+
+      <p class="lede">
+        Self-hosted AI review for GitLab merge requests. The engine reads the diff,
+        returns <strong>located, structured findings</strong> with a deterministic
+        score, and lets you publish exactly what matters — in your own voice.
+      </p>
+
+      <div class="cta">
+        <a class="btn btn-accent" href={SITE.docs}>Read the docs <span class="arrow">→</span></a>
+        <a class="btn btn-line" href={SITE.github} target="_blank" rel="noopener">View source ↗</a>
+      </div>
+
+      <ul class="meta" role="list">
+        <li>Go + SQLite · single binary</li>
+        <li>AES-256-GCM at rest</li>
+        <li>OpenAI-compatible + Claude</li>
+      </ul>
+    </div>
+
+    <!-- Instrument-panel readout: a stylized review, echoing the app's own UI. -->
+    <aside class="panel" aria-label="Example review readout">
+      <div class="panel-head">
+        <div class="repo">
+          <span class="repo-name">web-app</span>
+          <span class="mr mono">!120</span>
+        </div>
+        <span class="status">done</span>
+      </div>
+      <div class="branches mono">feat/redis-blocklist → main</div>
+
+      <div class="divider"></div>
+
+      <div class="readout">
+        <div class="metric">
+          <span class="k">Score</span>
+          <span class="v"><span class="accent">72</span> / 100</span>
+        </div>
+        <div class="metric">
+          <span class="k">Recommendation</span>
+          <span class="v rec">Request changes</span>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="finding">
+        <div class="finding-top">
+          <span class="dim">R1 · Risk</span>
+          <span class="sev">High</span>
+          <span class="loc mono">internal/auth/session.go:42</span>
+        </div>
+        <p class="finding-body">
+          Session token compared with <code>==</code> — use <code>hmac.Equal</code> to
+          close a timing side-channel on token verification.
+        </p>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="passes">
+        <div class="lenses">
+          <span class="lens ok">R1</span>
+          <span class="lens ok">R2</span>
+          <span class="lens ok">R3</span>
+          <span class="lens run">R4</span>
+        </div>
+        <span class="publish mono">Publish 3 →</span>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<style>
+  .hero { padding-block: clamp(3rem, 8vw, 6rem) clamp(3.5rem, 9vw, 6.5rem); }
+  .hero-grid {
+    display: grid;
+    grid-template-columns: 1.05fr 0.95fr;
+    gap: clamp(2rem, 5vw, 4rem);
+    align-items: center;
+  }
+  @media (max-width: 900px) {
+    .hero-grid { grid-template-columns: 1fr; }
+  }
+
+  .hero-title {
+    font-family: var(--font-mono);
+    font-size: clamp(2.4rem, 6.5vw, 4.2rem);
+    line-height: 1.02;
+    letter-spacing: -0.03em;
+    margin: 1.25rem 0 0;
+  }
+  .hero-copy .lede { margin-top: 1.4rem; }
+  .hero-copy strong { color: var(--ink); font-weight: 600; }
+
+  .cta { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 2rem; }
+
+  .meta {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.4rem;
+    margin: 2.2rem 0 0;
+    padding: 0;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+  }
+  .meta li { position: relative; padding-left: 1rem; }
+  .meta li::before {
+    content: "";
+    position: absolute; left: 0; top: 50%;
+    width: 5px; height: 5px; transform: translateY(-50%);
+    background: var(--accent);
+  }
+
+  /* --- The readout panel: one hairline border, no rounded card fill --- */
+  .panel {
+    border: 1px solid var(--line);
+    background: linear-gradient(180deg, var(--surface) 0%, var(--canvas) 100%);
+    padding: 1.25rem 1.35rem 1.4rem;
+    font-size: 0.9rem;
+  }
+  .panel-head { display: flex; align-items: center; justify-content: space-between; }
+  .repo { display: flex; align-items: baseline; gap: 0.6rem; }
+  .repo-name { font-weight: 600; }
+  .mr { color: var(--muted); font-size: 0.8rem; }
+  .status {
+    font-family: var(--font-mono); font-size: 0.62rem; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--ok);
+    border: 1px solid color-mix(in srgb, var(--ok) 35%, transparent);
+    padding: 0.15rem 0.45rem;
+  }
+  .branches { color: var(--muted); font-size: 0.74rem; margin-top: 0.5rem; }
+
+  .divider { height: 1px; background: var(--line); margin: 1rem 0; }
+
+  .readout { display: flex; gap: 2.5rem; }
+  .metric { display: flex; flex-direction: column; gap: 0.3rem; }
+  .metric .k {
+    font-family: var(--font-mono); font-size: 0.6rem; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .metric .v { font-family: var(--font-mono); font-size: 1.35rem; font-weight: 600; }
+  .metric .v.rec { font-size: 0.95rem; color: var(--flame); align-self: flex-start; }
+
+  .finding-top {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.7rem;
+    font-family: var(--font-mono); font-size: 0.62rem; letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .dim { color: var(--ink); }
+  .sev { color: var(--flame); border: 1px solid color-mix(in srgb, var(--flame) 40%, transparent); padding: 0.1rem 0.4rem; }
+  .loc { color: var(--muted); text-transform: none; letter-spacing: 0; }
+  .finding-body { margin: 0.65rem 0 0; color: var(--muted); font-size: 0.86rem; line-height: 1.55; }
+  .finding-body code {
+    font-family: var(--font-mono); font-size: 0.82em; color: var(--ink);
+    background: var(--surface-2); padding: 0.05em 0.35em;
+  }
+
+  .passes { display: flex; align-items: center; justify-content: space-between; }
+  .lenses { display: flex; gap: 0.4rem; }
+  .lens {
+    font-family: var(--font-mono); font-size: 0.66rem; letter-spacing: 0.06em;
+    padding: 0.2rem 0.45rem; border: 1px solid var(--line); color: var(--muted);
+  }
+  .lens.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 30%, transparent); }
+  .lens.run { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+  .publish { color: var(--accent); font-size: 0.78rem; }
+</style>

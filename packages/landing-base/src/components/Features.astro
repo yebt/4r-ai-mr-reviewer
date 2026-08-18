@@ -1,0 +1,92 @@
+---
+const features = [
+  {
+    k: "findings",
+    t: "Located, structured findings",
+    d: "Every issue lands on a file and line, tagged with its 4R lens and severity, split into issue · why · fix — not a wall of prose.",
+  },
+  {
+    k: "scoring",
+    t: "Deterministic scoring",
+    d: "The 0–100 score and the approve / request-changes call are computed from the findings, not asked of the model. Same findings, same verdict.",
+  },
+  {
+    k: "passes",
+    t: "Phased, multi-pass reviews",
+    d: "Each lens runs as its own pass with live progress, so results stream in as they finish instead of arriving all at once.",
+  },
+  {
+    k: "providers",
+    t: "Bring your own model",
+    d: "OpenAI-compatible (Groq, OpenAI, Moonshot, Kimi, OpenRouter) and Anthropic. Set a default, a per-repo model, or override per review at launch.",
+  },
+  {
+    k: "humanize",
+    t: "Humanize — your voice",
+    d: "Capture your writing style into profiles, then rewrite the summary and each finding in that voice before publishing. Ship feedback that sounds like you.",
+  },
+  {
+    k: "publish",
+    t: "Selective publishing",
+    d: "Choose which findings become inline GitLab discussions, or post them all. Already-published findings are never re-posted on a re-run.",
+  },
+  {
+    k: "compose",
+    t: "Draft MRs with AI",
+    d: "Open a merge request between two branches and let the model draft its title and description from the diff — in plain English or a chosen voice.",
+  },
+  {
+    k: "secrets",
+    t: "Encrypted, self-hosted",
+    d: "A single Go + SQLite binary on your infra. GitLab tokens and API keys are AES-256-GCM encrypted at rest; the API never returns them.",
+  },
+];
+---
+
+<section class="section" id="features">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow"><span class="tick">02</span> Capabilities</p>
+      <h2 class="head">A full review loop — configure, review, publish.</h2>
+    </div>
+
+    <div class="grid">
+      {
+        features.map((f) => (
+          <article class="feat">
+            <span class="feat-k mono">{f.k}</span>
+            <h3 class="feat-t">{f.t}</h3>
+            <p class="feat-d">{f.d}</p>
+          </article>
+        ))
+      }
+    </div>
+  </div>
+</section>
+
+<style>
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    border-top: 1px solid var(--line);
+    border-left: 1px solid var(--line);
+  }
+  @media (max-width: 940px) { .grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } }
+
+  .feat {
+    border-right: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    padding: 1.5rem 1.4rem 1.75rem;
+    transition: background 0.15s ease;
+  }
+  .feat:hover { background: var(--surface); }
+  .feat-k {
+    font-size: 0.62rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .feat-t { font-size: 1.02rem; margin: 0.7rem 0 0.5rem; letter-spacing: -0.01em; }
+  .feat-d { margin: 0; color: var(--muted); font-size: 0.9rem; line-height: 1.55; }
+</style>
