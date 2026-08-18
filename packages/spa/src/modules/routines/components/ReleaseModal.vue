@@ -28,6 +28,9 @@ const props = defineProps<{
 const emit = defineEmits<{ submit: [payload: ReleaseSubmit]; close: [] }>()
 
 const bump = ref<Bump>('minor')
+// Main flow only. When true, the release bases on the highest tag INCLUDING
+// "-dev" prereleases (promoting the latest dev version) instead of ignoring them.
+const includeDev = ref(false)
 const removeSourceBranch = ref(false)
 const mergeWhenPipelineSucceeds = ref(true)
 // Main flow only. Empty means "use the backend default" (development → main).
@@ -134,6 +137,7 @@ async function loadPreview() {
       mrIid: props.flow === 'dev' ? props.mergeRequest?.iid : undefined,
       source: props.flow === 'main' ? sourceBranch.value.trim() : undefined,
       target: props.flow === 'main' ? targetBranch.value.trim() : undefined,
+      includeDev: props.flow === 'main' ? includeDev.value : undefined,
     })
   } catch (e) {
     preview.value = null
@@ -146,7 +150,15 @@ async function loadPreview() {
 // Recompute when any input that changes the tag changes (debounced to avoid a
 // request per keystroke on the branch fields).
 watchDebounced(
-  () => [props.open, props.flow, bump.value, sourceBranch.value, targetBranch.value, props.mergeRequest?.iid],
+  () => [
+    props.open,
+    props.flow,
+    bump.value,
+    includeDev.value,
+    sourceBranch.value,
+    targetBranch.value,
+    props.mergeRequest?.iid,
+  ],
   loadPreview,
   { debounce: 350, immediate: true },
 )
@@ -158,6 +170,7 @@ watch(
   ([open]) => {
     if (!open) return
     bump.value = 'minor'
+    includeDev.value = false
     removeSourceBranch.value = false
     mergeWhenPipelineSucceeds.value = props.flow === 'dev'
     sourceBranch.value = ''
@@ -178,6 +191,7 @@ function onSubmit() {
       flow: 'main',
       input: {
         bump: bump.value,
+        includeDev: includeDev.value,
         sourceBranch: sourceBranch.value.trim(),
         targetBranch: targetBranch.value.trim(),
         // Omit when empty so the backend default applies.
@@ -264,13 +278,25 @@ function onSubmit() {
         </div>
       </div>
 
-      <!-- Main-flow gotcha: the main release ignores -dev prerelease tags, so it
-           bases the next version on the highest PURE release, not a dev tag. -->
-      <p v-if="flow === 'main'" class="text-muted text-xs">
-        Based on the highest <span class="text-ink font-mono">X.Y.Z</span> release tag —
-        <span class="text-ink">-dev tags are ignored</span>. Nothing is merged or tagged until you
-        confirm at the gate.
-      </p>
+      <!-- Main-flow base selection: by default the release ignores -dev prerelease
+           tags and bases on the highest pure X.Y.Z release. Opt in to count them
+           and promote the latest dev version (e.g. v2.0.0-dev → v2.0.0) instead. -->
+      <template v-if="flow === 'main'">
+        <label class="flex cursor-pointer items-start gap-2 text-sm">
+          <input v-model="includeDev" type="checkbox" class="accent-accent mt-0.5" />
+          <span>
+            <span class="text-ink">Count <span class="font-mono">-dev</span> prereleases</span>
+            <span class="text-muted mt-0.5 block text-xs">
+              {{
+                includeDev
+                  ? 'Bases on the highest tag including -dev, promoting the latest dev version (the suffix is dropped), then applies the bump.'
+                  : 'Bases on the highest pure X.Y.Z release; -dev tags are ignored.'
+              }}
+            </span>
+          </span>
+        </label>
+        <p class="text-muted text-xs">Nothing is merged or tagged until you confirm at the gate.</p>
+      </template>
 
       <label class="block">
         <span class="field-label">Reaction emojis</span>

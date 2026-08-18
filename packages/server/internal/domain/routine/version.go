@@ -99,6 +99,27 @@ func HighestReleaseSemver(existing []string) string {
 	return bestRaw
 }
 
+// HighestMainBase returns the base tag a MAIN release should bump from. By
+// default (includeDev false) it ignores prerelease/"-dev" tags and bases off the
+// highest PURE release (HighestReleaseSemver). When includeDev is true it bases
+// off the highest tag OVERALL including prereleases (HighestSemver); since
+// NextRelease strips the "-dev" suffix from the base numbers, a "2.0.0-dev" peak
+// is thereby PROMOTED to a clean "2.0.0" release line rather than ignored.
+func HighestMainBase(existing []string, includeDev bool) string {
+	if includeDev {
+		return HighestSemver(existing)
+	}
+	return HighestReleaseSemver(existing)
+}
+
+// IsPrerelease reports whether tag parses as a semver prerelease — i.e. it
+// carries a "-suffix" such as "2.0.0-dev". A non-semver string is not a
+// prerelease.
+func IsPrerelease(tag string) bool {
+	pt, ok := parseTag(tag)
+	return ok && pt.hasPre
+}
+
 // NextRelease computes the next version from the last tag and the ordered list of
 // commit subjects (OLDEST first), applying the configured bump mode. It also
 // returns the TOTAL feat/fix counts across all commits (for display).

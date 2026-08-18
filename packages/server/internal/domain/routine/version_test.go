@@ -288,3 +288,50 @@ func TestHighestReleaseSemver(t *testing.T) {
 		})
 	}
 }
+
+func TestHighestMainBase(t *testing.T) {
+	// The user's real situation: releases up to v0.4.2, a -dev line up to v2.0.0-dev.
+	tags := []string{
+		"v0.0.12", "v0.1.4", "v0.4.2",
+		"v1.0.0-dev", "v1.14.1-dev", "v2.0.0-dev",
+	}
+	tests := []struct {
+		name       string
+		existing   []string
+		includeDev bool
+		want       string
+	}{
+		{"ignore dev -> highest pure release", tags, false, "v0.4.2"},
+		{"count dev -> highest overall", tags, true, "v2.0.0-dev"},
+		{"no tags", nil, false, ""},
+		{"no tags, include dev", nil, true, ""},
+		{"only dev tags, ignore -> empty", []string{"v1.0.0-dev", "v2.0.0-dev"}, false, ""},
+		{"only dev tags, include -> highest", []string{"v1.0.0-dev", "v2.0.0-dev"}, true, "v2.0.0-dev"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := HighestMainBase(tc.existing, tc.includeDev); got != tc.want {
+				t.Errorf("HighestMainBase(%v, %v) = %q, want %q", tc.existing, tc.includeDev, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestIsPrerelease(t *testing.T) {
+	tests := []struct {
+		tag  string
+		want bool
+	}{
+		{"v2.0.0-dev", true},
+		{"2.0.0-rc.1", true},
+		{"v2.0.0", false},
+		{"0.4.2", false},
+		{"not-a-tag", false},
+		{"", false},
+	}
+	for _, tc := range tests {
+		if got := IsPrerelease(tc.tag); got != tc.want {
+			t.Errorf("IsPrerelease(%q) = %v, want %v", tc.tag, got, tc.want)
+		}
+	}
+}

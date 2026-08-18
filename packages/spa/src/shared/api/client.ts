@@ -367,12 +367,20 @@ export const api = {
   // the compute_tag step (main ignores -dev tags; dev counts the MR's commits).
   previewRoutineTag: (
     repoId: string,
-    q: { flow: 'dev' | 'main'; bump: string; mrIid?: number; source?: string; target?: string },
+    q: {
+      flow: 'dev' | 'main'
+      bump: string
+      mrIid?: number
+      source?: string
+      target?: string
+      includeDev?: boolean
+    },
   ) => {
     const p = new URLSearchParams({ flow: q.flow, bump: q.bump })
     if (q.mrIid != null) p.set('mrIid', String(q.mrIid))
     if (q.source) p.set('source', q.source)
     if (q.target) p.set('target', q.target)
+    if (q.includeDev) p.set('includeDev', '1')
     return request<{ nextTag: string; lastTag: string; featCount: number; fixCount: number }>(
       'GET',
       `/repos/${repoId}/routines/preview-tag?${p.toString()}`,

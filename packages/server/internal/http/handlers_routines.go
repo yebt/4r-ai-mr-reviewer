@@ -92,6 +92,7 @@ func (s *Server) createReleaseRoutine(w http.ResponseWriter, r *http.Request) {
 func (s *Server) createMainReleaseRoutine(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Bump         string   `json:"bump"`
+		IncludeDev   bool     `json:"includeDev"`
 		SourceBranch string   `json:"sourceBranch"`
 		TargetBranch string   `json:"targetBranch"`
 		Emojis       []string `json:"emojis"`
@@ -118,6 +119,7 @@ func (s *Server) createMainReleaseRoutine(w http.ResponseWriter, r *http.Request
 	run, err := s.routines.CreateMainRelease(r.Context(), routines.MainReleaseInput{
 		RepoID:                    r.PathValue("id"),
 		Bump:                      in.Bump,
+		IncludeDev:                in.IncludeDev,
 		SourceBranch:              in.SourceBranch,
 		TargetBranch:              in.TargetBranch,
 		Emojis:                    in.Emojis,
@@ -261,6 +263,7 @@ func (s *Server) previewRoutineTag(w http.ResponseWriter, r *http.Request) {
 		Flow:         q.Get("flow"),
 		MRIID:        mrIID,
 		Bump:         q.Get("bump"),
+		IncludeDev:   q.Get("includeDev") == "1" || q.Get("includeDev") == "true",
 		SourceBranch: q.Get("source"),
 		TargetBranch: q.Get("target"),
 	})

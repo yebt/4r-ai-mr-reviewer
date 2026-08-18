@@ -172,6 +172,11 @@ type releaseParams struct {
 	TargetBranch string `json:"targetBranch"`
 	// Bump is the semver bump mode fed to routine.NextRelease.
 	Bump string `json:"bump"`
+	// IncludeDev (main flow) bases the release on the highest tag INCLUDING "-dev"
+	// prereleases, promoting the latest dev version to a clean release, instead of
+	// ignoring "-dev" tags and basing off the highest pure release. DEFAULTS TO
+	// false (the historical behavior).
+	IncludeDev bool `json:"includeDev,omitempty"`
 	// Emojis are the reactions the react step awards.
 	Emojis []string `json:"emojis"`
 	// RemoveSourceBranch, when true, deletes the source branch on merge. It is a
@@ -625,6 +630,7 @@ func (s *Service) CreateRelease(ctx context.Context, in ReleaseInput) (routine.R
 type MainReleaseInput struct {
 	RepoID                    string
 	Bump                      string
+	IncludeDev                bool
 	SourceBranch              string
 	TargetBranch              string
 	Emojis                    []string
@@ -705,6 +711,7 @@ func (s *Service) CreateMainRelease(ctx context.Context, in MainReleaseInput) (r
 		SourceBranch:              sourceBranch,
 		TargetBranch:              targetBranch,
 		Bump:                      bump,
+		IncludeDev:                in.IncludeDev,
 		Emojis:                    emojis,
 		RemoveSourceBranch:        in.RemoveSourceBranch,
 		MergeWhenPipelineSucceeds: in.MergeWhenPipelineSucceeds,
@@ -884,6 +891,7 @@ type PreviewInput struct {
 	Flow         string // "main" for the main flow; anything else is the dev flow
 	MRIID        int    // dev flow: the MR to release
 	Bump         string // major/minor/patch; empty defaults to minor
+	IncludeDev   bool   // main flow: base on the highest tag INCLUDING "-dev"
 	SourceBranch string // main flow; empty defaults to development
 	TargetBranch string // main flow; empty defaults to main
 }
@@ -897,8 +905,9 @@ type PreviewResult struct {
 }
 
 // PreviewNextTag computes the next release tag WITHOUT creating a run or mutating
-// the repo, mirroring the compute_tag step exactly (main ignores -dev tags; dev
-// counts the MR's commits) so the release modal can show the exact tag up front.
+// the repo, mirroring the compute_tag step exactly (main ignores -dev tags unless
+// IncludeDev opts to count them; dev counts the MR's commits) so the release modal
+// can show the exact tag up front.
 func (s *Service) PreviewNextTag(ctx context.Context, in PreviewInput) (PreviewResult, error) {
 	bump := in.Bump
 	if bump == "" {
@@ -931,8 +940,9 @@ func (s *Service) PreviewNextTag(ctx context.Context, in PreviewInput) (PreviewR
 		if target == "" {
 			target = mainBranch
 		}
-		// Main ignores -dev prerelease tags: it bases off the highest PURE release.
-		lastTag = routine.HighestReleaseSemver(existing)
+		// Base tag: highest pure release, or the highest overall (promoting the latest
+		// "-dev") when the caller opted to count prereleases.
+		lastTag = routine.HighestMainBase(existing, in.IncludeDev)
 		from := lastTag
 		if from == "" {
 			from = target
@@ -1864,8 +1874,9 @@ func (s *Service) runComputeTagMain(ctx context.Context, gl *gitlab.Client, proj
 		for _, t := range tags {
 			existing = append(existing, t.Name)
 		}
-		// Ignore prerelease/"-dev" tags: a main release bases off pure X.Y.Z only.
-		lastTag := routine.HighestReleaseSemver(existing)
+		// Base tag: the highest pure release by default, or — when the run opted to
+		// count "-dev" — the highest tag overall, promoting the latest dev version.
+		lastTag := routine.HighestMainBase(existing, params.IncludeDev)
 
 		// Count commits reachable from the source branch (development) but not from
 		// the base ref: the last release tag if present, else the target branch.
@@ -1888,10 +1899,13 @@ func (s *Service) runComputeTagMain(ctx context.Context, gl *gitlab.Client, proj
 		if err != nil {
 			return "", fmt.Errorf("compute next release: %w", err)
 		}
-		// Nothing to release: no feat/fix commits since the base means next == lastTag.
-		// Persist the base so executeRelease can name it, then stop the run without
-		// opening an MR (opening an empty development→main MR would be noise).
-		if counts.Feat == 0 && counts.Fix == 0 {
+		// Nothing to release: no feat/fix commits since the base means next == lastTag,
+		// so stop without opening an empty development→main MR. The one exception is a
+		// PROMOTION: when counting "-dev", turning a "2.0.0-dev" base into its clean
+		// "2.0.0" release is a real release even with no new commits, and next differs
+		// from the (prerelease) base — so it is not "nothing to release".
+		promoted := params.IncludeDev && routine.IsPrerelease(lastTag) && next != lastTag
+		if counts.Feat == 0 && counts.Fix == 0 && !promoted {
 			state.LastTag = lastTag
 			if err := checkpoint(state); err != nil {
 				return "", fmt.Errorf("checkpoint computed tag: %w", err)

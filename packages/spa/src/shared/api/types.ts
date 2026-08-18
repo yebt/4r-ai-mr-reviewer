@@ -297,6 +297,9 @@ export interface ReleaseInput {
 // defaults source=development, target=main.
 export interface MainReleaseInput {
   bump?: Bump
+  // Base the release on the highest tag INCLUDING "-dev" prereleases (promoting
+  // the latest dev version) instead of ignoring them. Defaults to false.
+  includeDev?: boolean
   sourceBranch?: string
   targetBranch?: string
   emojis?: string[]
