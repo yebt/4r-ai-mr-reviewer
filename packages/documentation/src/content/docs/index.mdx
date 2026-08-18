@@ -1,0 +1,61 @@
+---
+title: 4R — AI Merge Request Reviewer
+description: Self-hosted AI code review for GitLab merge requests, built around the Risk · Readability · Reliability · Resilience framework.
+template: splash
+hero:
+  tagline: Self-hosted AI code review for GitLab merge requests — read every change through four lenses, publish only what matters.
+  image:
+    file: ../../assets/logo.svg
+  actions:
+    - text: Quick start
+      link: /getting-started/quick-start/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/yebt/4r-ai-mr-reviewer
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+## What is 4R?
+
+4R runs AI code review over your **GitLab merge requests**, entirely on your own
+infrastructure. You configure a GitLab account and an AI provider, track a
+repository, and launch a review on any open MR. The engine loads the **4R rule
+sets**, sends the diff to the model, and returns **located, structured findings**
+with a **deterministic score** and an approve / request-changes recommendation.
+You then choose which findings to publish back as inline discussions — optionally
+rewritten in your own voice.
+
+<CardGrid>
+  <Card title="R1 · Risk" icon="warning">
+    Can this harm security, data, or production stability?
+  </Card>
+  <Card title="R2 · Readability" icon="open-book">
+    Will the next engineer understand it without an hour of digging?
+  </Card>
+  <Card title="R3 · Reliability" icon="approve-check">
+    Does it behave correctly across the realistic range of inputs?
+  </Card>
+  <Card title="R4 · Resilience" icon="rocket">
+    Does it degrade gracefully when dependencies fail or slow down?
+  </Card>
+</CardGrid>
+
+## Start here
+
+<CardGrid>
+  <LinkCard title="Introduction" href="/getting-started/introduction/" description="What 4R is, how it's built, and what's in scope today." />
+  <LinkCard title="Quick start" href="/getting-started/quick-start/" description="Prerequisites, run it locally, open the web UI." />
+  <LinkCard title="Your first review" href="/getting-started/first-review/" description="Configure → review → publish, end to end." />
+  <LinkCard title="Deploy self-hosted" href="/self-hosting/deploy/" description="Ship the single Go binary to your own server." />
+</CardGrid>
+
+:::note[Status]
+Usable, **single-user, GitLab-first**. The core loop (configure → review →
+publish), Telegram notifications, the humanize pass, AI-drafted merge requests,
+and release routines all ship today. GitHub support and webhook auto-triggering
+are on the roadmap.
+:::

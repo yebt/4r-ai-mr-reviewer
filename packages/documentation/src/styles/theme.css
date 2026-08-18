@@ -1,0 +1,38 @@
+/* 4R docs theme — lime "Instrument Panel" accent over Starlight's dark base,
+   matching the app and the landing. Accent is stated for both themes: bright
+   lime on dark, a deep green on light (lime is unreadable on white). */
+
+/* Accent only — leave Starlight's own light/dark background palettes intact so
+   both themes stay legible. Overriding --sl-color-bg on bare :root would leak
+   the dark ground into the light theme (dark text on a dark ground). */
+:root {
+  --sl-color-accent-low: #26310d;
+  --sl-color-accent: #9dc42b;
+  --sl-color-accent-high: #e6ff74;
+  --sl-color-text-accent: #cdf23a;
+
+  --sl-font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+
+:root[data-theme="light"] {
+  --sl-color-accent-low: #eaf4cf;
+  --sl-color-accent: #6f9e1f;
+  --sl-color-accent-high: #3a5411;
+  --sl-color-text-accent: #4f7d16;
+}
+
+/* Selection matches the brand. */
+::selection {
+  background: #d6ff3f;
+  color: #0a0a0b;
+}
+
+/* Tighten the hero on the splash page. */
+.hero h1 {
+  letter-spacing: -0.02em;
+}
+
+/* Uppercase, tracked labels feel like the app's mono micro-labels. */
+.sl-markdown-content kbd {
+  font-family: var(--sl-font-mono);
+}
