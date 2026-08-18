@@ -11,7 +11,7 @@ to localhost (`AIR_HTTP_ADDR=127.0.0.1:8080`) so only the proxy can reach it.
 
 Caddy gets you automatic HTTPS with almost no config:
 
-```caddy
+```text
 review.example.com {
     encode gzip
 

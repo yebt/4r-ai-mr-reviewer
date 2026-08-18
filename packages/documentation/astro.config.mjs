@@ -2,8 +2,12 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 
+// `site` powers Starlight's canonical URLs and the generated sitemap. Set
+// SITE_URL at build time (e.g. `SITE_URL=https://docs.4r.yourdomain.com astro
+// build`); the placeholder is only a fallback so local builds succeed.
 // https://astro.build/config
 export default defineConfig({
+	site: process.env.SITE_URL ?? 'https://docs.4r.example.com',
 	integrations: [
 		starlight({
 			title: '4R Docs',

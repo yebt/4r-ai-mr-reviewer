@@ -12,7 +12,9 @@
   --line-soft: #1c1c21;
   --ink: #ededf0;
   --muted: #7c7c85;
-  --muted-dim: #55555d;
+  /* WCAG AA floor on the near-black canvas (~4.5:1). A dimmer grey would fail for
+     the small mono labels this is used on (step notes, footer meta). */
+  --muted-dim: #7a7a82;
   --accent: #d6ff3f;
   --accent-ink: #0a0a0b;
   --flame: #ff5a1f;
