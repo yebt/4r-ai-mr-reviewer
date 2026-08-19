@@ -1658,6 +1658,44 @@ func TestMainReleaseFullRun(t *testing.T) {
 	}
 }
 
+// A main release created with IncludeDev bases on the highest tag INCLUDING the
+// "-dev" prerelease and promotes it — the actual run (not just the preview) must
+// honor the flag persisted in the run params. Regression for the toggle only
+// affecting the preview.
+func TestMainReleaseCountsDevTags(t *testing.T) {
+	st := mainReleaseState() // tags: 1.6.0 (release) + 1.7.2-dev (prerelease)
+	st.pipelines = []map[string]any{{"id": 10, "status": "success"}}
+	srv := newFakeReleaseGitLab(t, st)
+	ctx, svc, repoID := setupRoutinesTest(t, srv.URL)
+	svc.mergePollInterval = time.Millisecond
+
+	run, err := svc.CreateMainRelease(ctx, MainReleaseInput{RepoID: repoID, IncludeDev: true})
+	if err != nil {
+		t.Fatalf("CreateMainRelease: %v", err)
+	}
+	// The first pass runs compute_tag (which checkpoints the version) and stops at
+	// the confirm gate — enough to assert the computed tag.
+	if err := svc.execute(ctx, run); err != nil {
+		t.Fatalf("execute (to gate): %v", err)
+	}
+
+	got, _ := svc.Get(ctx, run.ID)
+	var state releaseState
+	if err := json.Unmarshal(got.State, &state); err != nil {
+		t.Fatalf("decode state: %v", err)
+	}
+	// With IncludeDev the base is the highest tag overall (1.7.2-dev), NOT the pure
+	// 1.6.0 release that the default flow would pick.
+	if state.LastTag != "1.7.2-dev" {
+		t.Errorf("state.lastTag = %q, want 1.7.2-dev (IncludeDev must count the prerelease)", state.LastTag)
+	}
+	// The "-dev" suffix is dropped to 1.7.2, then minor bump with one feat + one
+	// trailing fix → 1.8.1.
+	if state.NextTag != "1.8.1" {
+		t.Errorf("state.nextTag = %q, want 1.8.1 (promoted base + bump)", state.NextTag)
+	}
+}
+
 // The create_mr step is idempotent on resume: after the MR is opened once, a
 // re-entry that lost its state.MRIID checkpoint reuses the already-open MR (found
 // via ListOpenMergeRequests) rather than opening a second one.
