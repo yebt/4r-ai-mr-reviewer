@@ -32,6 +32,7 @@ import (
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/notification"
 	httpapi "github.com/webcloster-dev/ai-reviewer/internal/http"
 	"github.com/webcloster-dev/ai-reviewer/internal/jobs"
+	"github.com/webcloster-dev/ai-reviewer/internal/logx"
 	"github.com/webcloster-dev/ai-reviewer/internal/review/engine"
 	"github.com/webcloster-dev/ai-reviewer/internal/review/skills"
 )
@@ -43,6 +44,10 @@ func main() {
 }
 
 func run() error {
+	// Colorized, leveled log output. Set up first so every line — including the
+	// .env notice below — flows through it.
+	logx.Setup()
+
 	// Load a local .env into the process environment if present. Real environment
 	// variables always win — godotenv.Load never overrides an already-set var — so
 	// production/CI that inject real env vars are unaffected. A missing file is a

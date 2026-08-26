@@ -22,6 +22,7 @@ optional — 4R runs with sensible defaults out of the box.
 | `AIR_AUTH_PASSWORD` | _(empty)_ | Enables API auth (password + signed-cookie sessions). Empty → auth disabled, every route open. |
 | `AIR_AUTH_SESSION_HOURS` | `168` | Session-cookie lifetime in hours (7 days); clamped to `1`..`8760`. |
 | `AIR_TRUST_PROXY` | `false` | Trust client `X-Forwarded-Proto` / `X-Forwarded-For`. Set `true` **only** behind a trusted TLS-terminating proxy. |
+| `AIR_LOG_COLOR` | _(auto)_ | Colorize log output: `always`, `never`, or unset for auto (color only on a terminal). `NO_COLOR` (if set) also disables it. Each line is tagged `INFO`/`WARN`/`ERROR` so failures stand out from routine status. |
 
 ## The secret vault
 
