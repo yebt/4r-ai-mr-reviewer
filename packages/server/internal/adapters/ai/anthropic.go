@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/webcloster-dev/ai-reviewer/internal/domain/llm"
 )
@@ -28,6 +27,11 @@ type AnthropicClient struct {
 	baseURL string
 	apiKey  string
 	http    *http.Client
+	// stream sends requests as SSE and consumes them incrementally, so a long
+	// generation is bounded by an idle timeout (time between tokens) rather than a
+	// blunt total-wall-clock cap that kills healthy long reviews. Defaults on;
+	// AIR_AI_STREAM=false falls back to the buffered path.
+	stream bool
 }
 
 // NewAnthropicClient builds a client. An empty baseURL falls back to Anthropic's.
@@ -38,7 +42,10 @@ func NewAnthropicClient(baseURL, apiKey string) *AnthropicClient {
 	return &AnthropicClient{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		apiKey:  apiKey,
-		http:    &http.Client{Timeout: 5 * time.Minute},
+		// No total Timeout: streaming is bounded by an idle timeout, and the buffered
+		// path applies its own overall deadline (see postJSON).
+		http:   &http.Client{},
+		stream: streamDefault(),
 	}
 }
 
@@ -61,20 +68,28 @@ type anthropicRequest struct {
 	System      string             `json:"system,omitempty"`
 	Temperature *float64           `json:"temperature,omitempty"`
 	Thinking    *anthropicThinking `json:"thinking,omitempty"`
+	Stream      bool               `json:"stream,omitempty"`
 	Messages    []anthropicMessage `json:"messages"`
 }
 
+// anthropicContentBlock is one block of the response content. Named (rather than
+// anonymous) so the streaming path can accumulate text/thinking deltas into the
+// same shape the buffered JSON decode produces.
+type anthropicContentBlock struct {
+	Type     string `json:"type"`
+	Text     string `json:"text"`
+	Thinking string `json:"thinking"`
+}
+
+type anthropicUsage struct {
+	InputTokens  int `json:"input_tokens"`
+	OutputTokens int `json:"output_tokens"`
+}
+
 type anthropicResponse struct {
-	Model   string `json:"model"`
-	Content []struct {
-		Type     string `json:"type"`
-		Text     string `json:"text"`
-		Thinking string `json:"thinking"`
-	} `json:"content"`
-	Usage struct {
-		InputTokens  int `json:"input_tokens"`
-		OutputTokens int `json:"output_tokens"`
-	} `json:"usage"`
+	Model   string                  `json:"model"`
+	Content []anthropicContentBlock `json:"content"`
+	Usage   anthropicUsage          `json:"usage"`
 }
 
 // Complete sends a messages request. System-role messages are hoisted into the
@@ -99,7 +114,7 @@ func (c *AnthropicClient) Complete(ctx context.Context, req llm.Request) (llm.Re
 	}
 
 	var out anthropicResponse
-	err := postJSON(ctx, c.http, "anthropic", c.baseURL+"/v1/messages", headers, body, &out)
+	err := c.do(ctx, body, headers, &out)
 	if err != nil && body.Thinking != nil {
 		var apiErr *APIError
 		if errors.As(err, &apiErr) && apiErr.Status == http.StatusBadRequest && isThinkingError(apiErr.Body) {
@@ -149,8 +164,21 @@ func (c *AnthropicClient) retryWithoutThinking(ctx context.Context, req llm.Requ
 	plain := req
 	plain.ThinkingBudget = 0
 	body := c.buildRequest(plain)
-	err := postJSON(ctx, c.http, "anthropic", c.baseURL+"/v1/messages", headers, body, out)
+	err := c.do(ctx, body, headers, out)
 	return body, err
+}
+
+// do performs one request, decoding into out. It streams the response as SSE when
+// streaming is enabled (bounded by an idle timeout), otherwise buffers it. Both
+// paths fill the same anthropicResponse, so the caller's parsing and the thinking
+// retry logic are identical regardless of transport.
+func (c *AnthropicClient) do(ctx context.Context, body anthropicRequest, headers map[string]string, out *anthropicResponse) error {
+	url := c.baseURL + "/v1/messages"
+	if c.stream {
+		body.Stream = true
+		return streamAnthropic(ctx, c.http, url, headers, body, out)
+	}
+	return postJSON(ctx, c.http, "anthropic", url, headers, body, out)
 }
 
 // parseAnthropicContent joins the response's text blocks into the visible answer

@@ -30,11 +30,19 @@ const (
 
 var retryBaseDelay = 500 * time.Millisecond
 
+// bufferedTimeout bounds a non-streaming request end to end when the caller's
+// context carries no deadline of its own. The streaming path does not use this —
+// it is bounded by streamIdleTimeout instead. A var so tests can shrink it.
+var bufferedTimeout = 5 * time.Minute
+
 // APIError is returned for non-2xx responses from a provider.
 type APIError struct {
 	Provider string
 	Status   int
 	Body     string
+	// retryAfter is the raw Retry-After header, carried so the streaming retry loop
+	// can honor it the same way postJSON does. Unexported: not part of the surface.
+	retryAfter string
 }
 
 func (e *APIError) Error() string {
@@ -47,6 +55,14 @@ func postJSON(ctx context.Context, hc *http.Client, providerName, url string, he
 	buf, err := json.Marshal(in)
 	if err != nil {
 		return fmt.Errorf("ai: marshal request: %w", err)
+	}
+
+	// The shared http.Client carries no total Timeout (streaming needs none), so
+	// bound the buffered request here when the caller left the context open-ended.
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, bufferedTimeout)
+		defer cancel()
 	}
 
 	var lastErr error

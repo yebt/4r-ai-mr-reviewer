@@ -32,6 +32,7 @@ func TestOpenAIComplete(t *testing.T) {
 	defer srv.Close()
 
 	c := NewOpenAIClient(srv.URL, "k")
+	c.stream = false // buffered fallback path
 	resp, err := c.Complete(context.Background(), llm.Request{
 		Model:    "llama",
 		Messages: []llm.Message{{Role: llm.RoleSystem, Content: "sys"}, {Role: llm.RoleUser, Content: "hi"}},
@@ -60,6 +61,7 @@ func TestOpenAISendsTemperatureWhenSet(t *testing.T) {
 
 	temp := 0.3
 	c := NewOpenAIClient(srv.URL, "k")
+	c.stream = false // buffered fallback path
 	if _, err := c.Complete(context.Background(), llm.Request{Model: "m", Temperature: &temp}); err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
@@ -99,6 +101,7 @@ func TestOpenAIReasoning(t *testing.T) {
 			defer srv.Close()
 
 			c := NewOpenAIClient(srv.URL, "k")
+			c.stream = false // buffered fallback path
 			resp, err := c.Complete(context.Background(), llm.Request{Model: "m"})
 			if err != nil {
 				t.Fatalf("Complete: %v", err)
@@ -117,6 +120,7 @@ func TestOpenAINoChoicesIsError(t *testing.T) {
 	defer srv.Close()
 
 	c := NewOpenAIClient(srv.URL, "k")
+	c.stream = false // buffered fallback path
 	if _, err := c.Complete(context.Background(), llm.Request{Model: "x"}); err == nil {
 		t.Fatal("expected error on empty choices")
 	}
@@ -134,6 +138,7 @@ func TestOpenAIAPIError(t *testing.T) {
 	defer srv.Close()
 
 	c := NewOpenAIClient(srv.URL, "k")
+	c.stream = false // buffered fallback path
 	_, err := c.Complete(context.Background(), llm.Request{Model: "x"})
 	var apiErr *APIError
 	if !errors.As(err, &apiErr) || apiErr.Status != http.StatusTooManyRequests {
@@ -159,6 +164,7 @@ func TestOpenAIRetriesThenSucceeds(t *testing.T) {
 	defer srv.Close()
 
 	c := NewOpenAIClient(srv.URL, "k")
+	c.stream = false // buffered fallback path
 	resp, err := c.Complete(context.Background(), llm.Request{Model: "m"})
 	if err != nil {
 		t.Fatalf("Complete after retries: %v", err)

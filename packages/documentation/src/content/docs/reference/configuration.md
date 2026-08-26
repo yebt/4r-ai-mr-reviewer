@@ -17,6 +17,8 @@ optional — 4R runs with sensible defaults out of the box.
 | `AIR_SKILLS_DIR` | _(empty)_ | Override directory for the 4R rule files. |
 | `AIR_REVIEW_CONCURRENCY` | `2` | Max reviews running in parallel (min 1). |
 | `AIR_REASONING_BUDGET` | `0` | Per-phase reasoning capture. `0` = off. A positive value is the Anthropic thinking-token budget **and** enables capture of reasoning from OpenAI-compatible providers (clamped to 32768). |
+| `AIR_AI_STREAM` | `true` | Stream AI responses over server-sent events. Streaming is bounded by an idle timeout (below) instead of a total-duration cap, so long reviews (and reasoning models) don't time out mid-generation. Set `false` to fall back to buffered requests for an endpoint that doesn't support SSE. |
+| `AIR_AI_STREAM_IDLE_TIMEOUT` | `90` | Seconds a stream may go silent (no tokens) before it is aborted. Bounds the gap **between** tokens, not the total time — raise it only for a provider slow to emit its first token. |
 | `AIR_AUTH_PASSWORD` | _(empty)_ | Enables API auth (password + signed-cookie sessions). Empty → auth disabled, every route open. |
 | `AIR_AUTH_SESSION_HOURS` | `168` | Session-cookie lifetime in hours (7 days); clamped to `1`..`8760`. |
 | `AIR_TRUST_PROXY` | `false` | Trust client `X-Forwarded-Proto` / `X-Forwarded-For`. Set `true` **only** behind a trusted TLS-terminating proxy. |

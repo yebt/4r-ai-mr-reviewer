@@ -33,6 +33,7 @@ func TestAnthropicComplete(t *testing.T) {
 	defer srv.Close()
 
 	c := NewAnthropicClient(srv.URL, "k")
+	c.stream = false // these cases exercise the buffered fallback path
 	resp, err := c.Complete(context.Background(), llm.Request{
 		Model:    "claude",
 		Messages: []llm.Message{{Role: llm.RoleSystem, Content: "you are a reviewer"}, {Role: llm.RoleUser, Content: "review this"}},
@@ -71,6 +72,7 @@ func TestAnthropicThinkingRequestAndParse(t *testing.T) {
 
 	temp := 0.4
 	c := NewAnthropicClient(srv.URL, "k")
+	c.stream = false // these cases exercise the buffered fallback path
 	resp, err := c.Complete(context.Background(), llm.Request{
 		Model:          "claude",
 		Temperature:    &temp,
@@ -110,6 +112,7 @@ func TestAnthropicThinkingFloorsBudget(t *testing.T) {
 	defer srv.Close()
 
 	c := NewAnthropicClient(srv.URL, "k")
+	c.stream = false // these cases exercise the buffered fallback path
 	if _, err := c.Complete(context.Background(), llm.Request{Model: "claude", ThinkingBudget: 10}); err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
@@ -139,6 +142,7 @@ func TestAnthropicThinkingFallbackOn400(t *testing.T) {
 
 	temp := 0.3
 	c := NewAnthropicClient(srv.URL, "k")
+	c.stream = false // these cases exercise the buffered fallback path
 	resp, err := c.Complete(context.Background(), llm.Request{
 		Model:          "claude",
 		Temperature:    &temp,
@@ -182,6 +186,7 @@ func TestAnthropicThinkingOnlyRetriesWithoutThinking(t *testing.T) {
 	defer srv.Close()
 
 	c := NewAnthropicClient(srv.URL, "k")
+	c.stream = false // these cases exercise the buffered fallback path
 	resp, err := c.Complete(context.Background(), llm.Request{
 		Model:          "claude",
 		ThinkingBudget: 2000,
@@ -214,6 +219,7 @@ func TestAnthropicUnrelated400DoesNotRetry(t *testing.T) {
 	defer srv.Close()
 
 	c := NewAnthropicClient(srv.URL, "k")
+	c.stream = false // these cases exercise the buffered fallback path
 	_, err := c.Complete(context.Background(), llm.Request{
 		Model:          "claude",
 		ThinkingBudget: 2000,
@@ -234,6 +240,7 @@ func TestAnthropicNoTextIsError(t *testing.T) {
 	defer srv.Close()
 
 	c := NewAnthropicClient(srv.URL, "k")
+	c.stream = false // these cases exercise the buffered fallback path
 	if _, err := c.Complete(context.Background(), llm.Request{Model: "claude"}); err == nil {
 		t.Fatal("expected error when no text content is returned")
 	}
