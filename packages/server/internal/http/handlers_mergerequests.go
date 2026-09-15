@@ -22,12 +22,14 @@ func (s *Server) generateMergeRequest(w http.ResponseWriter, r *http.Request) {
 		SourceBranch string `json:"sourceBranch"`
 		TargetBranch string `json:"targetBranch"`
 		ProfileID    string `json:"profileId"`
+		ProviderID   string `json:"providerId"`
+		Model        string `json:"model"`
 	}
 	if err := decode(r, &in); err != nil {
 		writeErr(w, err, http.StatusBadRequest)
 		return
 	}
-	gen, err := s.mergeRequests.Generate(r.Context(), r.PathValue("id"), in.SourceBranch, in.TargetBranch, in.ProfileID)
+	gen, err := s.mergeRequests.Generate(r.Context(), r.PathValue("id"), in.SourceBranch, in.TargetBranch, in.ProfileID, in.ProviderID, in.Model)
 	if err != nil {
 		writeMergeRequestErr(w, err)
 		return

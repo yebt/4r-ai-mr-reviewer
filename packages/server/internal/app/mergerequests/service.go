@@ -56,9 +56,11 @@ func NewService(repos repo.Repository, accounts *accounts.Service, providers *pr
 // Generate drafts a title and description for a merge request from source into
 // target, using the diff between the branches. profileID is optional: when set
 // and its style guide is ready, the description is written in that author's
-// voice; when empty, it is written in plain English. It does NOT open the merge
-// request — the caller reviews/edits the text and then calls Create.
-func (s *Service) Generate(ctx context.Context, repoID, source, target, profileID string) (mergerequest.Generated, error) {
+// voice; when empty, it is written in plain English. providerID and model are
+// optional per-request overrides (empty = not overridden): they win over the
+// repo's resolved provider/model, mirroring the reviews flow. It does NOT open
+// the merge request — the caller reviews/edits the text and then calls Create.
+func (s *Service) Generate(ctx context.Context, repoID, source, target, profileID, providerID, model string) (mergerequest.Generated, error) {
 	if source == "" || target == "" {
 		return mergerequest.Generated{}, fmt.Errorf("mergerequests: source and target branch are required")
 	}
@@ -90,7 +92,7 @@ func (s *Service) Generate(ctx context.Context, repoID, source, target, profileI
 		return mergerequest.Generated{}, ErrNoChanges
 	}
 
-	content, err := s.complete(ctx, rp, mergerequest.BuildMessages(styleGuide, buildDiffInput(source, target, cmp)))
+	content, err := s.complete(ctx, rp, providerID, model, mergerequest.BuildMessages(styleGuide, buildDiffInput(source, target, cmp)))
 	if err != nil {
 		return mergerequest.Generated{}, err
 	}
@@ -138,10 +140,12 @@ func (s *Service) styleGuide(ctx context.Context, profileID string) (string, err
 	return p.StyleGuide, nil
 }
 
-// complete resolves the repo's provider/model (repo override, then default
-// provider), builds the AI client and runs the single drafting completion.
-func (s *Service) complete(ctx context.Context, rp repo.Repo, msgs []llm.Message) (string, error) {
-	prov, err := s.resolveProvider(ctx, rp.ProviderID)
+// complete resolves the provider/model and runs the single drafting completion.
+// providerID/model are optional per-request overrides (empty = not overridden).
+// Provider precedence: request override, then repo, then default provider.
+// Model precedence: request override, then repo, then the provider's model.
+func (s *Service) complete(ctx context.Context, rp repo.Repo, providerID, model string, msgs []llm.Message) (string, error) {
+	prov, err := s.resolveProvider(ctx, firstNonEmpty(providerID, rp.ProviderID))
 	if err != nil {
 		return "", err
 	}
@@ -149,7 +153,7 @@ func (s *Service) complete(ctx context.Context, rp repo.Repo, msgs []llm.Message
 	if err != nil {
 		return "", err
 	}
-	model := firstNonEmpty(rp.Model, prov.Model)
+	model = firstNonEmpty(model, rp.Model, prov.Model)
 	if model == "" {
 		return "", fmt.Errorf("mergerequests: no model set on repo or provider %q", prov.Name)
 	}

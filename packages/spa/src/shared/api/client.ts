@@ -285,8 +285,32 @@ export const api = {
   // Runs a synchronous LLM completion so it may be slow. Does not open the MR.
   generateMergeRequest: (
     repoId: string,
-    input: { sourceBranch: string; targetBranch: string; profileId?: string },
-  ) => request<MergeRequestDraft>('POST', `/repos/${repoId}/merge-requests/generate`, input),
+    input: {
+      sourceBranch: string
+      targetBranch: string
+      profileId?: string
+      providerId?: string
+      model?: string
+    },
+  ) => {
+    const { sourceBranch, targetBranch, profileId, providerId, model } = input
+    // Only send provider/model overrides when non-empty; the backend treats an
+    // empty value the same as omitted (resolve from the repo/default provider).
+    const body: {
+      sourceBranch: string
+      targetBranch: string
+      profileId?: string
+      providerId?: string
+      model?: string
+    } = { sourceBranch, targetBranch }
+    if (profileId) body.profileId = profileId
+    if (providerId) body.providerId = providerId
+    // Trim the free-text model so a whitespace-only value is omitted (falls back
+    // to the provider default) instead of being sent as a literal model name.
+    const m = model?.trim()
+    if (m) body.model = m
+    return request<MergeRequestDraft>('POST', `/repos/${repoId}/merge-requests/generate`, body)
+  },
   // Open an MR with the (possibly edited) title+description. 400 on a bad branch
   // selection or an upstream GitLab error (e.g. an MR already exists).
   createMergeRequest: (

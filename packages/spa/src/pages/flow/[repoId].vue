@@ -531,6 +531,8 @@ async function submit(payload: ReleaseSubmit) {
         :branches="branches"
         :branches-loading="branchesLoading"
         :profiles="profiles.items"
+        :providers="providers.items"
+        :default-provider-id="defaultProviderId"
         :default-target-branch="defaultTargetBranch"
         @created="onMrCreated"
         @close="newMrOpen = false"

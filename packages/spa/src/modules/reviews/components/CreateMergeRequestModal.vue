@@ -5,7 +5,7 @@ import SearchableSelect from '@shared/components/ui/SearchableSelect.vue'
 import { api, errorMessage } from '@shared/api/client'
 import { toast } from '@shared/composables/useToast'
 import { confirm } from '@shared/composables/useConfirm'
-import type { MergeRequest, Profile } from '@shared/api/types'
+import type { MergeRequest, Profile, Provider } from '@shared/api/types'
 
 // Create a merge request between two existing branches, with an AI-drafted
 // title and description. The user picks source → target, optionally a voice
@@ -18,6 +18,9 @@ const props = defineProps<{
   branches: string[]
   branchesLoading?: boolean
   profiles: Profile[]
+  providers: Provider[]
+  // Preselected provider id (repo's provider, else the global default).
+  defaultProviderId: string
   // Preselected target branch (the repo's default branch), if known.
   defaultTargetBranch?: string
 }>()
@@ -29,6 +32,8 @@ const emit = defineEmits<{
 const source = ref('')
 const target = ref('')
 const profileId = ref('')
+const providerId = ref('')
+const model = ref('')
 const title = ref('')
 const description = ref('')
 const generating = ref(false)
@@ -37,6 +42,20 @@ const creating = ref(false)
 // Only profiles with a distilled style guide can voice the description; the
 // backend rejects the rest with 409, so they are not offered here.
 const voiceProfiles = computed(() => props.profiles.filter((p) => p.styleGuideStatus === 'ready'))
+
+// Models declared by the selected provider (empty if none), sorted alphabetically
+// (case-insensitive) without mutating the store's array. Mirrors ReviewLaunchModal.
+const providerModels = computed(() => {
+  const models = props.providers.find((p) => p.id === providerId.value)?.models ?? []
+  return [...models].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
+})
+
+// Switching provider drops the model override (a model from the old provider may
+// not exist on the new one), matching ReviewLaunchModal's behavior.
+function onProviderChange(id: string) {
+  providerId.value = id
+  model.value = ''
+}
 
 const sameBranch = computed(
   () => !!source.value && !!target.value && source.value === target.value,
@@ -61,14 +80,16 @@ const isDirty = computed(
 // Reset every time the modal opens so a previous draft never leaks into the
 // next one; preselect the target to the repo's default branch when known.
 watch(
-  () => props.open,
-  (open) => {
+  () => [props.open, props.defaultProviderId] as const,
+  ([open]) => {
     if (!open) return
     source.value = ''
     target.value = props.defaultTargetBranch && props.branches.includes(props.defaultTargetBranch)
       ? props.defaultTargetBranch
       : ''
     profileId.value = ''
+    providerId.value = props.defaultProviderId
+    model.value = ''
     title.value = ''
     description.value = ''
     generating.value = false
@@ -85,6 +106,8 @@ async function onGenerate() {
       sourceBranch: source.value,
       targetBranch: target.value,
       profileId: profileId.value || undefined,
+      providerId: providerId.value || undefined,
+      model: model.value || undefined,
     })
     title.value = draft.title
     description.value = draft.description
@@ -188,6 +211,37 @@ async function onCreate() {
           <span v-else class="i-lucide-sparkles text-sm" aria-hidden="true" />
           {{ generating ? 'Drafting…' : 'Generate with AI' }}
         </button>
+      </div>
+
+      <!-- Provider + model for the AI draft (optional overrides). items-end keeps
+           the two fields bottom-aligned even if a label wraps at a narrow width. -->
+      <div class="flex flex-wrap items-end gap-3">
+        <label v-if="providers.length" class="block min-w-0 flex-1">
+          <span class="field-label">Provider</span>
+          <select
+            :value="providerId"
+            class="field-underline"
+            @change="onProviderChange(($event.target as HTMLSelectElement).value)"
+          >
+            <option v-for="p in providers" :key="p.id" :value="p.id">{{ p.name }}</option>
+          </select>
+        </label>
+
+        <label class="block min-w-0 flex-1">
+          <span class="field-label">Model</span>
+          <select v-if="providerModels.length" v-model="model" class="field-underline">
+            <option value="">default model</option>
+            <option v-for="m in providerModels" :key="m" :value="m">{{ m }}</option>
+          </select>
+          <input
+            v-else
+            v-model="model"
+            type="text"
+            class="field-underline"
+            placeholder="default model"
+            autocomplete="off"
+          />
+        </label>
       </div>
 
       <!-- Editable draft -->
