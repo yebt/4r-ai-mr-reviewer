@@ -5,7 +5,7 @@
  * former token-preview content that used to live here moved to
  * `src/pages/design.vue` (dev-only reference route).
  */
-import { Icon, Kbd, Text } from '@shared/ui/design-system'
+import { Heading, Icon, Kbd, Text } from '@shared/ui/design-system'
 import { useCommandPalette } from '@shared/composables/useCommandPalette'
 
 const { open: openPalette } = useCommandPalette()
@@ -14,7 +14,7 @@ const { open: openPalette } = useCommandPalette()
 <template>
   <div class="flex flex-col items-start gap-4">
     <div class="flex flex-col gap-1">
-      <Text as="h2" size="2xl" class="font-semibold tracking-tight">Welcome back</Text>
+      <Heading :level="2" size="2xl">Welcome back</Heading>
       <Text muted>The centralized shell is live — more lands here soon.</Text>
     </div>
 

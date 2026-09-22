@@ -32,6 +32,10 @@ router.addRoute({
 router.beforeEach(async (to) => {
   NProgress.start()
 
+  // /design is the dev-only token/component preview (src/pages/design.vue) —
+  // never a live production route.
+  if (to.path === '/design' && !import.meta.env.DEV) return '/'
+
   const auth = useAuthStore()
 
   if (!auth.ready) {

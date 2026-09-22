@@ -1,12 +1,14 @@
 <script setup lang="ts">
 /**
  * Status chip using the semantic status tokens (neutral/success/warning/
- * danger/info). Neutral falls back to the panel/line/muted-text triad since
- * there is no "neutral" status token in tokens.css.
+ * danger/info). Neutral has no dedicated status token in tokens.css, so it
+ * follows the same "transparent border + tinted bg + tinted text" formula
+ * as the other four, built from the neutral gray scale instead
+ * (bg-bg-hover ~ gray-3, text-text-muted ~ gray-11).
  */
 import { computed } from 'vue'
 
-type BadgeStatus = 'neutral' | 'success' | 'warning' | 'danger' | 'info'
+export type BadgeStatus = 'neutral' | 'success' | 'warning' | 'danger' | 'info'
 
 const props = withDefaults(
   defineProps<{
@@ -20,7 +22,7 @@ const props = withDefaults(
 // Tailwind's scanner needs literal class strings, so map statuses to full
 // classes rather than interpolating `status` into a template literal.
 const statusClassMap: Record<BadgeStatus, string> = {
-  neutral: 'border border-line-subtle bg-bg-panel text-text-muted',
+  neutral: 'border border-transparent bg-bg-hover text-text-muted',
   success: 'border border-transparent bg-success-bg text-success-text',
   warning: 'border border-transparent bg-warning-bg text-warning-text',
   danger: 'border border-transparent bg-danger-bg text-danger-text',

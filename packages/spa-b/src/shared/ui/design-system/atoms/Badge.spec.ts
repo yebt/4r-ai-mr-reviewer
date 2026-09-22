@@ -6,7 +6,7 @@ describe('Badge', () => {
   it('defaults to the neutral status token classes', () => {
     const wrapper = mount(Badge, { slots: { default: 'Open' } })
     expect(wrapper.classes()).toEqual(
-      expect.arrayContaining(['bg-bg-panel', 'text-text-muted']),
+      expect.arrayContaining(['bg-bg-hover', 'text-text-muted']),
     )
   })
 

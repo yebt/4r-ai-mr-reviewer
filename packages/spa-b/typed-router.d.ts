@@ -52,6 +52,20 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/reviews': RouteRecordInfo<
+      '/reviews',
+      '/reviews',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/runs': RouteRecordInfo<
+      '/runs',
+      '/runs',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/settings': RouteRecordInfo<
       '/settings',
       '/settings',
@@ -91,6 +105,22 @@ declare module 'vue-router/auto-routes' {
     'src/pages/design.vue': {
       routes:
         | '/design'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/reviews.vue': {
+      routes:
+        | '/reviews'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/runs.vue': {
+      routes:
+        | '/runs'
       views:
         | never
       pathParamNames:

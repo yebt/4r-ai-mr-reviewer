@@ -29,7 +29,7 @@ const sizeClass = computed(() => sizeMap[props.size])
 
 <template>
   <svg
-    :class="[sizeClass, 'animate-spin']"
+    :class="[sizeClass, 'animate-spin motion-reduce:animate-none']"
     viewBox="0 0 24 24"
     fill="none"
     role="status"

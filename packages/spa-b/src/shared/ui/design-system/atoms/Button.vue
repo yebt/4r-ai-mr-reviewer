@@ -39,7 +39,7 @@ const variantClassMap: Record<ButtonVariant, string> = {
   soft: 'bg-accent-subtle-bg text-accent-text hover:bg-accent-subtle-bg/80',
   outline: 'border border-line bg-transparent text-text hover:bg-bg-hover',
   ghost: 'bg-transparent text-text hover:bg-bg-hover',
-  danger: 'bg-danger-solid text-white hover:opacity-90',
+  danger: 'bg-danger-solid text-danger-contrast hover:opacity-90',
 }
 
 const sizeClassMap: Record<ButtonSize, string> = {

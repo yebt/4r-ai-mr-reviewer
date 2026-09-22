@@ -7,9 +7,10 @@
  * src/core/App.vue) — the app-level "Settings" nav item already routes
  * here (src/core/nav.ts).
  *
- * Providers is the only live section today (owned by the Providers-module
- * writer, `@modules/providers`); the rest render SettingsSectionStub until
- * their real UI lands in a later milestone.
+ * Providers, Accounts, Telegram and Profiles are live sections today (each
+ * owned by its own module, `@modules/*`); Repos and Notifications & Security
+ * still render SettingsSectionStub until their real UI lands in a later
+ * milestone.
  */
 import { ref } from 'vue'
 import { TabsContent } from 'reka-ui'

@@ -99,7 +99,13 @@ const props = withDefaults(
 )
 
 const sizeClass = computed(() => sizeMap[props.size])
-const iconComponent = computed(() => icons[props.name] ?? null)
+const iconComponent = computed(() => {
+  const icon = icons[props.name]
+  if (!icon && import.meta.env.DEV) {
+    console.warn(`[Icon] Unknown icon name "${props.name}" — not in the registry, rendering nothing.`)
+  }
+  return icon ?? null
+})
 </script>
 
 <template>

@@ -212,8 +212,11 @@ should stay thin.
 
 ## What F1+F2 proved (see the preview page)
 
-`src/pages/index.vue` is a **temporary** visual smoke test, not a real
-screen — remove it once the app shell (S1) lands. It renders the gray and
-accent scales, the status tokens, the type scale, a theme toggle
-(light/dark/system), Reka UI `Tabs`, `Dialog`, and `DropdownMenu` styled
-purely with the token layer, and a Shiki-highlighted unified diff.
+The app shell (S1) has landed: `src/pages/index.vue` is now the real Home
+screen. The original token/component smoke test moved to
+`src/pages/design.vue` — a **dev-only** reference route (gated out of
+production by the router guard in `src/core/router/index.ts`; unreachable
+once built). It renders the gray and accent scales, the status tokens, the
+type scale, a theme toggle (light/dark/system), Reka UI `Tabs`, `Dialog`, and
+`DropdownMenu` styled purely with the token layer, and a Shiki-highlighted
+unified diff.

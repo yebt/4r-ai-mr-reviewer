@@ -53,20 +53,26 @@
 
   /* ---- Status: success (green) ---- */
   --success-bg: hsl(152 60% 95%);
-  --success-solid: hsl(152 55% 36%);
+  --success-solid: hsl(152 55% 33%);
   --success-text: hsl(152 65% 24%);
+  --success-contrast: hsl(0 0% 100%);
   /* ---- Status: warning (amber) ---- */
   --warning-bg: hsl(38 100% 95%);
   --warning-solid: hsl(36 92% 45%);
   --warning-text: hsl(30 85% 30%);
+  /* Amber is intrinsically too light for white text to clear AA without
+     turning muddy — pairs with dark warm text instead (see DESIGN.md). */
+  --warning-contrast: hsl(30 85% 12%);
   /* ---- Status: danger (red) ---- */
   --danger-bg: hsl(356 90% 97%);
   --danger-solid: hsl(356 72% 48%);
   --danger-text: hsl(356 70% 40%);
+  --danger-contrast: hsl(0 0% 100%);
   /* ---- Status: info (blue) ---- */
   --info-bg: hsl(200 90% 96%);
-  --info-solid: hsl(200 80% 42%);
+  --info-solid: hsl(200 80% 38%);
   --info-text: hsl(200 75% 32%);
+  --info-contrast: hsl(0 0% 100%);
 
   color-scheme: light;
 }
@@ -95,28 +101,38 @@
   --accent-6: hsl(231 48% 31%);
   --accent-7: hsl(231 46% 38%);
   --accent-8: hsl(231 48% 47%);
-  --accent-9: hsl(233 55% 58%);
-  --accent-10: hsl(233 62% 66%);
+  /* accent-9/10 deepened from the original 58%/66% lightness: at 58% the
+     solid accent Button (bg-accent + white text) only cleared ~3.6:1 with
+     the old dark accent-contrast, and even switching straight to white text
+     without deepening the scale left accent-10 (hover) at ~3.6:1 — below
+     AA. 52%/60% keeps the same hue/saturation and the same +8pt hover step,
+     with white text clearing 6.49:1 (base) / 4.74:1 (hover). */
+  --accent-9: hsl(233 55% 52%);
+  --accent-10: hsl(233 62% 60%);
   --accent-11: hsl(228 90% 78%);
   --accent-12: hsl(226 85% 92%);
-  --accent-contrast: hsl(230 45% 12%);
+  --accent-contrast: hsl(0 0% 100%);
 
   /* ---- Status: success (green) ---- */
   --success-bg: hsl(152 40% 12%);
-  --success-solid: hsl(152 50% 42%);
+  --success-solid: hsl(152 50% 33%);
   --success-text: hsl(150 60% 68%);
+  --success-contrast: hsl(0 0% 100%);
   /* ---- Status: warning (amber) ---- */
   --warning-bg: hsl(36 60% 12%);
   --warning-solid: hsl(38 90% 52%);
   --warning-text: hsl(40 90% 68%);
+  --warning-contrast: hsl(30 85% 12%);
   /* ---- Status: danger (red) ---- */
   --danger-bg: hsl(356 45% 13%);
-  --danger-solid: hsl(356 70% 55%);
+  --danger-solid: hsl(356 70% 52%);
   --danger-text: hsl(356 85% 74%);
+  --danger-contrast: hsl(0 0% 100%);
   /* ---- Status: info (blue) ---- */
   --info-bg: hsl(200 50% 12%);
-  --info-solid: hsl(200 75% 55%);
+  --info-solid: hsl(200 75% 38%);
   --info-text: hsl(200 85% 74%);
+  --info-contrast: hsl(0 0% 100%);
 
   color-scheme: dark;
 }
@@ -225,15 +241,19 @@
   --color-success-bg: var(--success-bg);
   --color-success-solid: var(--success-solid);
   --color-success-text: var(--success-text);
+  --color-success-contrast: var(--success-contrast);
   --color-warning-bg: var(--warning-bg);
   --color-warning-solid: var(--warning-solid);
   --color-warning-text: var(--warning-text);
+  --color-warning-contrast: var(--warning-contrast);
   --color-danger-bg: var(--danger-bg);
   --color-danger-solid: var(--danger-solid);
   --color-danger-text: var(--danger-text);
+  --color-danger-contrast: var(--danger-contrast);
   --color-info-bg: var(--info-bg);
   --color-info-solid: var(--info-solid);
   --color-info-text: var(--info-text);
+  --color-info-contrast: var(--info-contrast);
 
   --color-bg-app: var(--bg-app);
   --color-bg-panel: var(--bg-panel);
