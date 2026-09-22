@@ -5,8 +5,13 @@
  * the reference pattern every future settings section should follow:
  * `components/<Section>.vue` (list) + `components/<Entity>Form.vue` (create/
  * edit, opened in a Reka Dialog), backed by a feature-scoped Pinia store.
+ *
+ * Data fetching, caching, and mutation side effects (optimistic updates,
+ * rollback, success/error toasts) all live in `../store.ts` (@pinia/colada).
+ * This component only renders the three query states — loading skeleton,
+ * error-with-retry, list — and wires row actions to the store's mutations.
  */
-import { onMounted, ref } from 'vue'
+import { ref } from 'vue'
 import {
   AlertDialogAction,
   AlertDialogCancel,
@@ -24,16 +29,12 @@ import {
   DialogRoot,
   DialogTitle,
 } from 'reka-ui'
-import { Badge, Button, Icon, Spinner, Text } from '@shared/ui/design-system'
+import { Badge, Button, Icon, Skeleton, Text } from '@shared/ui/design-system'
 import ProviderForm from './ProviderForm.vue'
 import { useProvidersStore } from '../store'
 import type { Provider, TestProviderResult } from '../types'
 
 const store = useProvidersStore()
-
-onMounted(() => {
-  store.fetchProviders()
-})
 
 const kindLabels: Record<Provider['kind'], string> = {
   'openai-compat': 'OpenAI-compatible',
@@ -42,9 +43,19 @@ const kindLabels: Record<Provider['kind'], string> = {
   openrouter: 'OpenRouter',
 }
 
+/**
+ * `baseUrl`/`model` can legitimately be empty (some provider kinds don't use
+ * them), so never join in an empty segment — that leaves a bare trailing
+ * "·" separator with nothing after it.
+ */
+function subtitle(provider: Provider): string {
+  const parts = [kindLabels[provider.kind]]
+  if (provider.model) parts.push(provider.model)
+  return parts.join(' · ')
+}
+
 const dialogOpen = ref(false)
 const editingProvider = ref<Provider | null>(null)
-const actionError = ref<string | null>(null)
 
 function openCreateDialog() {
   editingProvider.value = null
@@ -69,12 +80,13 @@ function handleCancel() {
 const settingDefaultId = ref<string | null>(null)
 async function handleSetDefault(provider: Provider) {
   if (provider.isDefault) return
-  actionError.value = null
   settingDefaultId.value = provider.id
   try {
+    // Rollback and the error toast are handled by the store's mutation
+    // hooks; this catch only prevents an unhandled rejection here.
     await store.setDefaultProvider(provider.id)
-  } catch (err) {
-    actionError.value = err instanceof Error ? err.message : 'Failed to set default provider'
+  } catch {
+    // no-op — store already rolled back and toasted the error
   } finally {
     settingDefaultId.value = null
   }
@@ -82,12 +94,11 @@ async function handleSetDefault(provider: Provider) {
 
 const deletingId = ref<string | null>(null)
 async function handleDelete(provider: Provider) {
-  actionError.value = null
   deletingId.value = provider.id
   try {
     await store.removeProvider(provider.id)
-  } catch (err) {
-    actionError.value = err instanceof Error ? err.message : 'Failed to delete provider'
+  } catch {
+    // no-op — store already rolled back and toasted the error
   } finally {
     deletingId.value = null
   }
@@ -132,28 +143,32 @@ async function handleTest(provider: Provider) {
       </Button>
     </div>
 
-    <p
-      v-if="actionError"
-      role="alert"
-      class="rounded-md border border-danger-solid/30 bg-danger-bg p-3 text-sm text-danger-text"
-    >
-      {{ actionError }}
-    </p>
-
     <div
-      v-if="store.loading && store.providers.length === 0"
-      class="flex items-center gap-2 p-6 text-text-muted"
+      v-if="store.providersState.status === 'pending'"
+      class="flex flex-col gap-2"
+      data-testid="providers-loading-skeleton"
     >
-      <Spinner size="sm" /> Loading providers…
+      <div
+        v-for="n in 3"
+        :key="n"
+        class="flex items-center justify-between gap-3 rounded-lg border border-line bg-bg-panel p-3"
+      >
+        <div class="flex flex-col gap-2">
+          <Skeleton class="h-4 w-40" />
+          <Skeleton class="h-3 w-28" />
+        </div>
+        <Skeleton class="h-8 w-20" />
+      </div>
     </div>
 
-    <p
-      v-else-if="store.error"
+    <div
+      v-else-if="store.providersState.status === 'error'"
       role="alert"
-      class="rounded-md border border-danger-solid/30 bg-danger-bg p-3 text-sm text-danger-text"
+      class="flex flex-col items-start gap-2 rounded-md border border-danger-solid/30 bg-danger-bg p-3 text-sm text-danger-text"
     >
-      {{ store.error }}
-    </p>
+      <p>{{ store.error?.message ?? 'Failed to load providers' }}</p>
+      <Button variant="outline" size="sm" @click="store.refetch()">Retry</Button>
+    </div>
 
     <div
       v-else-if="store.providers.length === 0"
@@ -175,7 +190,7 @@ async function handleTest(provider: Provider) {
             <Text class="font-medium">{{ provider.name }}</Text>
             <Badge v-if="provider.isDefault" status="info">Default</Badge>
           </div>
-          <Text muted size="sm">{{ kindLabels[provider.kind] }} · {{ provider.model }}</Text>
+          <Text muted size="sm">{{ subtitle(provider) }}</Text>
           <Text
             v-if="testResults[provider.id]"
             size="xs"
