@@ -36,7 +36,7 @@ async function handleLogout() {
         class="grid size-7 place-items-center rounded-md bg-accent text-text-on-accent"
         aria-hidden="true"
       >
-        <Icon name="lucide:layers" size="sm" />
+        <Icon name="layers" size="sm" />
       </div>
       <Text as="span" size="md" class="font-semibold tracking-tight">4R</Text>
     </div>
@@ -47,7 +47,7 @@ async function handleLogout() {
       @click="openPalette()"
     >
       <span class="flex items-center gap-2">
-        <Icon name="lucide:search" size="sm" />
+        <Icon name="search" size="sm" />
         Search
       </span>
       <Kbd>⌘K</Kbd>
@@ -68,7 +68,7 @@ async function handleLogout() {
 
     <Button v-if="showLogout" variant="ghost" size="sm" class="justify-start" @click="handleLogout">
       <template #leading>
-        <Icon name="lucide:log-out" size="sm" />
+        <Icon name="log-out" size="sm" />
       </template>
       Log out
     </Button>

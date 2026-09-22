@@ -16,12 +16,12 @@ withDefaults(
     title: string
     /** One-line explanation of what will live here. */
     description?: string
-    /** Lucide icon name (`lucide:*`). */
+    /** kebab-case lucide-vue-next icon name. */
     icon?: string
   }>(),
   {
     description: 'This section is coming soon.',
-    icon: 'lucide:hammer',
+    icon: 'hammer',
   },
 )
 </script>

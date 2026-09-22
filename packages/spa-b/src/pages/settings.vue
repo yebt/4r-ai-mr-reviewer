@@ -21,12 +21,12 @@ import SettingsSectionStub from '@shared/ui/design-system/organisms/SettingsSect
 import { ProvidersSection } from '@modules/providers'
 
 const sections: SettingsSection[] = [
-  { id: 'providers', label: 'Providers', icon: 'lucide:cable' },
-  { id: 'accounts', label: 'Accounts', icon: 'lucide:user' },
-  { id: 'telegram', label: 'Telegram', icon: 'lucide:send' },
-  { id: 'profiles', label: 'Profiles', icon: 'lucide:users' },
-  { id: 'repos', label: 'Repos', icon: 'lucide:git-branch' },
-  { id: 'notifications-security', label: 'Notifications & Security', icon: 'lucide:shield' },
+  { id: 'providers', label: 'Providers', icon: 'cable' },
+  { id: 'accounts', label: 'Accounts', icon: 'user' },
+  { id: 'telegram', label: 'Telegram', icon: 'send' },
+  { id: 'profiles', label: 'Profiles', icon: 'users' },
+  { id: 'repos', label: 'Repos', icon: 'git-branch' },
+  { id: 'notifications-security', label: 'Notifications & Security', icon: 'shield' },
 ]
 
 const activeSection = ref<string>(sections[0]?.id ?? 'providers')
@@ -47,35 +47,35 @@ const activeSection = ref<string>(sections[0]?.id ?? 'providers')
         <SettingsSectionStub
           title="Accounts"
           description="Manage connected accounts and identities. Coming soon."
-          icon="lucide:user"
+          icon="user"
         />
       </TabsContent>
       <TabsContent value="telegram">
         <SettingsSectionStub
           title="Telegram"
           description="Connect Telegram for review notifications. Coming soon."
-          icon="lucide:send"
+          icon="send"
         />
       </TabsContent>
       <TabsContent value="profiles">
         <SettingsSectionStub
           title="Profiles"
           description="Manage review profiles and defaults. Coming soon."
-          icon="lucide:users"
+          icon="users"
         />
       </TabsContent>
       <TabsContent value="repos">
         <SettingsSectionStub
           title="Repos"
           description="Manage connected repositories. Coming soon."
-          icon="lucide:git-branch"
+          icon="git-branch"
         />
       </TabsContent>
       <TabsContent value="notifications-security">
         <SettingsSectionStub
           title="Notifications & Security"
           description="Manage notification preferences and security settings. Coming soon."
-          icon="lucide:shield"
+          icon="shield"
         />
       </TabsContent>
     </SettingsLayout>

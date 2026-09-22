@@ -127,7 +127,7 @@ async function handleTest(provider: Provider) {
         <Text muted size="sm">Configure the AI providers available to this workspace.</Text>
       </div>
       <Button @click="openCreateDialog">
-        <template #leading><Icon name="lucide:plus" size="sm" /></template>
+        <template #leading><Icon name="plus" size="sm" /></template>
         Add provider
       </Button>
     </div>
@@ -159,7 +159,7 @@ async function handleTest(provider: Provider) {
       v-else-if="store.providers.length === 0"
       class="flex flex-col items-center gap-2 rounded-lg border border-dashed border-line p-8 text-center"
     >
-      <Icon name="lucide:plug-zap" size="lg" class="text-text-muted" />
+      <Icon name="plug-zap" size="lg" class="text-text-muted" />
       <Text muted>No providers configured yet.</Text>
       <Button variant="outline" size="sm" @click="openCreateDialog">Add your first provider</Button>
     </div>
@@ -209,7 +209,7 @@ async function handleTest(provider: Provider) {
               <Button variant="ghost" size="sm" class="text-danger-text hover:bg-danger-bg">Delete</Button>
             </AlertDialogTrigger>
             <AlertDialogPortal>
-              <AlertDialogOverlay class="fixed inset-0 z-20 bg-gray-12/40" />
+              <AlertDialogOverlay class="overlay z-20" />
               <AlertDialogContent
                 class="fixed left-1/2 top-1/2 z-30 w-[min(24rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-line bg-bg-panel-raised p-5 shadow-token-lg focus:outline-none"
               >
@@ -239,7 +239,7 @@ async function handleTest(provider: Provider) {
 
     <DialogRoot v-model:open="dialogOpen">
       <DialogPortal>
-        <DialogOverlay class="fixed inset-0 z-20 bg-gray-12/40" />
+        <DialogOverlay class="overlay z-20" />
         <DialogContent
           class="fixed left-1/2 top-1/2 z-30 max-h-[85vh] w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-line bg-bg-panel-raised p-5 shadow-token-lg focus:outline-none"
         >

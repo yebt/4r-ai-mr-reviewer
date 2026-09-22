@@ -53,7 +53,7 @@ const modelValue = defineModel<string>()
     >
       <SelectValue :placeholder="placeholder" />
       <SelectIcon as-child>
-        <Icon name="lucide:chevron-down" size="sm" class="text-text-muted" />
+        <Icon name="chevron-down" size="sm" class="text-text-muted" />
       </SelectIcon>
     </SelectTrigger>
     <SelectPortal>
@@ -72,7 +72,7 @@ const modelValue = defineModel<string>()
           >
             <SelectItemText>{{ item.label }}</SelectItemText>
             <SelectItemIndicator>
-              <Icon name="lucide:check" size="sm" class="text-accent-text" />
+              <Icon name="check" size="sm" class="text-accent-text" />
             </SelectItemIndicator>
           </SelectItem>
         </SelectViewport>

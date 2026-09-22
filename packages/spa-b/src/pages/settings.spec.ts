@@ -11,12 +11,12 @@ vi.mock('@modules/providers', () => ({
 }))
 
 const sections: SettingsSection[] = [
-  { id: 'providers', label: 'Providers', icon: 'lucide:cable' },
-  { id: 'accounts', label: 'Accounts', icon: 'lucide:user' },
-  { id: 'telegram', label: 'Telegram', icon: 'lucide:send' },
-  { id: 'profiles', label: 'Profiles', icon: 'lucide:users' },
-  { id: 'repos', label: 'Repos', icon: 'lucide:git-branch' },
-  { id: 'notifications-security', label: 'Notifications & Security', icon: 'lucide:shield' },
+  { id: 'providers', label: 'Providers', icon: 'cable' },
+  { id: 'accounts', label: 'Accounts', icon: 'user' },
+  { id: 'telegram', label: 'Telegram', icon: 'send' },
+  { id: 'profiles', label: 'Profiles', icon: 'users' },
+  { id: 'repos', label: 'Repos', icon: 'git-branch' },
+  { id: 'notifications-security', label: 'Notifications & Security', icon: 'shield' },
 ]
 
 function mountSettingsLayout() {

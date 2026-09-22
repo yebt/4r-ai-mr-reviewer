@@ -53,6 +53,27 @@
   }
 }
 
+@layer components {
+  /* Centralized dialog/drawer backdrop — darkened + blurred, like a docs
+     search modal. Every Reka Dialog/AlertDialog/Drawer overlay uses this
+     one class (`class="overlay z-*"`, z-index stays per call site since
+     stacking differs); retune the whole app's backdrop from here. Reka
+     toggles `data-state` on the overlay element itself as it mounts/
+     unmounts, so the fade below runs on open/close with no extra wiring. */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background-color: var(--overlay);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    transition: opacity var(--duration-base) var(--ease-standard);
+  }
+
+  .overlay[data-state='closed'] {
+    opacity: 0;
+  }
+}
+
 @layer base {
   /* Dual-theme Shiki output (see useCodeHighlighter.ts): each token carries
      both colors as CSS variables; pick the active one from <html>.dark. */

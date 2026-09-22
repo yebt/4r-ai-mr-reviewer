@@ -53,11 +53,11 @@ async function handleLogout() {
       <DrawerTrigger
         class="flex min-h-11 flex-1 flex-col items-center justify-center gap-0.5 py-2 text-xs text-text-muted transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring"
       >
-        <Icon name="lucide:more-horizontal" size="md" />
+        <Icon name="ellipsis" size="md" />
         More
       </DrawerTrigger>
       <DrawerPortal>
-        <DrawerOverlay class="fixed inset-0 z-30 bg-gray-12/40" />
+        <DrawerOverlay class="overlay z-30" />
         <DrawerContent
           class="fixed inset-x-0 bottom-0 z-40 flex max-h-[80dvh] flex-col rounded-t-xl border-t border-line bg-bg-panel-raised pb-[env(safe-area-inset-bottom)] shadow-token-lg focus:outline-none"
         >
@@ -68,7 +68,7 @@ async function handleLogout() {
               class="flex size-9 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
               aria-label="Close"
             >
-              <Icon name="lucide:x" size="sm" />
+              <Icon name="x" size="sm" />
             </DrawerClose>
           </div>
 
@@ -90,7 +90,7 @@ async function handleLogout() {
               class="flex min-h-11 items-center gap-2.5 rounded-md px-3 text-sm text-danger-text transition-colors hover:bg-bg-hover"
               @click="handleLogout"
             >
-              <Icon name="lucide:log-out" size="sm" />
+              <Icon name="log-out" size="sm" />
               Log out
             </button>
           </div>

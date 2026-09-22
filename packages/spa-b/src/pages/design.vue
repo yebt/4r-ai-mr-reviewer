@@ -7,7 +7,7 @@
  * DESIGN.md for the system this page proves.
  */
 import { ref, computed } from 'vue'
-import { Icon } from '@iconify/vue'
+import { Icon } from '@shared/ui/design-system'
 import {
   DialogRoot,
   DialogTrigger,
@@ -35,19 +35,19 @@ import { useHighlightedCode } from '@shared/composables/useCodeHighlighter'
 const { colorMode } = useColorScheme()
 
 const themeOptions = [
-  { value: 'light', label: 'Light', icon: 'lucide:sun' },
-  { value: 'dark', label: 'Dark', icon: 'lucide:moon' },
-  { value: 'auto', label: 'System', icon: 'lucide:monitor' },
+  { value: 'light', label: 'Light', icon: 'sun' },
+  { value: 'dark', label: 'Dark', icon: 'moon' },
+  { value: 'auto', label: 'System', icon: 'monitor' },
 ] as const
 
 const grayScale = Array.from({ length: 12 }, (_, i) => i + 1)
 const accentScale = Array.from({ length: 12 }, (_, i) => i + 1)
 
 const statusTokens = [
-  { name: 'success', label: 'Success', icon: 'lucide:check-circle-2' },
-  { name: 'warning', label: 'Warning', icon: 'lucide:alert-triangle' },
-  { name: 'danger', label: 'Danger', icon: 'lucide:x-circle' },
-  { name: 'info', label: 'Info', icon: 'lucide:info' },
+  { name: 'success', label: 'Success', icon: 'circle-check' },
+  { name: 'warning', label: 'Warning', icon: 'triangle-alert' },
+  { name: 'danger', label: 'Danger', icon: 'circle-x' },
+  { name: 'info', label: 'Info', icon: 'info' },
 ] as const
 
 const typeScale = [
@@ -81,7 +81,7 @@ const activeTab = ref('overview')
 const dialogOpen = ref(false)
 
 const currentThemeIcon = computed(
-  () => themeOptions.find((o) => o.value === colorMode.value)?.icon ?? 'lucide:monitor',
+  () => themeOptions.find((o) => o.value === colorMode.value)?.icon ?? 'monitor',
 )
 </script>
 
@@ -95,7 +95,7 @@ const currentThemeIcon = computed(
           class="grid size-7 place-items-center rounded-md bg-accent text-text-on-accent"
           aria-hidden="true"
         >
-          <Icon icon="lucide:layers" class="size-4" />
+          <Icon name="layers" class="size-4" />
         </div>
         <p class="text-md font-semibold tracking-tight">4R design foundation</p>
         <span
@@ -109,9 +109,9 @@ const currentThemeIcon = computed(
         <DropdownMenuTrigger
           class="flex items-center gap-2 rounded-md border border-line bg-bg-panel px-3 py-1.5 text-sm text-text transition-colors hover:bg-bg-hover focus-visible:outline-2 focus-visible:outline-focus-ring"
         >
-          <Icon :icon="currentThemeIcon" class="size-4" />
+          <Icon :name="currentThemeIcon" class="size-4" />
           <span class="capitalize">{{ colorMode === 'auto' ? 'System' : colorMode }}</span>
-          <Icon icon="lucide:chevron-down" class="size-3.5 text-text-muted" />
+          <Icon name="chevron-down" class="size-3.5 text-text-muted" />
         </DropdownMenuTrigger>
         <DropdownMenuPortal>
           <DropdownMenuContent
@@ -127,11 +127,11 @@ const currentThemeIcon = computed(
               class="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none data-[highlighted]:bg-accent-subtle-bg data-[highlighted]:text-accent-text-strong"
               @select="colorMode = option.value"
             >
-              <Icon :icon="option.icon" class="size-4" />
+              <Icon :name="option.icon" class="size-4" />
               {{ option.label }}
               <Icon
                 v-if="colorMode === option.value"
-                icon="lucide:check"
+                name="check"
                 class="ml-auto size-3.5 text-accent-text"
               />
             </DropdownMenuItem>
@@ -195,7 +195,7 @@ const currentThemeIcon = computed(
             :style="{ backgroundColor: `var(--${status.name}-bg)` }"
           >
             <div class="flex items-center gap-2">
-              <Icon :icon="status.icon" class="size-4" :style="{ color: `var(--${status.name}-text)` }" />
+              <Icon :name="status.icon" class="size-4" :style="{ color: `var(--${status.name}-text)` }" />
               <span class="text-sm font-medium" :style="{ color: `var(--${status.name}-text)` }">
                 {{ status.label }}
               </span>
@@ -240,11 +240,11 @@ const currentThemeIcon = computed(
               <DialogTrigger
                 class="mt-3 inline-flex items-center gap-2 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-text-on-accent transition-colors hover:bg-accent-hover focus-visible:outline-2 focus-visible:outline-focus-ring"
               >
-                <Icon icon="lucide:settings-2" class="size-4" />
+                <Icon name="settings-2" class="size-4" />
                 Open settings dialog
               </DialogTrigger>
               <DialogPortal>
-                <DialogOverlay class="fixed inset-0 z-20 bg-gray-12/40" />
+                <DialogOverlay class="overlay z-20" />
                 <DialogContent
                   class="fixed left-1/2 top-1/2 z-30 w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-line bg-bg-panel-raised p-5 shadow-token-lg focus:outline-none"
                 >

@@ -19,7 +19,7 @@ export type NavSection = 'primary' | 'secondary'
 export interface NavItem {
   /** Human-readable destination name, shown in every nav surface. */
   label: string
-  /** Lucide icon name (`lucide:*`), rendered via the Icon atom. */
+  /** kebab-case lucide-vue-next icon name, rendered via the Icon atom. */
   icon: string
   /** Route path this item links to. */
   to: string
@@ -32,10 +32,10 @@ export interface NavItem {
 }
 
 export const navItems: NavItem[] = [
-  { label: 'Home', icon: 'lucide:home', to: '/', section: 'primary' },
-  { label: 'Reviews', icon: 'lucide:git-pull-request', to: '/reviews', section: 'primary' },
-  { label: 'Runs', icon: 'lucide:activity', to: '/runs', section: 'primary' },
-  { label: 'Settings', icon: 'lucide:settings', to: '/settings', section: 'secondary' },
+  { label: 'Home', icon: 'house', to: '/', section: 'primary' },
+  { label: 'Reviews', icon: 'git-pull-request', to: '/reviews', section: 'primary' },
+  { label: 'Runs', icon: 'activity', to: '/runs', section: 'primary' },
+  { label: 'Settings', icon: 'settings', to: '/settings', section: 'secondary' },
 ]
 
 export const primaryNavItems: NavItem[] = navItems.filter((item) => item.section === 'primary')

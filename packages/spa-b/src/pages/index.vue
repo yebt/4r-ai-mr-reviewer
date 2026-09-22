@@ -23,7 +23,7 @@ const { open: openPalette } = useCommandPalette()
       class="flex items-center gap-2 rounded-md border border-line bg-bg-panel px-3 py-2 text-sm text-text-muted transition-colors hover:bg-bg-hover hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
       @click="openPalette()"
     >
-      <Icon name="lucide:search" size="sm" />
+      <Icon name="search" size="sm" />
       Try the command palette
       <Kbd>⌘K</Kbd>
     </button>

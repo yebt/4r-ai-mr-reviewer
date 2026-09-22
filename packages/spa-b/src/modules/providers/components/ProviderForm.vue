@@ -232,7 +232,7 @@ async function handleSubmit() {
             :aria-label="`Remove ${model}`"
             @click="removeModel(model)"
           >
-            <Icon name="lucide:x" size="xs" />
+            <Icon name="x" size="xs" />
           </button>
         </Badge>
       </div>
@@ -244,7 +244,7 @@ async function handleSubmit() {
 
       <template v-if="form.kind === 'openrouter'">
         <Button type="button" variant="ghost" size="sm" class="self-start" @click="toggleModelBrowser">
-          <template #leading><Icon name="lucide:list" size="sm" /></template>
+          <template #leading><Icon name="list" size="sm" /></template>
           {{ showModelBrowser ? 'Hide' : 'Browse' }} OpenRouter models
         </Button>
 

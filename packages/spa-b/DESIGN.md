@@ -108,8 +108,11 @@ JetBrains Mono stack for code, diffs, tokens, and any measured/data value.
 
 ### Radius, elevation, motion
 
-- Radius: `radius-sm` 4px, `radius-md` 6px (default component radius),
-  `radius-lg` 8px, `radius-xl` 12px, `radius-full` for pills/avatars.
+- Radius: crisp/technical, not soft — `radius-sm` 2px, `radius-md` 4px
+  (default component radius — buttons, inputs, cards), `radius-lg` 6px,
+  `radius-xl` 8px (dialogs/large panels), `radius-full` reserved for
+  genuinely circular/pill UI only (switch track/thumb, avatars, badges, the
+  mobile drawer handle) — never for panels or dialogs.
 - Elevation: `shadow-token-sm/md/lg` — soft, offset-and-blur shadows only
   (never a hard 0-blur block shadow; never a zero-offset colored halo — that
   is decoration, not depth). Panels mostly rely on the 1px border, not
@@ -134,12 +137,42 @@ applies the class **before** Vue mounts — this is the one place theme logic
 is duplicated outside the composable, deliberately, because it must run
 before any JS module loads.
 
+## Overlays (dialogs, alert dialogs, drawers)
+
+Every Reka `DialogOverlay` / `AlertDialogOverlay` / `DrawerOverlay` in the
+app uses one shared `.overlay` utility class (`src/shared/assets/main.css`,
+`@layer components`) instead of a one-off `bg-*` class per call site:
+darkened (`--overlay`, true black at 60% opacity — not the gray scale, which
+flips light/dark and would brighten rather than darken a dark-theme dialog's
+backdrop) **and** blurred (`backdrop-filter: blur(6px)`), with a `data-state`
+driven opacity fade using the existing `--duration-base`/`--ease-standard`
+motion tokens. `z-index` stays a per-call-site utility (`class="overlay
+z-20"`) since stacking differs by surface (command palette vs. a settings
+dialog vs. the mobile drawer) — everything else about the backdrop is
+centralized and retuned from one place. Apply `.overlay` to any new
+Dialog/AlertDialog/Drawer overlay so it matches automatically.
+
 ## Icons
 
-**@iconify/vue** + **Lucide** (`@iconify-json/lucide`), on-demand
-(`Icon icon="lucide:settings"`) rather than a bundled sprite — no build step,
-tree-shaken per icon actually used. Draw icons in Lucide's stroke weight
-consistently; never substitute an emoji or Unicode glyph for an icon.
+**lucide-vue-next**, the official Lucide package for Vue. `atoms/Icon.vue`
+wraps it behind a simple kebab-case `name` prop (`<Icon name="settings" />`,
+no `lucide:` prefix) so call sites stay simple and the icon set can change
+without touching every usage.
+
+Internally, `Icon.vue` keeps a small `Record<string, Component>` map from
+kebab-case name to a **named import** of that icon (`import { Settings } from
+'lucide-vue-next'`) — add an icon to the map the first time it's used
+elsewhere. Named imports are tree-shaken (`sideEffects: false`), so only
+icons actually referenced ship in the bundle; an unrecognized `name` renders
+nothing instead of throwing. (`lucide-vue-next`'s older `dynamicIconImports`
+lazy-loading helper isn't shipped in the installed 1.x line, so this static,
+still-tree-shaken map is the equivalent for this package version.)
+
+Some Lucide names changed upstream — reach for the *current* kebab name, not
+the old alias: `home` → `house`, `more-horizontal` → `ellipsis`,
+`check-circle-2` → `circle-check`, `alert-triangle` → `triangle-alert`,
+`x-circle` → `circle-x`. Draw icons in Lucide's stroke weight consistently;
+never substitute an emoji or Unicode glyph for an icon.
 
 ## Code / diff highlighting
 

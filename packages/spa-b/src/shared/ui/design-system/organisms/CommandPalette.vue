@@ -50,7 +50,7 @@ const actions = computed<PaletteAction[]>(() => [
   {
     id: 'toggle-theme',
     label: colorMode.value === 'dark' ? 'Switch to light theme' : 'Switch to dark theme',
-    icon: colorMode.value === 'dark' ? 'lucide:sun' : 'lucide:moon',
+    icon: colorMode.value === 'dark' ? 'sun' : 'moon',
     run: () => {
       colorMode.value = colorMode.value === 'dark' ? 'light' : 'dark'
     },
@@ -97,7 +97,7 @@ watch(isOpen, async (open) => {
 <template>
   <DialogRoot :open="isOpen" @update:open="(value) => (value ? undefined : handleClose())">
     <DialogPortal>
-      <DialogOverlay class="fixed inset-0 z-40 bg-gray-12/40" />
+      <DialogOverlay class="overlay z-40" />
       <DialogContent
         class="fixed inset-0 z-50 flex flex-col bg-bg-panel-raised focus:outline-none md:inset-x-auto md:top-[12%] md:bottom-auto md:left-1/2 md:h-auto md:max-h-[70vh] md:w-[min(34rem,calc(100vw-2rem))] md:-translate-x-1/2 md:rounded-xl md:border md:border-line md:shadow-token-lg"
       >
@@ -110,7 +110,7 @@ watch(isOpen, async (open) => {
 
         <ComboboxRoot :ignore-filter="true" class="flex min-h-0 flex-1 flex-col">
           <div class="flex items-center gap-2 border-b border-line px-4 py-3">
-            <Icon name="lucide:search" size="sm" class="shrink-0 text-text-muted" />
+            <Icon name="search" size="sm" class="shrink-0 text-text-muted" />
             <ComboboxInput
               ref="inputRef"
               v-model="query"

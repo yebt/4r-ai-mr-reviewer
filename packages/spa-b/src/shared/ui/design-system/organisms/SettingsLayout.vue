@@ -18,7 +18,7 @@ export interface SettingsSection {
   id: string
   /** Human-readable section name shown in the tab strip. */
   label: string
-  /** Lucide icon name (`lucide:*`) shown next to the label. */
+  /** kebab-case lucide-vue-next icon name shown next to the label. */
   icon: string
 }
 

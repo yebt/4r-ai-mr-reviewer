@@ -60,7 +60,7 @@ const pageTitle = computed(() => {
             class="grid size-6 place-items-center rounded-md bg-accent text-text-on-accent"
             aria-hidden="true"
           >
-            <Icon name="lucide:layers" size="xs" />
+            <Icon name="layers" size="xs" />
           </div>
           <span class="text-md font-semibold tracking-tight">4R</span>
         </div>
@@ -70,7 +70,7 @@ const pageTitle = computed(() => {
           aria-label="Search"
           @click="openPalette()"
         >
-          <Icon name="lucide:search" size="sm" />
+          <Icon name="search" size="sm" />
         </button>
       </header>
 
