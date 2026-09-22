@@ -1,8 +1,31 @@
 <script setup lang="ts">
+/**
+ * Home. Renders inside AppShell (see src/core/App.vue). Minimal on
+ * purpose — this is a placeholder until the real dashboard lands; the
+ * former token-preview content that used to live here moved to
+ * `src/pages/design.vue` (dev-only reference route).
+ */
+import { Icon, Kbd, Text } from '@shared/ui/design-system'
+import { useCommandPalette } from '@shared/composables/useCommandPalette'
+
+const { open: openPalette } = useCommandPalette()
 </script>
 
 <template>
-  <div>
-    <h1>Index Page</h1>
+  <div class="flex flex-col items-start gap-4">
+    <div class="flex flex-col gap-1">
+      <Text as="h2" size="2xl" class="font-semibold tracking-tight">Welcome back</Text>
+      <Text muted>The centralized shell is live — more lands here soon.</Text>
+    </div>
+
+    <button
+      type="button"
+      class="flex items-center gap-2 rounded-md border border-line bg-bg-panel px-3 py-2 text-sm text-text-muted transition-colors hover:bg-bg-hover hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+      @click="openPalette()"
+    >
+      <Icon name="lucide:search" size="sm" />
+      Try the command palette
+      <Kbd>⌘K</Kbd>
+    </button>
   </div>
 </template>
