@@ -2,6 +2,7 @@ import { computed } from 'vue'
 import { defineStore } from 'pinia'
 import { useMutation, useQuery, useQueryCache } from '@pinia/colada'
 import { useToast } from '@shared/composables/useToast'
+import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
 import * as accountsApi from './api'
 import type { Account, CreateAccountPayload, UpdateAccountPayload } from './types'
 
@@ -48,9 +49,7 @@ export function makeOptimisticAccount(payload: CreateAccountPayload): Account {
   }
 }
 
-export function resolveErrorMessage(err: unknown, fallback: string): string {
-  return err instanceof Error ? err.message : fallback
-}
+export { resolveErrorMessage }
 
 /**
  * Accounts store, backed by @pinia/colada. The `['accounts']` query is the
@@ -92,11 +91,13 @@ export const useAccountsStore = defineStore('accounts', () => {
       )
       toast.success('Account added')
     },
-    onError(err, _payload, context) {
+    // No `toast.error` here: the open form's inline `formError` banner is
+    // the contextual surface for create/update failures. Toasting here too
+    // would show the same error twice.
+    onError(_err, _payload, context) {
       if (context?.previous !== undefined) {
         queryCache.setQueryData(ACCOUNTS_QUERY_KEY, context.previous)
       }
-      toast.error(resolveErrorMessage(err, 'Failed to add account'))
     },
     onSettled() {
       queryCache.invalidateQueries({ key: ACCOUNTS_QUERY_KEY })
@@ -121,13 +122,15 @@ export const useAccountsStore = defineStore('accounts', () => {
         ACCOUNTS_QUERY_KEY,
         withPatchedAccount(current, updated.id, updated),
       )
-      toast.success('Saved')
+      toast.success('Account saved')
     },
-    onError(err, _vars, context) {
+    // No `toast.error` here: the open form's inline `formError` banner is
+    // the contextual surface for create/update failures. Toasting here too
+    // would show the same error twice.
+    onError(_err, _vars, context) {
       if (context?.previous !== undefined) {
         queryCache.setQueryData(ACCOUNTS_QUERY_KEY, context.previous)
       }
-      toast.error(resolveErrorMessage(err, 'Failed to save account'))
     },
     onSettled() {
       queryCache.invalidateQueries({ key: ACCOUNTS_QUERY_KEY })

@@ -7,7 +7,7 @@
  * place.
  */
 import { nextTick, reactive, ref, computed } from 'vue'
-import { Badge, Button, Checkbox, Field, Icon, Input, Select, Text } from '@shared/ui/design-system'
+import { Badge, Button, Checkbox, Field, Icon, Input, Select } from '@shared/ui/design-system'
 import type { SelectItemOption } from '@shared/ui/design-system'
 import { useProfilesStore } from '../store'
 import type { Profile } from '../types'
@@ -133,29 +133,35 @@ async function handleSubmit() {
       <label for="profile-emojis" class="text-sm text-text">Allow emojis</label>
     </div>
 
-    <div class="flex flex-col gap-1.5">
-      <span class="text-sm font-medium text-text">Samples</span>
-      <Text v-if="errors.samples" size="xs" class="text-danger-text">{{ errors.samples }}</Text>
+    <Field label="Samples" required :error="errors.samples" v-slot="{ id, describedBy, invalid }">
+      <div class="flex flex-col gap-1.5">
+        <div v-if="form.samples.length > 0" class="flex flex-col gap-1.5">
+          <Badge v-for="sample in form.samples" :key="sample" class="w-fit max-w-full items-start whitespace-normal text-left">
+            <span class="line-clamp-3">{{ sample }}</span>
+            <button
+              type="button"
+              class="ml-1 shrink-0 text-text-muted transition-colors hover:text-danger-text"
+              :aria-label="`Remove sample`"
+              @click="removeSample(sample)"
+            >
+              <Icon name="x" size="xs" />
+            </button>
+          </Badge>
+        </div>
 
-      <div v-if="form.samples.length > 0" class="flex flex-col gap-1.5">
-        <Badge v-for="sample in form.samples" :key="sample" class="w-fit max-w-full items-start whitespace-normal text-left">
-          <span class="line-clamp-3">{{ sample }}</span>
-          <button
-            type="button"
-            class="ml-1 shrink-0 text-text-muted transition-colors hover:text-danger-text"
-            :aria-label="`Remove sample`"
-            @click="removeSample(sample)"
-          >
-            <Icon name="x" size="xs" />
-          </button>
-        </Badge>
+        <div class="flex gap-2">
+          <Input
+            :id="id"
+            v-model="newSampleInput"
+            placeholder="Add a writing sample"
+            :aria-describedby="describedBy"
+            :aria-invalid="invalid"
+            @keydown.enter.prevent="addSample"
+          />
+          <Button type="button" variant="outline" @click="addSample">Add</Button>
+        </div>
       </div>
-
-      <div class="flex gap-2">
-        <Input v-model="newSampleInput" placeholder="Add a writing sample" @keydown.enter.prevent="addSample" />
-        <Button type="button" variant="outline" @click="addSample">Add</Button>
-      </div>
-    </div>
+    </Field>
 
     <p v-if="formError" role="alert" class="text-sm text-danger-text">{{ formError }}</p>
 

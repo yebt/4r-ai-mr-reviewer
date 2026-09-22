@@ -224,6 +224,7 @@ describe('useAccountsStore (@pinia/colada)', () => {
     await call
     await flushPromises()
 
-    expect(mockToastSuccess).toHaveBeenCalledWith('Saved')
+    expect(mockToastSuccess).toHaveBeenCalledWith('Account saved')
+    expect(mockToastError).not.toHaveBeenCalled()
   })
 })

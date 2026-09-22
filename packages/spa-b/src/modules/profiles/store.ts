@@ -2,6 +2,7 @@ import { computed } from 'vue'
 import { defineStore } from 'pinia'
 import { useMutation, useQuery, useQueryCache } from '@pinia/colada'
 import { useToast } from '@shared/composables/useToast'
+import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
 import * as profilesApi from './api'
 import type { CreateProfilePayload, Profile, UpdateProfilePayload } from './types'
 
@@ -55,9 +56,7 @@ export function makeOptimisticProfile(payload: CreateProfilePayload): Profile {
   }
 }
 
-export function resolveErrorMessage(err: unknown, fallback: string): string {
-  return err instanceof Error ? err.message : fallback
-}
+export { resolveErrorMessage }
 
 /**
  * Profiles store, backed by @pinia/colada. The `['profiles']` query is the
@@ -99,11 +98,13 @@ export const useProfilesStore = defineStore('profiles', () => {
       )
       toast.success('Profile added')
     },
-    onError(err, _payload, context) {
+    // No `toast.error` here: the open form's inline `formError` banner is
+    // the contextual surface for create/update failures. Toasting here too
+    // would show the same error twice.
+    onError(_err, _payload, context) {
       if (context?.previous !== undefined) {
         queryCache.setQueryData(PROFILES_QUERY_KEY, context.previous)
       }
-      toast.error(resolveErrorMessage(err, 'Failed to add profile'))
     },
     onSettled() {
       queryCache.invalidateQueries({ key: PROFILES_QUERY_KEY })
@@ -128,13 +129,15 @@ export const useProfilesStore = defineStore('profiles', () => {
         PROFILES_QUERY_KEY,
         withPatchedProfile(current, updated.id, updated),
       )
-      toast.success('Saved')
+      toast.success('Profile saved')
     },
-    onError(err, _vars, context) {
+    // No `toast.error` here: the open form's inline `formError` banner is
+    // the contextual surface for create/update failures. Toasting here too
+    // would show the same error twice.
+    onError(_err, _vars, context) {
       if (context?.previous !== undefined) {
         queryCache.setQueryData(PROFILES_QUERY_KEY, context.previous)
       }
-      toast.error(resolveErrorMessage(err, 'Failed to save profile'))
     },
     onSettled() {
       queryCache.invalidateQueries({ key: PROFILES_QUERY_KEY })
@@ -180,7 +183,7 @@ export const useProfilesStore = defineStore('profiles', () => {
         PROFILES_QUERY_KEY,
         withPatchedProfile(current, updated.id, updated),
       )
-      toast.success('Style guide redistillation started')
+      toast.success('Redistilling…')
     },
     onError(err, _id, context) {
       if (context?.previous !== undefined) {

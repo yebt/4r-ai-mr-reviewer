@@ -2,6 +2,7 @@ import { computed } from 'vue'
 import { defineStore } from 'pinia'
 import { useMutation, useQuery, useQueryCache } from '@pinia/colada'
 import { useToast } from '@shared/composables/useToast'
+import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
 import * as providersApi from './api'
 import type {
   CreateProviderPayload,
@@ -72,9 +73,7 @@ export function makeOptimisticProvider(payload: CreateProviderPayload): Provider
   }
 }
 
-export function resolveErrorMessage(err: unknown, fallback: string): string {
-  return err instanceof Error ? err.message : fallback
-}
+export { resolveErrorMessage }
 
 /**
  * Providers store, backed by @pinia/colada. The `['providers']` query is the
@@ -116,11 +115,13 @@ export const useProvidersStore = defineStore('providers', () => {
       )
       toast.success('Provider added')
     },
-    onError(err, _payload, context) {
+    // No `toast.error` here: the open form's inline `formError` banner is
+    // the contextual surface for create/update failures. Toasting here too
+    // would show the same error twice.
+    onError(_err, _payload, context) {
       if (context?.previous !== undefined) {
         queryCache.setQueryData(PROVIDERS_QUERY_KEY, context.previous)
       }
-      toast.error(resolveErrorMessage(err, 'Failed to add provider'))
     },
     onSettled() {
       queryCache.invalidateQueries({ key: PROVIDERS_QUERY_KEY })
@@ -145,13 +146,15 @@ export const useProvidersStore = defineStore('providers', () => {
         PROVIDERS_QUERY_KEY,
         withPatchedProvider(current, updated.id, updated),
       )
-      toast.success('Saved')
+      toast.success('Provider saved')
     },
-    onError(err, _vars, context) {
+    // No `toast.error` here: the open form's inline `formError` banner is
+    // the contextual surface for create/update failures. Toasting here too
+    // would show the same error twice.
+    onError(_err, _vars, context) {
       if (context?.previous !== undefined) {
         queryCache.setQueryData(PROVIDERS_QUERY_KEY, context.previous)
       }
-      toast.error(resolveErrorMessage(err, 'Failed to save provider'))
     },
     onSettled() {
       queryCache.invalidateQueries({ key: PROVIDERS_QUERY_KEY })

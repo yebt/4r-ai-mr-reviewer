@@ -188,7 +188,7 @@ describe('useProfilesStore (@pinia/colada)', () => {
     expect(mockToastSuccess).toHaveBeenCalledWith('Profile added')
   })
 
-  it('createProfile rolls back and toasts on error', async () => {
+  it('createProfile rolls back on error without toasting (the form shows an inline error instead)', async () => {
     mockedListProfiles.mockResolvedValueOnce([])
     const { store } = mountStore()
     await flushPromises()
@@ -210,7 +210,7 @@ describe('useProfilesStore (@pinia/colada)', () => {
     await flushPromises()
 
     expect(store.profiles).toHaveLength(0)
-    expect(mockToastError).toHaveBeenCalledWith('Create failed')
+    expect(mockToastError).not.toHaveBeenCalled()
   })
 
   it('removeProfile optimistically drops the row and rolls back + toasts on error', async () => {
@@ -262,7 +262,8 @@ describe('useProfilesStore (@pinia/colada)', () => {
     await call
     await flushPromises()
 
-    expect(mockToastSuccess).toHaveBeenCalledWith('Saved')
+    expect(mockToastSuccess).toHaveBeenCalledWith('Profile saved')
+    expect(mockToastError).not.toHaveBeenCalled()
   })
 
   it('redistillProfile optimistically marks the style guide pending, then reconciles on success', async () => {
@@ -286,7 +287,7 @@ describe('useProfilesStore (@pinia/colada)', () => {
     await flushPromises()
 
     expect(store.profiles[0]!.styleGuide).toBe('new guide')
-    expect(mockToastSuccess).toHaveBeenCalledWith('Style guide redistillation started')
+    expect(mockToastSuccess).toHaveBeenCalledWith('Redistilling…')
   })
 
   it('redistillProfile rolls back and toasts on error', async () => {

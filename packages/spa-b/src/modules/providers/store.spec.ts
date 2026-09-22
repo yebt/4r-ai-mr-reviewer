@@ -303,7 +303,8 @@ describe('useProvidersStore (@pinia/colada)', () => {
     await call
     await flushPromises()
 
-    expect(mockToastSuccess).toHaveBeenCalledWith('Saved')
+    expect(mockToastSuccess).toHaveBeenCalledWith('Provider saved')
+    expect(mockToastError).not.toHaveBeenCalled()
   })
 
   it('testConnection delegates straight to the API and never throws for a rejecting provider', async () => {

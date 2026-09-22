@@ -279,7 +279,8 @@ describe('useTelegramStore (@pinia/colada)', () => {
     await call
     await flushPromises()
 
-    expect(mockToastSuccess).toHaveBeenCalledWith('Saved')
+    expect(mockToastSuccess).toHaveBeenCalledWith('Telegram target saved')
+    expect(mockToastError).not.toHaveBeenCalled()
   })
 
   it('testTarget delegates straight to the API and never throws for a rejecting target', async () => {

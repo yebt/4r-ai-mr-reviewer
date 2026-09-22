@@ -13,15 +13,6 @@
  */
 import { ref } from 'vue'
 import {
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogOverlay,
-  AlertDialogPortal,
-  AlertDialogRoot,
-  AlertDialogTitle,
-  AlertDialogTrigger,
   DialogContent,
   DialogDescription,
   DialogOverlay,
@@ -29,7 +20,7 @@ import {
   DialogRoot,
   DialogTitle,
 } from 'reka-ui'
-import { Badge, Button, Icon, Skeleton, Text } from '@shared/ui/design-system'
+import { Badge, Button, ConfirmDialog, Icon, Skeleton, Text } from '@shared/ui/design-system'
 import ProviderForm from './ProviderForm.vue'
 import { useProvidersStore } from '../store'
 import type { Provider, TestProviderResult } from '../types'
@@ -219,35 +210,18 @@ async function handleTest(provider: Provider) {
           </Button>
           <Button variant="ghost" size="sm" @click="openEditDialog(provider)">Edit</Button>
 
-          <AlertDialogRoot>
-            <AlertDialogTrigger as-child>
-              <Button variant="ghost" size="sm" class="text-danger-text hover:bg-danger-bg">Delete</Button>
-            </AlertDialogTrigger>
-            <AlertDialogPortal>
-              <AlertDialogOverlay class="overlay z-20" />
-              <AlertDialogContent
-                class="fixed left-1/2 top-1/2 z-30 w-[min(24rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-line bg-bg-panel-raised p-5 shadow-token-lg focus:outline-none"
-              >
-                <AlertDialogTitle class="text-md font-semibold">Delete "{{ provider.name }}"?</AlertDialogTitle>
-                <AlertDialogDescription class="mt-1 text-sm text-text-muted">
-                  This removes the provider and its stored API key. This cannot be undone.
-                </AlertDialogDescription>
-                <div class="mt-5 flex justify-end gap-2">
-                  <AlertDialogCancel
-                    class="rounded-md border border-line px-3 py-1.5 text-sm text-text transition-colors hover:bg-bg-hover"
-                  >
-                    Cancel
-                  </AlertDialogCancel>
-                  <AlertDialogAction
-                    class="rounded-md bg-danger-solid px-3 py-1.5 text-sm font-medium text-white transition-colors hover:opacity-90"
-                    @click="handleDelete(provider)"
-                  >
-                    Delete
-                  </AlertDialogAction>
-                </div>
-              </AlertDialogContent>
-            </AlertDialogPortal>
-          </AlertDialogRoot>
+          <ConfirmDialog
+            :title='`Delete "${provider.name}"?`'
+            description="This removes the provider and its stored API key. This cannot be undone."
+            confirm-label="Delete"
+            danger
+            :pending="deletingId === provider.id"
+            @confirm="handleDelete(provider)"
+          >
+            <template #trigger>
+              <Button variant="ghost" size="sm">Delete</Button>
+            </template>
+          </ConfirmDialog>
         </div>
       </li>
     </ul>
