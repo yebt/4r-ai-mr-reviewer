@@ -19,6 +19,9 @@ import SettingsLayout, {
 } from '@shared/ui/design-system/organisms/SettingsLayout.vue'
 import SettingsSectionStub from '@shared/ui/design-system/organisms/SettingsSectionStub.vue'
 import { ProvidersSection } from '@modules/providers'
+import { AccountsSection } from '@modules/accounts'
+import { TelegramSection } from '@modules/telegram'
+import { ProfilesSection } from '@modules/profiles'
 
 const sections: SettingsSection[] = [
   { id: 'providers', label: 'Providers', icon: 'cable' },
@@ -44,25 +47,13 @@ const activeSection = ref<string>(sections[0]?.id ?? 'providers')
         <ProvidersSection />
       </TabsContent>
       <TabsContent value="accounts">
-        <SettingsSectionStub
-          title="Accounts"
-          description="Manage connected accounts and identities. Coming soon."
-          icon="user"
-        />
+        <AccountsSection />
       </TabsContent>
       <TabsContent value="telegram">
-        <SettingsSectionStub
-          title="Telegram"
-          description="Connect Telegram for review notifications. Coming soon."
-          icon="send"
-        />
+        <TelegramSection />
       </TabsContent>
       <TabsContent value="profiles">
-        <SettingsSectionStub
-          title="Profiles"
-          description="Manage review profiles and defaults. Coming soon."
-          icon="users"
-        />
+        <ProfilesSection />
       </TabsContent>
       <TabsContent value="repos">
         <SettingsSectionStub
