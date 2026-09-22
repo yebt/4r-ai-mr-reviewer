@@ -1,8 +1,11 @@
+import NProgress from 'nprogress'
 import { createRouter, createWebHistory } from 'vue-router'
 import { routes, handleHotUpdate } from 'vue-router/auto-routes'
 import { onUnauthorized } from '@shared/api/client'
 import { useAuthStore } from '@modules/auth/store'
 import LoginPage from '@modules/auth/pages/LoginPage.vue'
+
+NProgress.configure({ showSpinner: false })
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -27,23 +30,42 @@ router.addRoute({
 })
 
 router.beforeEach(async (to) => {
+  NProgress.start()
+
   const auth = useAuthStore()
 
   if (!auth.ready) {
     await auth.fetchStatus()
   }
 
-  const isLoginRoute = to.meta.public === true
+  // `isLoginRoute` identifies /login specifically (for the "already signed
+  // in, bounce away from /login" cases below); `isPublicRoute` is the
+  // broader "skip the auth redirect" check, which also covers other public
+  // routes like the 404 catch-all (src/pages/[...path].vue) that must stay
+  // reachable without auth but must NOT bounce an authenticated visitor
+  // back to '/' the way /login does.
+  // Compared by path, not name: /login is registered imperatively (below), so
+  // its name isn't in the typed-router's generated RouteNamedMap union.
+  const isLoginRoute = to.path === '/login'
+  const isPublicRoute = to.meta.public === true
 
   if (!auth.enabled) {
     return isLoginRoute ? '/' : true
   }
 
   if (!auth.authenticated) {
-    return isLoginRoute ? true : { path: '/login', query: { redirect: to.fullPath } }
+    return isPublicRoute ? true : { path: '/login', query: { redirect: to.fullPath } }
   }
 
   return isLoginRoute ? '/' : true
+})
+
+router.afterEach(() => {
+  NProgress.done()
+})
+
+router.onError(() => {
+  NProgress.done()
 })
 
 onUnauthorized(() => {

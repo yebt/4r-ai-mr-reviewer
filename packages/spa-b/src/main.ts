@@ -1,3 +1,7 @@
+// Loaded before main.css so the token-based #nprogress override at the end
+// of main.css (deliberately unlayered — see that file) wins the cascade
+// against nprogress's own unlayered .bar/.peg rules.
+import 'nprogress/nprogress.css'
 import '@shared/assets/main.css'
 
 import { createApp } from 'vue'

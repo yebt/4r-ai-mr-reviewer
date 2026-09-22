@@ -14,6 +14,7 @@ import { useMediaQuery } from '@vueuse/core'
 import { useRoute } from 'vue-router'
 import { navItems } from '@core/nav'
 import { useCommandPalette } from '@shared/composables/useCommandPalette'
+import { useColorScheme } from '@shared/composables/useColorScheme'
 import AppSidebar from '../organisms/AppSidebar.vue'
 import AppBottomNav from '../organisms/AppBottomNav.vue'
 import AppHeader from '../organisms/AppHeader.vue'
@@ -21,6 +22,13 @@ import Icon from '../atoms/Icon.vue'
 
 const route = useRoute()
 const { open: openPalette } = useCommandPalette()
+const { colorMode } = useColorScheme()
+
+const themeToggleIcon = computed(() => (colorMode.value === 'dark' ? 'sun' : 'moon'))
+
+function toggleTheme() {
+  colorMode.value = colorMode.value === 'dark' ? 'light' : 'dark'
+}
 
 // Single primary breakpoint (768px) is enough for this app's two-line
 // strategy — see docs/ui-patterns.md #8.
@@ -64,14 +72,24 @@ const pageTitle = computed(() => {
           </div>
           <span class="text-md font-semibold tracking-tight">4R</span>
         </div>
-        <button
-          type="button"
-          class="flex size-9 items-center justify-center rounded-md border border-line bg-bg-panel text-text-muted transition-colors hover:bg-bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
-          aria-label="Search"
-          @click="openPalette()"
-        >
-          <Icon name="search" size="sm" />
-        </button>
+        <div class="flex items-center gap-2">
+          <button
+            type="button"
+            class="flex size-9 items-center justify-center rounded-md border border-line bg-bg-panel text-text-muted transition-colors hover:bg-bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+            aria-label="Toggle theme"
+            @click="toggleTheme"
+          >
+            <Icon :name="themeToggleIcon" size="sm" />
+          </button>
+          <button
+            type="button"
+            class="flex size-9 items-center justify-center rounded-md border border-line bg-bg-panel text-text-muted transition-colors hover:bg-bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+            aria-label="Search"
+            @click="openPalette()"
+          >
+            <Icon name="search" size="sm" />
+          </button>
+        </div>
       </header>
 
       <main class="flex-1 overflow-y-auto px-4 py-4">

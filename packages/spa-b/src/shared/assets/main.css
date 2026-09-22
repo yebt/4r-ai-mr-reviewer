@@ -98,3 +98,20 @@
     overflow-x: auto;
   }
 }
+
+/* NProgress route-transition bar (src/core/router/index.ts), recolored to
+   the accent token. Deliberately kept OUTSIDE any @layer: cascade layers
+   always lose to unlayered rules regardless of source order, and
+   nprogress.css's own .bar/.peg rules are unlayered — so an @layer
+   components override here would never win. main.ts imports
+   'nprogress/nprogress.css' before this file, so this unlayered rule also
+   wins the plain source-order cascade against nprogress's own. */
+#nprogress .bar {
+  background: var(--accent);
+}
+
+#nprogress .peg {
+  box-shadow:
+    0 0 10px var(--accent),
+    0 0 5px var(--accent);
+}

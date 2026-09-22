@@ -15,5 +15,6 @@ export { default as Icon } from './atoms/Icon.vue'
 export { default as Kbd } from './atoms/Kbd.vue'
 export { default as Badge } from './atoms/Badge.vue'
 export { default as Spinner } from './atoms/Spinner.vue'
+export { default as Skeleton } from './atoms/Skeleton.vue'
 
 export { default as Field } from './molecules/Field.vue'

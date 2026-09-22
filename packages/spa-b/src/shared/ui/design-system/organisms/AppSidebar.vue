@@ -10,6 +10,7 @@ import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@modules/auth/store'
 import { useCommandPalette } from '@shared/composables/useCommandPalette'
+import { useColorScheme } from '@shared/composables/useColorScheme'
 import { isNavItemActive, navItems } from '@core/nav'
 import Icon from '../atoms/Icon.vue'
 import Kbd from '../atoms/Kbd.vue'
@@ -20,8 +21,14 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const { open: openPalette } = useCommandPalette()
+const { colorMode } = useColorScheme()
 
 const showLogout = computed(() => auth.enabled && auth.authenticated)
+const themeToggleIcon = computed(() => (colorMode.value === 'dark' ? 'sun' : 'moon'))
+
+function toggleTheme() {
+  colorMode.value = colorMode.value === 'dark' ? 'light' : 'dark'
+}
 
 async function handleLogout() {
   await auth.logout()
@@ -66,11 +73,27 @@ async function handleLogout() {
       </RouterLink>
     </nav>
 
-    <Button v-if="showLogout" variant="ghost" size="sm" class="justify-start" @click="handleLogout">
-      <template #leading>
-        <Icon name="log-out" size="sm" />
-      </template>
-      Log out
-    </Button>
+    <div class="flex items-center gap-1">
+      <Button
+        variant="ghost"
+        size="sm"
+        aria-label="Toggle theme"
+        @click="toggleTheme"
+      >
+        <Icon :name="themeToggleIcon" size="sm" />
+      </Button>
+      <Button
+        v-if="showLogout"
+        variant="ghost"
+        size="sm"
+        class="flex-1 justify-start"
+        @click="handleLogout"
+      >
+        <template #leading>
+          <Icon name="log-out" size="sm" />
+        </template>
+        Log out
+      </Button>
+    </div>
   </aside>
 </template>
