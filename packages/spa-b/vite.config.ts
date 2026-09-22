@@ -22,4 +22,16 @@ export default defineConfig({
       '@core': fileURLToPath(new URL('./src/core', import.meta.url)),
     },
   },
+  server: {
+    // The client calls same-origin `/api/*`; this proxy forwards it to the Go
+    // backend, stripping the `/api` prefix (the backend serves at root, e.g.
+    // `/providers`). Override the target with VITE_API_TARGET.
+    proxy: {
+      '/api': {
+        target: process.env.VITE_API_TARGET || 'http://localhost:8082',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+    },
+  },
 })

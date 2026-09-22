@@ -81,5 +81,17 @@ export async function request<T>(method: HttpMethod, path: string, body?: unknow
     throw new ApiError(response.status, message, parsed)
   }
 
+  // A 2xx whose body isn't JSON means something other than the API answered
+  // (e.g. a missing/mis-set dev proxy returning index.html). Fail loudly rather
+  // than hand back a raw string typed as T — that is what rendered the blank
+  // "." provider rows before the proxy existed.
+  if (typeof parsed === 'string') {
+    throw new ApiError(
+      response.status,
+      'Unexpected non-JSON response from the API (check the dev proxy / VITE_API_TARGET)',
+      parsed,
+    )
+  }
+
   return parsed as T
 }
