@@ -5,6 +5,7 @@ import { useToast } from '@shared/composables/useToast'
 import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
 import { listRepos } from '@modules/repos/api'
 import * as reviewsApi from './api'
+import type { PublishSelection } from './api'
 import type { ReviewWithRepo } from './types'
 
 export const REVIEWS_QUERY_KEY = 'reviews' as const
@@ -144,6 +145,18 @@ export const useReviewsStore = defineStore('reviews', () => {
     onSettled: invalidate,
   })
 
+  const publishMutation = useMutation({
+    mutation: (args: { id: string; selection: PublishSelection }) =>
+      reviewsApi.publishReview(args.id, args.selection),
+    onSuccess() {
+      toast.success('Published to the MR')
+    },
+    onError(err) {
+      toast.error(resolveErrorMessage(err, 'Failed to publish to the MR'))
+    },
+    onSettled: invalidate,
+  })
+
   return {
     // ['reviews', { archived }] query surface
     reviews,
@@ -169,5 +182,7 @@ export const useReviewsStore = defineStore('reviews', () => {
     isApproving: approveMutation.isLoading,
     discard: discardMutation.mutateAsync,
     isDiscarding: discardMutation.isLoading,
+    publish: publishMutation.mutateAsync,
+    isPublishing: publishMutation.isLoading,
   }
 })

@@ -3,8 +3,8 @@
  * Review detail page (`/reviews/:id`, file-based route: `reviews/[id].vue`,
  * sibling of `reviews/index.vue` which is the list). Read-only: renders the
  * full `Review` from `GET /reviews/{id}` — summary, findings grouped by
- * dimension, and a collapsible reasoning trail. Humanize/publish are
- * deferred to a later milestone.
+ * dimension, and a collapsible reasoning trail, plus publish-to-MR actions
+ * (see below). Humanize is deferred to a later milestone.
  *
  * Data comes from `modules/reviews/detail.ts`'s `useReviewDetail`
  * composable, which polls every 2.5s while the review is non-terminal
@@ -19,6 +19,14 @@
  * the *list* query key (`['reviews', ...]`), so this page also calls its own
  * `refetch()` afterwards to pick up the new status. Discard removes the
  * review, so it navigates back to the list instead.
+ *
+ * Publish (slice 1): once `status === 'done'`, each unpublished finding and
+ * the summary get a Publish control (a `Badge` once already published),
+ * plus a header "Publish all". Every publish is confirm-gated — it posts a
+ * real, irreversible comment to the live GitLab MR. A per-action pending id
+ * (`pendingPublishTarget`) tracks which control is loading; on success the
+ * detail composable's `refetch()` re-fetches the review so `published` /
+ * `summaryPublished` flip reactively (never hand-mutated locally).
  */
 import { computed, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -34,6 +42,7 @@ import { useReposStore } from '@modules/repos/store'
 import { useReviewDetail } from '@modules/reviews/detail'
 import { FINDING_DIMENSIONS, FINDING_SEVERITY_BADGE, groupFindingsByDimension } from '@modules/reviews/findings'
 import { RECOMMENDATION_LABELS } from '@modules/reviews/labels'
+import { hasUnpublished } from '@modules/reviews/publish'
 import { useReviewsStore } from '@modules/reviews/store'
 import ReviewStatusChip from '@modules/reviews/components/ReviewStatusChip.vue'
 
@@ -96,6 +105,36 @@ async function handleDiscard() {
   } finally {
     pendingAction.value = null
   }
+}
+
+// Publish — a separate pending tracker from `pendingAction` (row actions)
+// so a finding/summary/all publish only lights up its own control.
+// 'all' | 'summary' | `finding:<index>` identifies which control is loading.
+const pendingPublishTarget = ref<string | null>(null)
+
+async function runPublish(target: string, selection: Parameters<typeof reviewsStore.publish>[0]['selection']) {
+  if (!review.value) return
+  pendingPublishTarget.value = target
+  try {
+    await reviewsStore.publish({ id: review.value.id, selection })
+    await refetch()
+  } catch {
+    // no-op — the store already toasted the error
+  } finally {
+    pendingPublishTarget.value = null
+  }
+}
+
+function handlePublishFinding(index: number) {
+  void runPublish(`finding:${index}`, { indices: [index], includeSummary: false })
+}
+
+function handlePublishSummary() {
+  void runPublish('summary', { indices: [], includeSummary: true })
+}
+
+function handlePublishAll() {
+  void runPublish('all', { all: true })
 }
 </script>
 
@@ -164,6 +203,19 @@ async function handleDiscard() {
             Approve
           </Button>
           <ConfirmDialog
+            v-if="review.status === 'done'"
+            title="Publish all unpublished findings and the summary to the MR?"
+            description="Posts comments to the live merge request. This can't be undone."
+            confirm-label="Publish all"
+            :danger="false"
+            :pending="pendingPublishTarget === 'all'"
+            @confirm="handlePublishAll"
+          >
+            <template #trigger>
+              <Button variant="outline" size="sm" :disabled="!hasUnpublished(review)">Publish all</Button>
+            </template>
+          </ConfirmDialog>
+          <ConfirmDialog
             :title='`Discard review !${review.mrIid}?`'
             description="This permanently removes the review. This cannot be undone."
             confirm-label="Discard"
@@ -183,7 +235,23 @@ async function handleDiscard() {
       </Alert>
 
       <div v-if="review.summary" class="rounded-lg border border-line-subtle bg-bg-panel p-4">
-        <Text as="h2" size="lg" class="mb-2 font-semibold">Summary</Text>
+        <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <Text as="h2" size="lg" class="font-semibold">Summary</Text>
+          <Badge v-if="review.status === 'done' && review.summaryPublished" status="success">Published</Badge>
+          <ConfirmDialog
+            v-else-if="review.status === 'done'"
+            title="Publish the summary to the MR?"
+            description="Posts a comment to the live merge request. This can't be undone."
+            confirm-label="Publish"
+            :danger="false"
+            :pending="pendingPublishTarget === 'summary'"
+            @confirm="handlePublishSummary"
+          >
+            <template #trigger>
+              <Button variant="outline" size="sm">Publish</Button>
+            </template>
+          </ConfirmDialog>
+        </div>
         <Text class="whitespace-pre-wrap">{{ review.summary }}</Text>
       </div>
 
@@ -202,10 +270,26 @@ async function handleDiscard() {
                   :key="finding.index"
                   class="flex flex-col gap-1 rounded-lg border border-line-subtle bg-bg-panel p-3"
                 >
-                  <div class="flex flex-wrap items-center gap-2">
-                    <Badge :status="FINDING_SEVERITY_BADGE[finding.severity]">{{ finding.severity }}</Badge>
-                    <Badge v-if="finding.blocking" status="danger">Blocking</Badge>
-                    <Text mono size="sm" muted>{{ finding.file }}:{{ finding.line }}</Text>
+                  <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <Badge :status="FINDING_SEVERITY_BADGE[finding.severity]">{{ finding.severity }}</Badge>
+                      <Badge v-if="finding.blocking" status="danger">Blocking</Badge>
+                      <Text mono size="sm" muted>{{ finding.file }}:{{ finding.line }}</Text>
+                    </div>
+                    <Badge v-if="review.status === 'done' && finding.published" status="success">Published</Badge>
+                    <ConfirmDialog
+                      v-else-if="review.status === 'done'"
+                      title="Publish this finding to the MR?"
+                      description="Posts a comment to the live merge request. This can't be undone."
+                      confirm-label="Publish"
+                      :danger="false"
+                      :pending="pendingPublishTarget === `finding:${finding.index}`"
+                      @confirm="handlePublishFinding(finding.index)"
+                    >
+                      <template #trigger>
+                        <Button variant="outline" size="sm">Publish</Button>
+                      </template>
+                    </ConfirmDialog>
                   </div>
                   <Text class="font-medium">{{ finding.issue }}</Text>
                   <Text muted size="sm">{{ finding.why }}</Text>

@@ -17,3 +17,5 @@ export { FINDING_DIMENSIONS, FINDING_SEVERITY_BADGE, groupFindingsByDimension } 
 export { RECOMMENDATION_LABELS } from './labels'
 export { isReviewActive, useReviewDetail } from './detail'
 export { getReview } from './api'
+export type { PublishSelection } from './api'
+export { hasUnpublished, unpublishedFindingIndices } from './publish'

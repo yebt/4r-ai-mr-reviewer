@@ -36,3 +36,23 @@ export function unarchiveReview(id: string): Promise<void> {
 export function deleteReview(id: string): Promise<void> {
   return request<void>('DELETE', `/reviews/${id}`)
 }
+
+/**
+ * Selection payload for `POST /reviews/{id}/publish`. All fields optional —
+ * `all: true` publishes every not-yet-published finding plus the summary (if
+ * not yet published); otherwise `indices`/`includeSummary` select what to
+ * post. `summaryOverride`/`findingOverrides` are accepted by the backend but
+ * unused by this slice (no text-override UI yet).
+ */
+export interface PublishSelection {
+  all?: boolean
+  indices?: number[]
+  includeSummary?: boolean
+  summaryOverride?: string
+  findingOverrides?: { index: number; text: string }[]
+}
+
+/** Posts findings/summary to the live GitLab MR. The 200 body is `{status:"published"}`; callers only need the outcome. */
+export function publishReview(id: string, selection: PublishSelection): Promise<void> {
+  return request<{ status: string }>('POST', `/reviews/${id}/publish`, selection).then(() => undefined)
+}
