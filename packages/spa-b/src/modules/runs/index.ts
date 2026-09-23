@@ -4,6 +4,9 @@ export { default as StepStatusChip } from './components/StepStatusChip.vue'
 
 export { useRunDetail } from './composables/useRunDetail'
 
+export { attentionRuns, recentRuns, runStats } from './dashboard'
+export type { RunStats } from './dashboard'
+
 export {
   flowLabel,
   formatDateTime,
