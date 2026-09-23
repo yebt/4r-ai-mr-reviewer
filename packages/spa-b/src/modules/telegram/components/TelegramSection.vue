@@ -33,7 +33,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from 'reka-ui'
-import { Alert, Badge, Button, ConfirmDialog, Icon, Skeleton, Text } from '@shared/ui/design-system'
+import { Alert, Badge, Button, ConfirmDialog, Fab, Icon, Skeleton, Text } from '@shared/ui/design-system'
 import TelegramForm from './TelegramForm.vue'
 import { sortDefaultFirst, useTelegramStore } from '../store'
 import type { TelegramTarget, TestTelegramTargetResult } from '../types'
@@ -134,11 +134,13 @@ async function handleTest(target: TelegramTarget) {
         <Text as="h2" size="xl" class="font-semibold tracking-tight">Telegram</Text>
         <Text muted size="sm" class="truncate">Configure the Telegram chats notifications are sent to.</Text>
       </div>
-      <Button class="whitespace-nowrap" @click="openCreateDialog">
+      <Button class="max-md:hidden whitespace-nowrap" @click="openCreateDialog">
         <template #leading><Icon name="plus" size="sm" /></template>
         Add target
       </Button>
     </div>
+
+    <Fab label="Add Telegram target" @click="openCreateDialog" />
 
     <div
       v-if="store.targetsState.status === 'pending'"

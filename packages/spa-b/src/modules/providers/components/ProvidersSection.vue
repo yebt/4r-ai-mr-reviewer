@@ -33,7 +33,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from 'reka-ui'
-import { Alert, Badge, Button, ConfirmDialog, Icon, Skeleton, Text } from '@shared/ui/design-system'
+import { Alert, Badge, Button, ConfirmDialog, Fab, Icon, Skeleton, Text } from '@shared/ui/design-system'
 import ProviderForm from './ProviderForm.vue'
 import { sortDefaultFirst, useProvidersStore } from '../store'
 import type { Provider, TestProviderResult } from '../types'
@@ -154,11 +154,13 @@ async function handleTest(provider: Provider) {
         <Text as="h2" size="xl" class="font-semibold tracking-tight">Providers</Text>
         <Text muted size="sm" class="truncate">Configure the AI providers available to this workspace.</Text>
       </div>
-      <Button class="whitespace-nowrap" @click="openCreateDialog">
+      <Button class="max-md:hidden whitespace-nowrap" @click="openCreateDialog">
         <template #leading><Icon name="plus" size="sm" /></template>
         Add provider
       </Button>
     </div>
+
+    <Fab label="Add provider" @click="openCreateDialog" />
 
     <div
       v-if="store.providersState.status === 'pending'"

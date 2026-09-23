@@ -28,7 +28,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from 'reka-ui'
-import { Alert, Badge, Button, ConfirmDialog, Icon, Skeleton, Text } from '@shared/ui/design-system'
+import { Alert, Badge, Button, ConfirmDialog, Fab, Icon, Skeleton, Text } from '@shared/ui/design-system'
 import ProfileForm from './ProfileForm.vue'
 import { useProfilesStore } from '../store'
 import type { Profile, StyleGuideStatus } from '../types'
@@ -110,11 +110,13 @@ async function handleRedistill(profile: Profile) {
         <Text as="h2" size="xl" class="font-semibold tracking-tight">Profiles</Text>
         <Text muted size="sm" class="truncate">Configure the writing-voice profiles used to humanize reviews.</Text>
       </div>
-      <Button class="whitespace-nowrap" @click="openCreateDialog">
+      <Button class="max-md:hidden whitespace-nowrap" @click="openCreateDialog">
         <template #leading><Icon name="plus" size="sm" /></template>
         Add profile
       </Button>
     </div>
+
+    <Fab label="Add profile" @click="openCreateDialog" />
 
     <div
       v-if="store.profilesState.status === 'pending'"

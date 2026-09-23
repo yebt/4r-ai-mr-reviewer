@@ -29,7 +29,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from 'reka-ui'
-import { Alert, Button, ConfirmDialog, Icon, Skeleton, Text } from '@shared/ui/design-system'
+import { Alert, Button, ConfirmDialog, Fab, Icon, Skeleton, Text } from '@shared/ui/design-system'
 import AccountForm from './AccountForm.vue'
 import { useAccountsStore } from '../store'
 import type { Account } from '../types'
@@ -79,11 +79,13 @@ async function handleDelete(account: Account) {
         <Text as="h2" size="xl" class="font-semibold tracking-tight">Accounts</Text>
         <Text muted size="sm" class="truncate">Connect the GitLab accounts available to this workspace.</Text>
       </div>
-      <Button class="whitespace-nowrap" @click="openCreateDialog">
+      <Button class="max-md:hidden whitespace-nowrap" @click="openCreateDialog">
         <template #leading><Icon name="plus" size="sm" /></template>
         Add account
       </Button>
     </div>
+
+    <Fab label="Add account" @click="openCreateDialog" />
 
     <div
       v-if="store.accountsState.status === 'pending'"
