@@ -50,7 +50,7 @@ async function handleLogout() {
 
 <template>
   <aside
-    class="flex w-[var(--sidebar-w,15rem)] shrink-0 flex-col gap-1 overflow-hidden border-r border-line bg-bg-panel p-3 transition-[width] duration-[var(--duration-base)] ease-[var(--ease-standard)]"
+    class="flex h-full w-[var(--sidebar-w,15rem)] shrink-0 flex-col gap-1 overflow-y-auto overflow-x-hidden border-r border-line bg-bg-panel p-3 transition-[width] duration-[var(--duration-base)] ease-[var(--ease-standard)]"
   >
     <div class="flex items-center gap-2 px-2 py-2" :class="collapsed ? 'justify-center' : 'justify-between'">
       <div class="flex min-w-0 items-center gap-2">

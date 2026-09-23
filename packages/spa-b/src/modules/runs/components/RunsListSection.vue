@@ -10,7 +10,7 @@
  * name for the repo filter's options (never for repo mutations) — mirrors
  * the task's "read-only" boundary between the runs and repos modules.
  */
-import { computed, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onUnmounted, ref } from 'vue'
 import {
   DropdownMenuContent,
   DropdownMenuItem,
@@ -58,6 +58,26 @@ onUnmounted(() => {
 const cancellingId = ref<string | null>(null)
 const deletingId = ref<string | null>(null)
 
+// The Delete ConfirmDialog is deliberately NOT nested inside the row's
+// DropdownMenu (unlike Cancel above): nesting a Reka AlertDialog (always
+// modal) inside a Reka DropdownMenu (also modal by default) — both
+// portal-rendered — stacks two focus-trapping modal layers on top of each
+// other. Selecting Delete would leave the DropdownMenuContent open behind
+// the AlertDialogOverlay instead of cleanly closing it first. Driving a
+// single ConfirmDialog from this id + a hidden, programmatically-clicked
+// trigger keeps the dropdown's normal close-on-select behavior intact and
+// opens the dialog only after the menu has started closing.
+const confirmDeleteId = ref<string | null>(null)
+const confirmDeleteRun = computed(() => store.runs.find((run) => run.id === confirmDeleteId.value) ?? null)
+const deleteConfirmTriggerRef = ref<HTMLButtonElement | null>(null)
+
+function openDeleteConfirm(run: RoutineRun) {
+  confirmDeleteId.value = run.id
+  nextTick(() => {
+    deleteConfirmTriggerRef.value?.click()
+  })
+}
+
 async function handleArchive(run: RoutineRun) {
   try {
     await store.archiveRun(run.id)
@@ -89,6 +109,7 @@ async function handleDelete(run: RoutineRun) {
   deletingId.value = run.id
   try {
     await store.removeRun(run.id)
+    confirmDeleteId.value = null
   } catch {
     // no-op — store already toasted the error
   } finally {
@@ -248,23 +269,13 @@ async function handleDelete(run: RoutineRun) {
 
                 <template v-else>
                   <DropdownMenuSeparator class="my-1 h-px bg-line-subtle" />
-                  <ConfirmDialog
-                    title="Delete this run?"
-                    description="Permanently removes this run's history. This cannot be undone."
-                    confirm-label="Delete"
-                    :pending="deletingId === run.id"
-                    @confirm="handleDelete(run)"
+                  <DropdownMenuItem
+                    :disabled="store.isRemoving"
+                    class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-danger-text outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-danger-bg"
+                    @select="openDeleteConfirm(run)"
                   >
-                    <template #trigger>
-                      <DropdownMenuItem
-                        :disabled="store.isRemoving"
-                        class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-danger-text outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-danger-bg"
-                        @select.prevent
-                      >
-                        Delete
-                      </DropdownMenuItem>
-                    </template>
-                  </ConfirmDialog>
+                    Delete
+                  </DropdownMenuItem>
                 </template>
               </DropdownMenuContent>
             </DropdownMenuPortal>
@@ -272,5 +283,20 @@ async function handleDelete(run: RoutineRun) {
         </div>
       </li>
     </ul>
+
+    <!-- One Delete ConfirmDialog per section, driven by confirmDeleteId —
+         see the comment on confirmDeleteId above for why this is lifted out
+         of the per-row DropdownMenu instead of nested like Cancel's. -->
+    <ConfirmDialog
+      title="Delete this run?"
+      description="Permanently removes this run's history. This cannot be undone."
+      confirm-label="Delete"
+      :pending="!!confirmDeleteRun && deletingId === confirmDeleteRun.id"
+      @confirm="confirmDeleteRun && handleDelete(confirmDeleteRun)"
+    >
+      <template #trigger>
+        <button ref="deleteConfirmTriggerRef" type="button" class="hidden" tabindex="-1" aria-hidden="true" />
+      </template>
+    </ConfirmDialog>
   </section>
 </template>

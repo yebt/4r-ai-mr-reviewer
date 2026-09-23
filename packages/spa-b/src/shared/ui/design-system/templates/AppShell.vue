@@ -43,7 +43,7 @@ const isDesktop = useMediaQuery('(min-width: 768px)')
 <template>
   <div class="min-h-dvh bg-bg-app text-text">
     <!-- Desktop: persistent sidebar + main column -->
-    <div v-if="isDesktop" class="flex min-h-dvh" :style="sidebarWidthStyle">
+    <div v-if="isDesktop" class="flex h-dvh overflow-hidden" :style="sidebarWidthStyle">
       <AppSidebar />
       <div class="flex min-w-0 flex-1 flex-col">
         <main class="flex-1 overflow-y-auto px-6 py-6">
