@@ -20,3 +20,5 @@ export { default as Skeleton } from './atoms/Skeleton.vue'
 
 export { default as Field } from './molecules/Field.vue'
 export { default as ConfirmDialog } from './molecules/ConfirmDialog.vue'
+export { default as Alert } from './molecules/Alert.vue'
+export type { AlertStatus } from './molecules/Alert.vue'

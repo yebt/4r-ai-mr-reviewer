@@ -70,7 +70,7 @@ function onClick(event: MouseEvent) {
     :disabled="isDisabled"
     :aria-busy="loading || undefined"
     :class="[variantClass, sizeClass]"
-    class="inline-flex items-center justify-center font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-50"
+    class="inline-flex shrink-0 items-center justify-center whitespace-nowrap font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-50"
     @click="onClick"
   >
     <Spinner v-if="loading" :size="spinnerSize" />
