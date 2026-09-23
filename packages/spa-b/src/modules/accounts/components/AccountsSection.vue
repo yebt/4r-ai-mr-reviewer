@@ -1,10 +1,13 @@
 <script setup lang="ts">
 /**
- * Accounts settings section — organism. List + row actions (Edit,
- * Delete-with-confirm) and an Add-account Dialog. Mirrors the Providers
- * module's reference pattern: `components/<Section>.vue` (list) +
- * `components/<Entity>Form.vue` (create/edit, opened in a Reka Dialog),
- * backed by a feature-scoped Pinia store.
+ * Accounts settings section — organism. Dense list rows (title — muted
+ * metadata — actions). Accounts have no single standout primary action, so
+ * both row actions (Edit, Delete) collapse into a Reka `DropdownMenu`
+ * triggered by a trailing `⋯` icon-button — mirrors the Providers/Telegram
+ * sections' overflow-menu pattern, just without an inline primary action.
+ * `components/<Section>.vue` (list) + `components/<Entity>Form.vue`
+ * (create/edit, opened in a Reka Dialog), backed by a feature-scoped Pinia
+ * store.
  *
  * Data fetching, caching, and mutation side effects (optimistic updates,
  * rollback, success/error toasts) all live in `../store.ts` (@pinia/colada).
@@ -19,8 +22,14 @@ import {
   DialogPortal,
   DialogRoot,
   DialogTitle,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuPortal,
+  DropdownMenuRoot,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from 'reka-ui'
-import { Button, ConfirmDialog, Icon, Skeleton, Text } from '@shared/ui/design-system'
+import { Alert, Button, ConfirmDialog, Icon, Skeleton, Text } from '@shared/ui/design-system'
 import AccountForm from './AccountForm.vue'
 import { useAccountsStore } from '../store'
 import type { Account } from '../types'
@@ -66,11 +75,11 @@ async function handleDelete(account: Account) {
 <template>
   <section class="flex flex-col gap-4">
     <div class="flex items-center justify-between gap-3">
-      <div class="flex flex-col gap-1">
+      <div class="flex min-w-0 flex-col gap-1">
         <Text as="h2" size="xl" class="font-semibold tracking-tight">Accounts</Text>
-        <Text muted size="sm">Connect the GitLab accounts available to this workspace.</Text>
+        <Text muted size="sm" class="truncate">Connect the GitLab accounts available to this workspace.</Text>
       </div>
-      <Button @click="openCreateDialog">
+      <Button class="whitespace-nowrap" @click="openCreateDialog">
         <template #leading><Icon name="plus" size="sm" /></template>
         Add account
       </Button>
@@ -84,7 +93,7 @@ async function handleDelete(account: Account) {
       <div
         v-for="n in 3"
         :key="n"
-        class="flex items-center justify-between gap-3 rounded-lg border border-line bg-bg-panel p-3"
+        class="flex items-center justify-between gap-3 rounded-lg border border-line-subtle bg-bg-panel p-3"
       >
         <div class="flex flex-col gap-2">
           <Skeleton class="h-4 w-40" />
@@ -94,14 +103,10 @@ async function handleDelete(account: Account) {
       </div>
     </div>
 
-    <div
-      v-else-if="store.accountsState.status === 'error'"
-      role="alert"
-      class="flex flex-col items-start gap-2 rounded-md border border-danger-solid/30 bg-danger-bg p-3 text-sm text-danger-text"
-    >
+    <Alert v-else-if="store.accountsState.status === 'error'" status="danger">
       <p>{{ store.error?.message ?? 'Failed to load accounts' }}</p>
-      <Button variant="outline" size="sm" @click="store.refetch()">Retry</Button>
-    </div>
+      <Button variant="outline" size="sm" class="mt-2" @click="store.refetch()">Retry</Button>
+    </Alert>
 
     <div
       v-else-if="store.accounts.length === 0"
@@ -116,28 +121,53 @@ async function handleDelete(account: Account) {
       <li
         v-for="account in store.accounts"
         :key="account.id"
-        class="flex flex-col gap-3 rounded-lg border border-line bg-bg-panel p-3 sm:flex-row sm:items-center sm:justify-between"
+        class="flex items-center gap-3 rounded-lg border border-line-subtle bg-bg-panel px-3 py-2.5"
       >
-        <div class="flex flex-col gap-1">
-          <Text class="font-medium">{{ account.name }}</Text>
-          <Text muted size="sm">{{ account.baseUrl }}</Text>
+        <div class="flex min-w-0 flex-1 flex-col gap-0.5">
+          <Text class="truncate font-medium">{{ account.name }}</Text>
+          <Text muted size="sm" class="truncate">{{ account.baseUrl }}</Text>
         </div>
 
-        <div class="flex flex-wrap items-center gap-2">
-          <Button variant="ghost" size="sm" @click="openEditDialog(account)">Edit</Button>
-
-          <ConfirmDialog
-            :title='`Delete "${account.name}"?`'
-            description="This removes the account and its stored token. This cannot be undone."
-            confirm-label="Delete"
-            danger
-            :pending="deletingId === account.id"
-            @confirm="handleDelete(account)"
-          >
-            <template #trigger>
-              <Button variant="ghost" size="sm">Delete</Button>
-            </template>
-          </ConfirmDialog>
+        <div class="flex shrink-0 items-center gap-1">
+          <DropdownMenuRoot>
+            <DropdownMenuTrigger as-child>
+              <Button variant="ghost" size="sm" :aria-label="`More actions for ${account.name}`">
+                <Icon name="ellipsis" size="sm" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuPortal>
+              <DropdownMenuContent
+                align="end"
+                :side-offset="4"
+                class="z-30 min-w-40 rounded-md border border-line bg-bg-panel-raised p-1 shadow-token-lg"
+              >
+                <DropdownMenuItem
+                  class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-text outline-none data-[highlighted]:bg-bg-hover"
+                  @select="openEditDialog(account)"
+                >
+                  Edit
+                </DropdownMenuItem>
+                <DropdownMenuSeparator class="my-1 h-px bg-line-subtle" />
+                <ConfirmDialog
+                  :title='`Delete "${account.name}"?`'
+                  description="This removes the account and its stored token. This cannot be undone."
+                  confirm-label="Delete"
+                  danger
+                  :pending="deletingId === account.id"
+                  @confirm="handleDelete(account)"
+                >
+                  <template #trigger>
+                    <DropdownMenuItem
+                      class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-danger-text outline-none data-[highlighted]:bg-danger-bg"
+                      @select.prevent
+                    >
+                      Delete
+                    </DropdownMenuItem>
+                  </template>
+                </ConfirmDialog>
+              </DropdownMenuContent>
+            </DropdownMenuPortal>
+          </DropdownMenuRoot>
         </div>
       </li>
     </ul>

@@ -6,7 +6,7 @@
  * local state, rather than trying to reset a shared instance in place.
  */
 import { nextTick, reactive, ref, computed } from 'vue'
-import { Field, Input, Button } from '@shared/ui/design-system'
+import { Alert, Field, Input, Button } from '@shared/ui/design-system'
 import { useAccountsStore } from '../store'
 import type { Account } from '../types'
 
@@ -105,7 +105,7 @@ async function handleSubmit() {
       />
     </Field>
 
-    <p v-if="formError" role="alert" class="text-sm text-danger-text">{{ formError }}</p>
+    <Alert v-if="formError" status="danger">{{ formError }}</Alert>
 
     <div class="flex justify-end gap-2 border-t border-line-subtle pt-4">
       <Button type="button" variant="ghost" @click="emit('cancel')">Cancel</Button>

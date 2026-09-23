@@ -7,6 +7,7 @@ import * as telegramApi from './api'
 import {
   makeOptimisticTarget,
   resolveErrorMessage,
+  sortDefaultFirst,
   toTargetPatch,
   useTelegramStore,
   withDefaultFlippedTo,
@@ -115,6 +116,20 @@ describe('pure optimistic-patch helpers', () => {
       { ...existing[0]!, isDefault: false },
       { ...existing[1]!, isDefault: true },
     ])
+  })
+
+  it('sortDefaultFirst moves the default row to the top and keeps the rest stable', () => {
+    const existing = [
+      makeTarget({ id: 't1', name: 'First' }),
+      makeTarget({ id: 't2', name: 'Default', isDefault: true }),
+      makeTarget({ id: 't3', name: 'Third' }),
+    ]
+    expect(sortDefaultFirst(existing).map((target) => target.id)).toEqual(['t2', 't1', 't3'])
+  })
+
+  it('sortDefaultFirst is a no-op ordering when nothing is default', () => {
+    const existing = [makeTarget({ id: 't1' }), makeTarget({ id: 't2' })]
+    expect(sortDefaultFirst(existing)).toEqual(existing)
   })
 
   it('toTargetPatch strips the write-only botToken field', () => {

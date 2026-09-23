@@ -7,7 +7,7 @@
  * place.
  */
 import { nextTick, reactive, ref, computed } from 'vue'
-import { Badge, Button, Checkbox, Field, Icon, Input, Select } from '@shared/ui/design-system'
+import { Alert, Badge, Button, Checkbox, Field, Icon, Input, Select } from '@shared/ui/design-system'
 import type { SelectItemOption } from '@shared/ui/design-system'
 import { useProfilesStore } from '../store'
 import type { Profile } from '../types'
@@ -163,7 +163,7 @@ async function handleSubmit() {
       </div>
     </Field>
 
-    <p v-if="formError" role="alert" class="text-sm text-danger-text">{{ formError }}</p>
+    <Alert v-if="formError" status="danger">{{ formError }}</Alert>
 
     <div class="flex justify-end gap-2 border-t border-line-subtle pt-4">
       <Button type="button" variant="ghost" @click="emit('cancel')">Cancel</Button>

@@ -1,10 +1,12 @@
 <script setup lang="ts">
 /**
- * Profiles settings section — organism. List + row actions (Redistill, Edit,
- * Delete-with-confirm) and an Add-profile Dialog. Mirrors the Providers
- * section: `components/<Section>.vue` (list) + `components/<Entity>Form.vue`
- * (create/edit, opened in a Reka Dialog), backed by a feature-scoped Pinia
- * store.
+ * Profiles settings section — organism. Dense list rows (title — muted
+ * metadata — actions) with the secondary/destructive row actions (Edit,
+ * Delete) collapsed into a Reka `DropdownMenu` triggered by a trailing `⋯`
+ * icon-button, keeping only the single standout primary action (Redistill)
+ * inline. Mirrors the Providers section: `components/<Section>.vue` (list)
+ * + `components/<Entity>Form.vue` (create/edit, opened in a Reka Dialog),
+ * backed by a feature-scoped Pinia store.
  *
  * Data fetching, caching, and mutation side effects (optimistic updates,
  * rollback, success/error toasts) all live in `../store.ts` (@pinia/colada).
@@ -19,8 +21,14 @@ import {
   DialogPortal,
   DialogRoot,
   DialogTitle,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuPortal,
+  DropdownMenuRoot,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from 'reka-ui'
-import { Badge, Button, ConfirmDialog, Icon, Skeleton, Text } from '@shared/ui/design-system'
+import { Alert, Badge, Button, ConfirmDialog, Icon, Skeleton, Text } from '@shared/ui/design-system'
 import ProfileForm from './ProfileForm.vue'
 import { useProfilesStore } from '../store'
 import type { Profile, StyleGuideStatus } from '../types'
@@ -98,11 +106,11 @@ async function handleRedistill(profile: Profile) {
 <template>
   <section class="flex flex-col gap-4">
     <div class="flex items-center justify-between gap-3">
-      <div class="flex flex-col gap-1">
+      <div class="flex min-w-0 flex-col gap-1">
         <Text as="h2" size="xl" class="font-semibold tracking-tight">Profiles</Text>
-        <Text muted size="sm">Configure the writing-voice profiles used to humanize reviews.</Text>
+        <Text muted size="sm" class="truncate">Configure the writing-voice profiles used to humanize reviews.</Text>
       </div>
-      <Button @click="openCreateDialog">
+      <Button class="whitespace-nowrap" @click="openCreateDialog">
         <template #leading><Icon name="plus" size="sm" /></template>
         Add profile
       </Button>
@@ -116,7 +124,7 @@ async function handleRedistill(profile: Profile) {
       <div
         v-for="n in 3"
         :key="n"
-        class="flex items-center justify-between gap-3 rounded-lg border border-line bg-bg-panel p-3"
+        class="flex items-center justify-between gap-3 rounded-lg border border-line-subtle bg-bg-panel p-3"
       >
         <div class="flex flex-col gap-2">
           <Skeleton class="h-4 w-40" />
@@ -126,14 +134,10 @@ async function handleRedistill(profile: Profile) {
       </div>
     </div>
 
-    <div
-      v-else-if="store.profilesState.status === 'error'"
-      role="alert"
-      class="flex flex-col items-start gap-2 rounded-md border border-danger-solid/30 bg-danger-bg p-3 text-sm text-danger-text"
-    >
+    <Alert v-else-if="store.profilesState.status === 'error'" status="danger">
       <p>{{ store.error?.message ?? 'Failed to load profiles' }}</p>
-      <Button variant="outline" size="sm" @click="store.refetch()">Retry</Button>
-    </div>
+      <Button variant="outline" size="sm" class="mt-2" @click="store.refetch()">Retry</Button>
+    </Alert>
 
     <div
       v-else-if="store.profiles.length === 0"
@@ -148,22 +152,22 @@ async function handleRedistill(profile: Profile) {
       <li
         v-for="profile in store.profiles"
         :key="profile.id"
-        class="flex flex-col gap-3 rounded-lg border border-line bg-bg-panel p-3 sm:flex-row sm:items-center sm:justify-between"
+        class="flex items-center gap-3 rounded-lg border border-line-subtle bg-bg-panel px-3 py-2.5"
       >
-        <div class="flex flex-col gap-1">
+        <div class="flex min-w-0 flex-1 flex-col gap-0.5">
           <div class="flex flex-wrap items-center gap-2">
-            <Text class="font-medium">{{ profile.name }}</Text>
+            <Text class="truncate font-medium">{{ profile.name }}</Text>
             <Badge :status="styleGuideStatusBadge[profile.styleGuideStatus]">
               {{ styleGuideStatusLabels[profile.styleGuideStatus] }}
             </Badge>
           </div>
-          <Text muted size="sm">{{ profile.language }}</Text>
-          <Text v-if="profile.styleGuideStatus === 'error' && profile.styleGuideError" size="xs" class="text-danger-text">
+          <Text muted size="sm" class="truncate">{{ profile.language }}</Text>
+          <Text v-if="profile.styleGuideStatus === 'error' && profile.styleGuideError" size="xs" class="truncate text-danger-text">
             {{ profile.styleGuideError }}
           </Text>
         </div>
 
-        <div class="flex flex-wrap items-center gap-2">
+        <div class="flex shrink-0 items-center gap-1">
           <Button
             variant="outline"
             size="sm"
@@ -172,20 +176,46 @@ async function handleRedistill(profile: Profile) {
           >
             Redistill
           </Button>
-          <Button variant="ghost" size="sm" @click="openEditDialog(profile)">Edit</Button>
 
-          <ConfirmDialog
-            :title='`Delete "${profile.name}"?`'
-            description="This removes the profile and its style guide. This cannot be undone."
-            confirm-label="Delete"
-            danger
-            :pending="deletingId === profile.id"
-            @confirm="handleDelete(profile)"
-          >
-            <template #trigger>
-              <Button variant="ghost" size="sm">Delete</Button>
-            </template>
-          </ConfirmDialog>
+          <DropdownMenuRoot>
+            <DropdownMenuTrigger as-child>
+              <Button variant="ghost" size="sm" :aria-label="`More actions for ${profile.name}`">
+                <Icon name="ellipsis" size="sm" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuPortal>
+              <DropdownMenuContent
+                align="end"
+                :side-offset="4"
+                class="z-30 min-w-40 rounded-md border border-line bg-bg-panel-raised p-1 shadow-token-lg"
+              >
+                <DropdownMenuItem
+                  class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-text outline-none data-[highlighted]:bg-bg-hover"
+                  @select="openEditDialog(profile)"
+                >
+                  Edit
+                </DropdownMenuItem>
+                <DropdownMenuSeparator class="my-1 h-px bg-line-subtle" />
+                <ConfirmDialog
+                  :title='`Delete "${profile.name}"?`'
+                  description="This removes the profile and its style guide. This cannot be undone."
+                  confirm-label="Delete"
+                  danger
+                  :pending="deletingId === profile.id"
+                  @confirm="handleDelete(profile)"
+                >
+                  <template #trigger>
+                    <DropdownMenuItem
+                      class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-danger-text outline-none data-[highlighted]:bg-danger-bg"
+                      @select.prevent
+                    >
+                      Delete
+                    </DropdownMenuItem>
+                  </template>
+                </ConfirmDialog>
+              </DropdownMenuContent>
+            </DropdownMenuPortal>
+          </DropdownMenuRoot>
         </div>
       </li>
     </ul>

@@ -7,7 +7,7 @@
  * local state, rather than trying to reset a shared instance in place.
  */
 import { nextTick, reactive, ref, computed } from 'vue'
-import { Button, Checkbox, Field, Input } from '@shared/ui/design-system'
+import { Alert, Button, Checkbox, Field, Input } from '@shared/ui/design-system'
 import { useTelegramStore } from '../store'
 import type { TelegramTarget } from '../types'
 
@@ -123,7 +123,7 @@ async function handleSubmit() {
       <label for="telegram-is-bot" class="text-sm text-text">This target is a bot</label>
     </div>
 
-    <p v-if="formError" role="alert" class="text-sm text-danger-text">{{ formError }}</p>
+    <Alert v-if="formError" status="danger">{{ formError }}</Alert>
 
     <div class="flex justify-end gap-2 border-t border-line-subtle pt-4">
       <Button type="button" variant="ghost" @click="emit('cancel')">Cancel</Button>

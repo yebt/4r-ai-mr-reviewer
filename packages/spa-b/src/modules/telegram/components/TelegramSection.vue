@@ -1,17 +1,24 @@
 <script setup lang="ts">
 /**
- * Telegram settings section — organism. List + row actions (Test, Set
- * default, Edit, Delete-with-confirm) and an Add-target Dialog. Mirrors
- * `modules/providers/components/ProvidersSection.vue`: `components/<Section>.vue`
- * (list) + `components/<Entity>Form.vue` (create/edit, opened in a Reka
- * Dialog), backed by a feature-scoped Pinia store.
+ * Telegram settings section — organism. Dense list rows (title — muted
+ * metadata — actions) with the secondary/destructive row actions (Set
+ * default, Edit, Delete) collapsed into a Reka `DropdownMenu` triggered by a
+ * trailing `⋯` icon-button, keeping only the single standout primary action
+ * (Test) inline. Mirrors `modules/providers/components/ProvidersSection.vue`:
+ * `components/<Section>.vue` (list) + `components/<Entity>Form.vue`
+ * (create/edit, opened in a Reka Dialog), backed by a feature-scoped Pinia
+ * store.
+ *
+ * The default target is always sorted first (`sortDefaultFirst`, stable —
+ * only the default row moves) and briefly highlighted when it changes, so
+ * "Set default" reads as an obvious, single-item reorder.
  *
  * Data fetching, caching, and mutation side effects (optimistic updates,
  * rollback, success/error toasts) all live in `../store.ts` (@pinia/colada).
  * This component only renders the three query states — loading skeleton,
  * error-with-retry, list — and wires row actions to the store's mutations.
  */
-import { ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import {
   DialogContent,
   DialogDescription,
@@ -19,13 +26,21 @@ import {
   DialogPortal,
   DialogRoot,
   DialogTitle,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuPortal,
+  DropdownMenuRoot,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from 'reka-ui'
-import { Badge, Button, ConfirmDialog, Icon, Skeleton, Text } from '@shared/ui/design-system'
+import { Alert, Badge, Button, ConfirmDialog, Icon, Skeleton, Text } from '@shared/ui/design-system'
 import TelegramForm from './TelegramForm.vue'
-import { useTelegramStore } from '../store'
+import { sortDefaultFirst, useTelegramStore } from '../store'
 import type { TelegramTarget, TestTelegramTargetResult } from '../types'
 
 const store = useTelegramStore()
+
+const sortedTargets = computed(() => sortDefaultFirst(store.targets))
 
 function subtitle(target: TelegramTarget): string {
   return target.threadId ? `${target.chatId} · thread ${target.threadId}` : target.chatId
@@ -54,6 +69,12 @@ function handleCancel() {
   editingTarget.value = null
 }
 
+// Briefly highlighted after a row becomes the default, so the sort-to-top
+// reads as an obviously reactive move rather than a silent reshuffle.
+const highlightId = ref<string | null>(null)
+let highlightTimer: ReturnType<typeof setTimeout> | undefined
+onBeforeUnmount(() => clearTimeout(highlightTimer))
+
 const settingDefaultId = ref<string | null>(null)
 async function handleSetDefault(target: TelegramTarget) {
   if (target.isDefault) return
@@ -62,6 +83,11 @@ async function handleSetDefault(target: TelegramTarget) {
     // Rollback and the error toast are handled by the store's mutation
     // hooks; this catch only prevents an unhandled rejection here.
     await store.setDefaultTarget(target.id)
+    highlightId.value = target.id
+    clearTimeout(highlightTimer)
+    highlightTimer = setTimeout(() => {
+      highlightId.value = null
+    }, 1200)
   } catch {
     // no-op — store already rolled back and toasted the error
   } finally {
@@ -102,11 +128,11 @@ async function handleTest(target: TelegramTarget) {
 <template>
   <section class="flex flex-col gap-4">
     <div class="flex items-center justify-between gap-3">
-      <div class="flex flex-col gap-1">
+      <div class="flex min-w-0 flex-col gap-1">
         <Text as="h2" size="xl" class="font-semibold tracking-tight">Telegram</Text>
-        <Text muted size="sm">Configure the Telegram chats notifications are sent to.</Text>
+        <Text muted size="sm" class="truncate">Configure the Telegram chats notifications are sent to.</Text>
       </div>
-      <Button @click="openCreateDialog">
+      <Button class="whitespace-nowrap" @click="openCreateDialog">
         <template #leading><Icon name="plus" size="sm" /></template>
         Add target
       </Button>
@@ -120,7 +146,7 @@ async function handleTest(target: TelegramTarget) {
       <div
         v-for="n in 3"
         :key="n"
-        class="flex items-center justify-between gap-3 rounded-lg border border-line bg-bg-panel p-3"
+        class="flex items-center justify-between gap-3 rounded-lg border border-line-subtle bg-bg-panel p-3"
       >
         <div class="flex flex-col gap-2">
           <Skeleton class="h-4 w-40" />
@@ -130,14 +156,10 @@ async function handleTest(target: TelegramTarget) {
       </div>
     </div>
 
-    <div
-      v-else-if="store.targetsState.status === 'error'"
-      role="alert"
-      class="flex flex-col items-start gap-2 rounded-md border border-danger-solid/30 bg-danger-bg p-3 text-sm text-danger-text"
-    >
+    <Alert v-else-if="store.targetsState.status === 'error'" status="danger">
       <p>{{ store.error?.message ?? 'Failed to load Telegram targets' }}</p>
-      <Button variant="outline" size="sm" @click="store.refetch()">Retry</Button>
-    </div>
+      <Button variant="outline" size="sm" class="mt-2" @click="store.refetch()">Retry</Button>
+    </Alert>
 
     <div
       v-else-if="store.targets.length === 0"
@@ -150,57 +172,83 @@ async function handleTest(target: TelegramTarget) {
 
     <ul v-else class="flex flex-col gap-2">
       <li
-        v-for="target in store.targets"
+        v-for="target in sortedTargets"
         :key="target.id"
-        class="flex flex-col gap-3 rounded-lg border border-line bg-bg-panel p-3 sm:flex-row sm:items-center sm:justify-between"
+        class="flex items-center gap-3 rounded-lg border border-line-subtle bg-bg-panel px-3 py-2.5 transition-colors duration-700"
+        :class="highlightId === target.id ? 'bg-accent-subtle-bg ring-1 ring-accent' : ''"
       >
-        <div class="flex flex-col gap-1">
+        <div class="flex min-w-0 flex-1 flex-col gap-0.5">
           <div class="flex flex-wrap items-center gap-2">
-            <Text class="font-medium">{{ target.name }}</Text>
+            <Text class="truncate font-medium">{{ target.name }}</Text>
             <Badge v-if="target.isDefault" status="info">Default</Badge>
             <Badge v-if="target.isBot">Bot</Badge>
           </div>
-          <Text muted size="sm">{{ subtitle(target) }}</Text>
-          <Text
+          <Text muted size="sm" class="truncate">{{ subtitle(target) }}</Text>
+          <Alert
             v-if="testResults[target.id]"
-            size="xs"
-            :class="testResults[target.id]!.ok ? 'text-success-text' : 'text-danger-text'"
+            :status="testResults[target.id]!.ok ? 'success' : 'danger'"
+            class="mt-1"
           >
             {{
               testResults[target.id]!.ok
                 ? 'Test message sent'
                 : (testResults[target.id]!.error ?? 'Test failed')
             }}
-          </Text>
+          </Alert>
         </div>
 
-        <div class="flex flex-wrap items-center gap-2">
+        <div class="flex shrink-0 items-center gap-1">
           <Button variant="outline" size="sm" :loading="testingId === target.id" @click="handleTest(target)">
             Test
           </Button>
-          <Button
-            v-if="!target.isDefault"
-            variant="ghost"
-            size="sm"
-            :loading="settingDefaultId === target.id"
-            @click="handleSetDefault(target)"
-          >
-            Set default
-          </Button>
-          <Button variant="ghost" size="sm" @click="openEditDialog(target)">Edit</Button>
 
-          <ConfirmDialog
-            :title='`Delete "${target.name}"?`'
-            description="This removes the Telegram target and its stored bot token. This cannot be undone."
-            confirm-label="Delete"
-            danger
-            :pending="deletingId === target.id"
-            @confirm="handleDelete(target)"
-          >
-            <template #trigger>
-              <Button variant="ghost" size="sm">Delete</Button>
-            </template>
-          </ConfirmDialog>
+          <DropdownMenuRoot>
+            <DropdownMenuTrigger as-child>
+              <Button variant="ghost" size="sm" :aria-label="`More actions for ${target.name}`">
+                <Icon name="ellipsis" size="sm" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuPortal>
+              <DropdownMenuContent
+                align="end"
+                :side-offset="4"
+                class="z-30 min-w-40 rounded-md border border-line bg-bg-panel-raised p-1 shadow-token-lg"
+              >
+                <DropdownMenuItem
+                  v-if="!target.isDefault"
+                  :disabled="settingDefaultId === target.id"
+                  class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-text outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-bg-hover"
+                  @select="handleSetDefault(target)"
+                >
+                  Set default
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-text outline-none data-[highlighted]:bg-bg-hover"
+                  @select="openEditDialog(target)"
+                >
+                  Edit
+                </DropdownMenuItem>
+                <DropdownMenuSeparator class="my-1 h-px bg-line-subtle" />
+                <ConfirmDialog
+                  :title='`Delete "${target.name}"?`'
+                  description="This removes the Telegram target and its stored bot token. This cannot be undone."
+                  confirm-label="Delete"
+                  danger
+                  :pending="deletingId === target.id"
+                  @confirm="handleDelete(target)"
+                >
+                  <template #trigger>
+                    <DropdownMenuItem
+                      class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-danger-text outline-none data-[highlighted]:bg-danger-bg"
+                      @select.prevent
+                    >
+                      Delete
+                    </DropdownMenuItem>
+                  </template>
+                </ConfirmDialog>
+              </DropdownMenuContent>
+            </DropdownMenuPortal>
+          </DropdownMenuRoot>
         </div>
       </li>
     </ul>

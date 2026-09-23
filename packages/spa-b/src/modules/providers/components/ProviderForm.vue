@@ -4,12 +4,31 @@
  * `ProvidersSection`. Keyed by `provider?.id ?? 'create'` in the parent so
  * switching context (create -> edit another row) always remounts with fresh
  * local state, rather than trying to reset a shared instance in place.
+ *
+ * For `kind === 'openrouter'`, the "Add a model id" free-text fallback is
+ * replaced by a search combobox (Reka `Combobox*`, same family CommandPalette
+ * uses) over the full catalog fetched once via `store.fetchOpenRouterModels`.
+ * Client-side filtering (`ignore-filter` + `useFilter().contains`) matches
+ * CommandPalette.vue's pattern. Selecting an option is "single-select that
+ * appends": the combobox's own model-value is a transient ref, watched to
+ * push the picked id onto `form.models` (deduped) and reset back to empty.
  */
-import { nextTick, reactive, ref, computed } from 'vue'
-import { Badge, Button, Checkbox, Field, Icon, Input, Select, Spinner, Text } from '@shared/ui/design-system'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
+import {
+  ComboboxAnchor,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxPortal,
+  ComboboxRoot,
+  ComboboxViewport,
+  useFilter,
+} from 'reka-ui'
+import { Alert, Badge, Button, Checkbox, Field, Icon, Input, Select, Spinner, Text } from '@shared/ui/design-system'
 import type { SelectItemOption } from '@shared/ui/design-system'
 import { useProvidersStore } from '../store'
-import type { OpenRouterModel, Provider, ProviderKind, TestProviderResult } from '../types'
+import type { Provider, ProviderKind, TestProviderResult } from '../types'
 
 const props = defineProps<{
   provider?: Provider | null
@@ -49,7 +68,6 @@ const errors = reactive<FormErrors>({})
 
 const formRef = ref<HTMLFormElement | null>(null)
 const newModelInput = ref('')
-const showModelBrowser = ref(false)
 const saving = ref(false)
 const testing = ref(false)
 const testResult = ref<TestProviderResult | null>(null)
@@ -74,16 +92,44 @@ function removeModel(model: string) {
   form.models = form.models.filter((existing) => existing !== model)
 }
 
-async function toggleModelBrowser() {
-  showModelBrowser.value = !showModelBrowser.value
-  if (showModelBrowser.value && store.openRouterModels.length === 0) {
-    await store.fetchOpenRouterModels()
+// --- OpenRouter model combobox -------------------------------------------
+
+const openRouterQuery = ref('')
+// Transient — never read directly, only watched: selecting an item appends
+// its id to `form.models` and this resets to empty so the same model can be
+// picked again after being removed, and the combobox never "sticks" on a
+// single selected value.
+const openRouterPick = ref('')
+
+const { contains } = useFilter({ sensitivity: 'base' })
+
+const filteredOpenRouterModels = computed(() => {
+  const term = openRouterQuery.value.trim()
+  if (!term) return store.openRouterModels
+  return store.openRouterModels.filter(
+    (model) => contains(model.name, term) || contains(model.id, term),
+  )
+})
+
+watch(openRouterPick, (id) => {
+  if (!id) return
+  if (!form.models.includes(id)) form.models.push(id)
+  openRouterPick.value = ''
+})
+
+function ensureOpenRouterModelsLoaded() {
+  if (store.openRouterModels.length === 0 && !store.openRouterLoading) {
+    store.fetchOpenRouterModels()
   }
 }
 
-function addOpenRouterModel(model: OpenRouterModel) {
-  if (!form.models.includes(model.id)) form.models.push(model.id)
-}
+// The catalog is fetched once, lazily, the first time the form is showing
+// (or switches to) the openrouter kind — never on module load.
+watch(() => form.kind, (kind) => {
+  if (kind === 'openrouter') ensureOpenRouterModelsLoaded()
+}, { immediate: true })
+
+// --------------------------------------------------------------------------
 
 async function handleTestConnection() {
   testing.value = true
@@ -237,43 +283,62 @@ async function handleSubmit() {
         </Badge>
       </div>
 
-      <div class="flex gap-2">
+      <div v-if="form.kind !== 'openrouter'" class="flex gap-2">
         <Input v-model="newModelInput" placeholder="Add a model id" @keydown.enter.prevent="addModel" />
         <Button type="button" variant="outline" @click="addModel">Add</Button>
       </div>
 
-      <template v-if="form.kind === 'openrouter'">
-        <Button type="button" variant="ghost" size="sm" class="self-start" @click="toggleModelBrowser">
-          <template #leading><Icon name="list" size="sm" /></template>
-          {{ showModelBrowser ? 'Hide' : 'Browse' }} OpenRouter models
-        </Button>
-
-        <div
-          v-if="showModelBrowser"
-          class="max-h-40 overflow-y-auto rounded-md border border-line bg-bg-panel p-1"
+      <ComboboxRoot
+        v-else
+        v-model="openRouterPick"
+        ignore-filter
+        open-on-focus
+        open-on-click
+        class="relative"
+      >
+        <ComboboxAnchor
+          class="flex h-8 items-center gap-2 rounded-md border border-line bg-bg-panel px-2.5 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus-ring"
         >
-          <div v-if="store.openRouterLoading" class="flex items-center gap-2 p-2">
-            <Spinner size="sm" />
-            <Text size="sm" muted>Loading models…</Text>
-          </div>
-          <p v-else-if="store.openRouterError" class="p-2 text-xs text-danger-text">
-            {{ store.openRouterError }}
-          </p>
-          <p v-else-if="store.openRouterModels.length === 0" class="p-2 text-xs text-text-muted">
-            No models found.
-          </p>
-          <button
-            v-for="orModel in store.openRouterModels"
-            :key="orModel.id"
-            type="button"
-            class="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-sm text-text transition-colors hover:bg-bg-hover"
-            @click="addOpenRouterModel(orModel)"
+          <Icon name="search" size="sm" class="shrink-0 text-text-muted" />
+          <ComboboxInput
+            v-model="openRouterQuery"
+            placeholder="Search OpenRouter models…"
+            class="h-full min-w-0 flex-1 bg-transparent text-sm text-text outline-none placeholder:text-text-placeholder"
+            @focus="ensureOpenRouterModelsLoaded"
+          />
+        </ComboboxAnchor>
+
+        <ComboboxPortal>
+          <ComboboxContent
+            position="popper"
+            :side-offset="4"
+            class="z-40 max-h-60 w-[var(--reka-combobox-trigger-width)] overflow-y-auto rounded-md border border-line bg-bg-panel-raised p-1 shadow-token-lg"
           >
-            <span class="truncate">{{ orModel.name }}</span>
-            <span class="shrink-0 text-xs text-text-muted">{{ orModel.contextLength }} ctx</span>
-          </button>
-        </div>
-      </template>
+            <ComboboxViewport class="flex flex-col gap-0.5">
+              <div v-if="store.openRouterLoading" class="flex items-center gap-2 p-2">
+                <Spinner size="sm" />
+                <Text size="sm" muted>Loading models…</Text>
+              </div>
+              <p v-else-if="store.openRouterError" class="p-2 text-xs text-danger-text">
+                {{ store.openRouterError }}
+              </p>
+              <template v-else>
+                <ComboboxEmpty class="p-2 text-xs text-text-muted">No models found.</ComboboxEmpty>
+                <ComboboxItem
+                  v-for="orModel in filteredOpenRouterModels"
+                  :key="orModel.id"
+                  :value="orModel.id"
+                  :text-value="orModel.name"
+                  class="flex cursor-pointer flex-col gap-0.5 rounded-md px-2.5 py-1.5 text-sm text-text outline-none data-[highlighted]:bg-accent-subtle-bg data-[highlighted]:text-accent-text-strong"
+                >
+                  <span class="truncate">{{ orModel.name }}</span>
+                  <span class="text-xs text-text-muted">{{ orModel.contextLength.toLocaleString() }} ctx</span>
+                </ComboboxItem>
+              </template>
+            </ComboboxViewport>
+          </ComboboxContent>
+        </ComboboxPortal>
+      </ComboboxRoot>
     </div>
 
     <div v-if="!isEditing" class="flex items-center gap-2">
@@ -289,13 +354,13 @@ async function handleSubmit() {
       <Button type="button" variant="outline" :loading="testing" @click="handleTestConnection">
         Test connection
       </Button>
-      <Text v-if="testResult?.ok" size="sm" class="text-success-text">Connection OK</Text>
-      <Text v-else-if="testResult && !testResult.ok" size="sm" class="text-danger-text">
+      <Alert v-if="testResult?.ok" status="success">Connection OK</Alert>
+      <Alert v-else-if="testResult && !testResult.ok" status="danger">
         {{ testResult.error ?? 'Connection failed' }}
-      </Text>
+      </Alert>
     </div>
 
-    <p v-if="formError" role="alert" class="text-sm text-danger-text">{{ formError }}</p>
+    <Alert v-if="formError" status="danger">{{ formError }}</Alert>
 
     <div class="flex justify-end gap-2 border-t border-line-subtle pt-4">
       <Button type="button" variant="ghost" @click="emit('cancel')">Cancel</Button>

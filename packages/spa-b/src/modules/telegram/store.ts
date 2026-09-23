@@ -39,6 +39,16 @@ export function withDefaultFlippedTo(targets: TelegramTarget[], id: string): Tel
 }
 
 /**
+ * Default-first ordering for the list UI (`TelegramSection`): `Array#sort`
+ * is stable, so this only ever moves the default row to the top — every
+ * other row keeps its relative order, which is what makes "Set default"
+ * read as an obvious, single-item reorder rather than a full reshuffle.
+ */
+export function sortDefaultFirst(targets: TelegramTarget[]): TelegramTarget[] {
+  return [...targets].sort((a, b) => Number(b.isDefault) - Number(a.isDefault))
+}
+
+/**
  * `botToken` is write-only and never lives on `TelegramTarget` — never
  * spread the raw update payload onto the cache, or it leaks a stray
  * `botToken` field.

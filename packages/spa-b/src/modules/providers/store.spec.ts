@@ -7,6 +7,7 @@ import * as providersApi from './api'
 import {
   makeOptimisticProvider,
   resolveErrorMessage,
+  sortDefaultFirst,
   toProviderPatch,
   useProvidersStore,
   withDefaultFlippedTo,
@@ -129,6 +130,20 @@ describe('pure optimistic-patch helpers', () => {
       { ...existing[0]!, isDefault: false },
       { ...existing[1]!, isDefault: true },
     ])
+  })
+
+  it('sortDefaultFirst moves the default row to the top and keeps the rest stable', () => {
+    const existing = [
+      makeProvider({ id: 'p1', name: 'First' }),
+      makeProvider({ id: 'p2', name: 'Default', isDefault: true }),
+      makeProvider({ id: 'p3', name: 'Third' }),
+    ]
+    expect(sortDefaultFirst(existing).map((provider) => provider.id)).toEqual(['p2', 'p1', 'p3'])
+  })
+
+  it('sortDefaultFirst is a no-op ordering when nothing is default', () => {
+    const existing = [makeProvider({ id: 'p1' }), makeProvider({ id: 'p2' })]
+    expect(sortDefaultFirst(existing)).toEqual(existing)
   })
 
   it('toProviderPatch strips the write-only apiKey field', () => {

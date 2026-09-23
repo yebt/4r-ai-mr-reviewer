@@ -1,17 +1,24 @@
 <script setup lang="ts">
 /**
- * Providers settings section — organism. List + row actions (Test, Set
- * default, Edit, Delete-with-confirm) and an Add-provider Dialog. This is
- * the reference pattern every future settings section should follow:
- * `components/<Section>.vue` (list) + `components/<Entity>Form.vue` (create/
- * edit, opened in a Reka Dialog), backed by a feature-scoped Pinia store.
+ * Providers settings section — organism. Dense list rows (title — muted
+ * metadata — actions) with the secondary/destructive row actions (Set
+ * default, Edit, Delete) collapsed into a Reka `DropdownMenu` triggered by a
+ * trailing `⋯` icon-button, keeping only the single standout primary action
+ * (Test) inline. This is the reference pattern every future settings
+ * section should follow: `components/<Section>.vue` (list) +
+ * `components/<Entity>Form.vue` (create/edit, opened in a Reka Dialog),
+ * backed by a feature-scoped Pinia store.
+ *
+ * The default provider is always sorted first (`sortDefaultFirst`, stable —
+ * only the default row moves) and briefly highlighted when it changes, so
+ * "Set default" reads as an obvious, single-item reorder.
  *
  * Data fetching, caching, and mutation side effects (optimistic updates,
  * rollback, success/error toasts) all live in `../store.ts` (@pinia/colada).
  * This component only renders the three query states — loading skeleton,
  * error-with-retry, list — and wires row actions to the store's mutations.
  */
-import { ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import {
   DialogContent,
   DialogDescription,
@@ -19,13 +26,21 @@ import {
   DialogPortal,
   DialogRoot,
   DialogTitle,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuPortal,
+  DropdownMenuRoot,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from 'reka-ui'
-import { Badge, Button, ConfirmDialog, Icon, Skeleton, Text } from '@shared/ui/design-system'
+import { Alert, Badge, Button, ConfirmDialog, Icon, Skeleton, Text } from '@shared/ui/design-system'
 import ProviderForm from './ProviderForm.vue'
-import { useProvidersStore } from '../store'
+import { sortDefaultFirst, useProvidersStore } from '../store'
 import type { Provider, TestProviderResult } from '../types'
 
 const store = useProvidersStore()
+
+const sortedProviders = computed(() => sortDefaultFirst(store.providers))
 
 const kindLabels: Record<Provider['kind'], string> = {
   'openai-compat': 'OpenAI-compatible',
@@ -68,6 +83,12 @@ function handleCancel() {
   editingProvider.value = null
 }
 
+// Briefly highlighted after a row becomes the default, so the sort-to-top
+// reads as an obviously reactive move rather than a silent reshuffle.
+const highlightId = ref<string | null>(null)
+let highlightTimer: ReturnType<typeof setTimeout> | undefined
+onBeforeUnmount(() => clearTimeout(highlightTimer))
+
 const settingDefaultId = ref<string | null>(null)
 async function handleSetDefault(provider: Provider) {
   if (provider.isDefault) return
@@ -76,6 +97,11 @@ async function handleSetDefault(provider: Provider) {
     // Rollback and the error toast are handled by the store's mutation
     // hooks; this catch only prevents an unhandled rejection here.
     await store.setDefaultProvider(provider.id)
+    highlightId.value = provider.id
+    clearTimeout(highlightTimer)
+    highlightTimer = setTimeout(() => {
+      highlightId.value = null
+    }, 1200)
   } catch {
     // no-op — store already rolled back and toasted the error
   } finally {
@@ -124,11 +150,11 @@ async function handleTest(provider: Provider) {
 <template>
   <section class="flex flex-col gap-4">
     <div class="flex items-center justify-between gap-3">
-      <div class="flex flex-col gap-1">
+      <div class="flex min-w-0 flex-col gap-1">
         <Text as="h2" size="xl" class="font-semibold tracking-tight">Providers</Text>
-        <Text muted size="sm">Configure the AI providers available to this workspace.</Text>
+        <Text muted size="sm" class="truncate">Configure the AI providers available to this workspace.</Text>
       </div>
-      <Button @click="openCreateDialog">
+      <Button class="whitespace-nowrap" @click="openCreateDialog">
         <template #leading><Icon name="plus" size="sm" /></template>
         Add provider
       </Button>
@@ -142,7 +168,7 @@ async function handleTest(provider: Provider) {
       <div
         v-for="n in 3"
         :key="n"
-        class="flex items-center justify-between gap-3 rounded-lg border border-line bg-bg-panel p-3"
+        class="flex items-center justify-between gap-3 rounded-lg border border-line-subtle bg-bg-panel p-3"
       >
         <div class="flex flex-col gap-2">
           <Skeleton class="h-4 w-40" />
@@ -152,14 +178,10 @@ async function handleTest(provider: Provider) {
       </div>
     </div>
 
-    <div
-      v-else-if="store.providersState.status === 'error'"
-      role="alert"
-      class="flex flex-col items-start gap-2 rounded-md border border-danger-solid/30 bg-danger-bg p-3 text-sm text-danger-text"
-    >
+    <Alert v-else-if="store.providersState.status === 'error'" status="danger">
       <p>{{ store.error?.message ?? 'Failed to load providers' }}</p>
-      <Button variant="outline" size="sm" @click="store.refetch()">Retry</Button>
-    </div>
+      <Button variant="outline" size="sm" class="mt-2" @click="store.refetch()">Retry</Button>
+    </Alert>
 
     <div
       v-else-if="store.providers.length === 0"
@@ -172,56 +194,82 @@ async function handleTest(provider: Provider) {
 
     <ul v-else class="flex flex-col gap-2">
       <li
-        v-for="provider in store.providers"
+        v-for="provider in sortedProviders"
         :key="provider.id"
-        class="flex flex-col gap-3 rounded-lg border border-line bg-bg-panel p-3 sm:flex-row sm:items-center sm:justify-between"
+        class="flex items-center gap-3 rounded-lg border border-line-subtle bg-bg-panel px-3 py-2.5 transition-colors duration-700"
+        :class="highlightId === provider.id ? 'bg-accent-subtle-bg ring-1 ring-accent' : ''"
       >
-        <div class="flex flex-col gap-1">
+        <div class="flex min-w-0 flex-1 flex-col gap-0.5">
           <div class="flex flex-wrap items-center gap-2">
-            <Text class="font-medium">{{ provider.name }}</Text>
+            <Text class="truncate font-medium">{{ provider.name }}</Text>
             <Badge v-if="provider.isDefault" status="info">Default</Badge>
           </div>
-          <Text muted size="sm">{{ subtitle(provider) }}</Text>
-          <Text
+          <Text muted size="sm" class="truncate">{{ subtitle(provider) }}</Text>
+          <Alert
             v-if="testResults[provider.id]"
-            size="xs"
-            :class="testResults[provider.id]!.ok ? 'text-success-text' : 'text-danger-text'"
+            :status="testResults[provider.id]!.ok ? 'success' : 'danger'"
+            class="mt-1"
           >
             {{
               testResults[provider.id]!.ok
                 ? 'Connection OK'
                 : (testResults[provider.id]!.error ?? 'Connection failed')
             }}
-          </Text>
+          </Alert>
         </div>
 
-        <div class="flex flex-wrap items-center gap-2">
+        <div class="flex shrink-0 items-center gap-1">
           <Button variant="outline" size="sm" :loading="testingId === provider.id" @click="handleTest(provider)">
             Test
           </Button>
-          <Button
-            v-if="!provider.isDefault"
-            variant="ghost"
-            size="sm"
-            :loading="settingDefaultId === provider.id"
-            @click="handleSetDefault(provider)"
-          >
-            Set default
-          </Button>
-          <Button variant="ghost" size="sm" @click="openEditDialog(provider)">Edit</Button>
 
-          <ConfirmDialog
-            :title='`Delete "${provider.name}"?`'
-            description="This removes the provider and its stored API key. This cannot be undone."
-            confirm-label="Delete"
-            danger
-            :pending="deletingId === provider.id"
-            @confirm="handleDelete(provider)"
-          >
-            <template #trigger>
-              <Button variant="ghost" size="sm">Delete</Button>
-            </template>
-          </ConfirmDialog>
+          <DropdownMenuRoot>
+            <DropdownMenuTrigger as-child>
+              <Button variant="ghost" size="sm" :aria-label="`More actions for ${provider.name}`">
+                <Icon name="ellipsis" size="sm" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuPortal>
+              <DropdownMenuContent
+                align="end"
+                :side-offset="4"
+                class="z-30 min-w-40 rounded-md border border-line bg-bg-panel-raised p-1 shadow-token-lg"
+              >
+                <DropdownMenuItem
+                  v-if="!provider.isDefault"
+                  :disabled="settingDefaultId === provider.id"
+                  class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-text outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-bg-hover"
+                  @select="handleSetDefault(provider)"
+                >
+                  Set default
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-text outline-none data-[highlighted]:bg-bg-hover"
+                  @select="openEditDialog(provider)"
+                >
+                  Edit
+                </DropdownMenuItem>
+                <DropdownMenuSeparator class="my-1 h-px bg-line-subtle" />
+                <ConfirmDialog
+                  :title='`Delete "${provider.name}"?`'
+                  description="This removes the provider and its stored API key. This cannot be undone."
+                  confirm-label="Delete"
+                  danger
+                  :pending="deletingId === provider.id"
+                  @confirm="handleDelete(provider)"
+                >
+                  <template #trigger>
+                    <DropdownMenuItem
+                      class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-danger-text outline-none data-[highlighted]:bg-danger-bg"
+                      @select.prevent
+                    >
+                      Delete
+                    </DropdownMenuItem>
+                  </template>
+                </ConfirmDialog>
+              </DropdownMenuContent>
+            </DropdownMenuPortal>
+          </DropdownMenuRoot>
         </div>
       </li>
     </ul>

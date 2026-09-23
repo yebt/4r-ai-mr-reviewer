@@ -45,6 +45,16 @@ export function withDefaultFlippedTo(providers: Provider[], id: string): Provide
 }
 
 /**
+ * Default-first ordering for the list UI (`ProvidersSection`): `Array#sort`
+ * is stable, so this only ever moves the default row to the top — every
+ * other row keeps its relative order, which is what makes "Set default"
+ * read as an obvious, single-item reorder rather than a full reshuffle.
+ */
+export function sortDefaultFirst(providers: Provider[]): Provider[] {
+  return [...providers].sort((a, b) => Number(b.isDefault) - Number(a.isDefault))
+}
+
+/**
  * `apiKey` is write-only and never lives on `Provider` — never spread the
  * raw update payload onto the cache, or it leaks a stray `apiKey` field.
  */
