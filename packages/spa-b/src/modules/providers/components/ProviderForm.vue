@@ -5,26 +5,30 @@
  * switching context (create -> edit another row) always remounts with fresh
  * local state, rather than trying to reset a shared instance in place.
  *
- * For `kind === 'openrouter'`, the "Add a model id" free-text fallback is
- * replaced by a search combobox (Reka `Combobox*`, same family CommandPalette
- * uses) over the full catalog fetched once via `store.fetchOpenRouterModels`.
- * Client-side filtering (`ignore-filter` + `useFilter().contains`) matches
- * CommandPalette.vue's pattern. Selecting an option is "single-select that
- * appends": the combobox's own model-value is a transient ref, watched to
- * push the picked id onto `form.models` (deduped) and reset back to empty.
+ * Field order and requiredness are kind-dependent:
+ * - Base URL is required (with the `*`) only for `openai-compat`. The other
+ *   three kinds have fixed default endpoints and the backend accepts an
+ *   empty `baseUrl` for them, so the field stays visible (a power user can
+ *   still override it) but optional, with a muted hint.
+ * - For `kind === 'openrouter'`, the "Model" (default) field moves after the
+ *   Models section and becomes a `<select>` populated from `form.models`
+ *   (the models the user has actually added), since the default model must
+ *   be one of the configured ones. The other kinds keep "Model" as a
+ *   free-text input in its original position, before API key.
+ * - For `kind === 'openrouter'`, the "Add a model id" free-text fallback is
+ *   replaced by a search input over the full catalog fetched once via
+ *   `store.fetchOpenRouterModels`. Results render inline (in normal document
+ *   flow, not a floating popover) as a bordered, scrollable list below the
+ *   search input, so they push the rest of the form down instead of
+ *   overlapping the Temperature field. The catalog is hundreds of models, so
+ *   results only render once the query is non-empty and are capped to
+ *   `OPENROUTER_RESULTS_LIMIT` — focusing/opening the search must stay
+ *   instant regardless of catalog size. Client-side filtering uses Reka's
+ *   `useFilter().contains`, the same helper CommandPalette.vue uses.
+ *   Clicking a result appends its id to `form.models` (deduped).
  */
 import { computed, nextTick, reactive, ref, watch } from 'vue'
-import {
-  ComboboxAnchor,
-  ComboboxContent,
-  ComboboxEmpty,
-  ComboboxInput,
-  ComboboxItem,
-  ComboboxPortal,
-  ComboboxRoot,
-  ComboboxViewport,
-  useFilter,
-} from 'reka-ui'
+import { useFilter } from 'reka-ui'
 import { Alert, Badge, Button, Checkbox, Field, Icon, Input, Select, Spinner, Text } from '@shared/ui/design-system'
 import type { SelectItemOption } from '@shared/ui/design-system'
 import { useProvidersStore } from '../store'
@@ -63,6 +67,11 @@ const form = reactive({
   makeDefault: false,
 })
 
+// Base URL only blocks submit for `openai-compat`: the other kinds have a
+// fixed default endpoint and the backend accepts an empty `baseUrl` for them
+// (confirmed against the live backend).
+const isBaseUrlRequired = computed(() => form.kind === 'openai-compat')
+
 type FormErrors = Partial<Record<'name' | 'baseUrl' | 'model' | 'temperature', string>>
 const errors = reactive<FormErrors>({})
 
@@ -92,30 +101,30 @@ function removeModel(model: string) {
   form.models = form.models.filter((existing) => existing !== model)
 }
 
-// --- OpenRouter model combobox -------------------------------------------
+// --- OpenRouter model search (inline, in-flow results) --------------------
+
+// The full catalog is hundreds of models — rendering it all (e.g. on every
+// input focus) visibly lags the UI. Results only render once there's a
+// non-empty query, and are capped to a small page so the rendered list
+// itself stays cheap regardless of catalog size.
+const OPENROUTER_RESULTS_LIMIT = 50
 
 const openRouterQuery = ref('')
-// Transient — never read directly, only watched: selecting an item appends
-// its id to `form.models` and this resets to empty so the same model can be
-// picked again after being removed, and the combobox never "sticks" on a
-// single selected value.
-const openRouterPick = ref('')
 
 const { contains } = useFilter({ sensitivity: 'base' })
 
 const filteredOpenRouterModels = computed(() => {
   const term = openRouterQuery.value.trim()
-  if (!term) return store.openRouterModels
-  return store.openRouterModels.filter(
+  if (!term) return []
+  const matches = store.openRouterModels.filter(
     (model) => contains(model.name, term) || contains(model.id, term),
   )
+  return matches.slice(0, OPENROUTER_RESULTS_LIMIT)
 })
 
-watch(openRouterPick, (id) => {
-  if (!id) return
+function addOpenRouterModel(id: string) {
   if (!form.models.includes(id)) form.models.push(id)
-  openRouterPick.value = ''
-})
+}
 
 function ensureOpenRouterModelsLoaded() {
   if (store.openRouterModels.length === 0 && !store.openRouterLoading) {
@@ -151,7 +160,7 @@ async function handleTestConnection() {
 
 async function handleSubmit() {
   errors.name = form.name.trim() ? undefined : 'Name is required'
-  errors.baseUrl = form.baseUrl.trim() ? undefined : 'Base URL is required'
+  errors.baseUrl = isBaseUrlRequired.value && !form.baseUrl.trim() ? 'Base URL is required' : undefined
   errors.model = form.model.trim() ? undefined : 'Model is required'
 
   const temperature = parseTemperature(form.temperatureInput)
@@ -213,7 +222,13 @@ async function handleSubmit() {
       />
     </Field>
 
-    <Field label="Base URL" required :error="errors.baseUrl" v-slot="{ id, describedBy, invalid }">
+    <Field
+      label="Base URL"
+      :required="isBaseUrlRequired"
+      :error="errors.baseUrl"
+      :description="isBaseUrlRequired ? undefined : 'Optional — uses the provider\'s default endpoint.'"
+      v-slot="{ id, describedBy, invalid }"
+    >
       <Input
         :id="id"
         v-model="form.baseUrl"
@@ -225,7 +240,13 @@ async function handleSubmit() {
       />
     </Field>
 
-    <Field label="Model" required :error="errors.model" v-slot="{ id, describedBy, invalid }">
+    <Field
+      v-if="form.kind !== 'openrouter'"
+      label="Model"
+      required
+      :error="errors.model"
+      v-slot="{ id, describedBy, invalid }"
+    >
       <Input
         :id="id"
         v-model="form.model"
@@ -269,6 +290,58 @@ async function handleSubmit() {
     <div class="flex flex-col gap-1.5">
       <span class="text-sm font-medium text-text">Models</span>
 
+      <div v-if="form.kind === 'openrouter'" class="flex flex-col gap-1.5">
+        <div
+          class="flex h-8 items-center gap-2 rounded-md border border-line bg-bg-panel px-2.5 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus-ring"
+        >
+          <Icon name="search" size="sm" class="shrink-0 text-text-muted" />
+          <input
+            v-model="openRouterQuery"
+            type="text"
+            placeholder="Search OpenRouter models…"
+            class="h-full min-w-0 flex-1 bg-transparent text-sm text-text outline-none placeholder:text-text-placeholder"
+            @focus="ensureOpenRouterModelsLoaded"
+          />
+        </div>
+
+        <!-- In-flow results panel: rendered in normal document flow (no
+             portal/floating layer) so it pushes the rest of the form down
+             instead of overlapping the Temperature field above. -->
+        <div class="max-h-60 overflow-y-auto rounded-md border border-line bg-bg-panel-raised p-1">
+          <div v-if="store.openRouterLoading" class="flex items-center gap-2 p-2">
+            <Spinner size="sm" />
+            <Text size="sm" muted>Loading models…</Text>
+          </div>
+          <p v-else-if="store.openRouterError" class="p-2 text-xs text-danger-text">
+            {{ store.openRouterError }}
+          </p>
+          <p v-else-if="!openRouterQuery.trim()" class="p-2 text-xs text-text-muted">
+            Type to search models…
+          </p>
+          <p v-else-if="filteredOpenRouterModels.length === 0" class="p-2 text-xs text-text-muted">
+            No models match.
+          </p>
+          <ul v-else class="flex flex-col gap-0.5">
+            <li v-for="orModel in filteredOpenRouterModels" :key="orModel.id">
+              <button
+                type="button"
+                data-testid="openrouter-result"
+                class="flex w-full flex-col gap-0.5 rounded-md px-2.5 py-1.5 text-left text-sm text-text outline-none hover:bg-accent-subtle-bg hover:text-accent-text-strong focus-visible:bg-accent-subtle-bg focus-visible:text-accent-text-strong"
+                @click="addOpenRouterModel(orModel.id)"
+              >
+                <span class="truncate">{{ orModel.name }}</span>
+                <span class="text-xs text-text-muted">{{ orModel.contextLength.toLocaleString() }} ctx</span>
+              </button>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div v-else class="flex gap-2">
+        <Input v-model="newModelInput" placeholder="Add a model id" @keydown.enter.prevent="addModel" />
+        <Button type="button" variant="outline" @click="addModel">Add</Button>
+      </div>
+
       <div v-if="form.models.length > 0" class="flex flex-wrap gap-1.5">
         <Badge v-for="model in form.models" :key="model">
           {{ model }}
@@ -282,64 +355,28 @@ async function handleSubmit() {
           </button>
         </Badge>
       </div>
-
-      <div v-if="form.kind !== 'openrouter'" class="flex gap-2">
-        <Input v-model="newModelInput" placeholder="Add a model id" @keydown.enter.prevent="addModel" />
-        <Button type="button" variant="outline" @click="addModel">Add</Button>
-      </div>
-
-      <ComboboxRoot
-        v-else
-        v-model="openRouterPick"
-        ignore-filter
-        open-on-focus
-        open-on-click
-        class="relative"
-      >
-        <ComboboxAnchor
-          class="flex h-8 items-center gap-2 rounded-md border border-line bg-bg-panel px-2.5 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus-ring"
-        >
-          <Icon name="search" size="sm" class="shrink-0 text-text-muted" />
-          <ComboboxInput
-            v-model="openRouterQuery"
-            placeholder="Search OpenRouter models…"
-            class="h-full min-w-0 flex-1 bg-transparent text-sm text-text outline-none placeholder:text-text-placeholder"
-            @focus="ensureOpenRouterModelsLoaded"
-          />
-        </ComboboxAnchor>
-
-        <ComboboxPortal>
-          <ComboboxContent
-            position="popper"
-            :side-offset="4"
-            class="z-40 max-h-60 w-[var(--reka-combobox-trigger-width)] overflow-y-auto rounded-md border border-line bg-bg-panel-raised p-1 shadow-token-lg"
-          >
-            <ComboboxViewport class="flex flex-col gap-0.5">
-              <div v-if="store.openRouterLoading" class="flex items-center gap-2 p-2">
-                <Spinner size="sm" />
-                <Text size="sm" muted>Loading models…</Text>
-              </div>
-              <p v-else-if="store.openRouterError" class="p-2 text-xs text-danger-text">
-                {{ store.openRouterError }}
-              </p>
-              <template v-else>
-                <ComboboxEmpty class="p-2 text-xs text-text-muted">No models found.</ComboboxEmpty>
-                <ComboboxItem
-                  v-for="orModel in filteredOpenRouterModels"
-                  :key="orModel.id"
-                  :value="orModel.id"
-                  :text-value="orModel.name"
-                  class="flex cursor-pointer flex-col gap-0.5 rounded-md px-2.5 py-1.5 text-sm text-text outline-none data-[highlighted]:bg-accent-subtle-bg data-[highlighted]:text-accent-text-strong"
-                >
-                  <span class="truncate">{{ orModel.name }}</span>
-                  <span class="text-xs text-text-muted">{{ orModel.contextLength.toLocaleString() }} ctx</span>
-                </ComboboxItem>
-              </template>
-            </ComboboxViewport>
-          </ComboboxContent>
-        </ComboboxPortal>
-      </ComboboxRoot>
     </div>
+
+    <Field
+      v-if="form.kind === 'openrouter'"
+      label="Model"
+      required
+      :error="errors.model"
+      :description="form.models.length === 0 ? 'Add models above first.' : undefined"
+      v-slot="{ id, describedBy, invalid }"
+    >
+      <select
+        :id="id"
+        v-model="form.model"
+        :disabled="form.models.length === 0"
+        :aria-describedby="describedBy"
+        :aria-invalid="invalid"
+        class="flex h-8 w-full items-center justify-between gap-2 rounded-md border border-line bg-bg-panel px-2.5 text-sm text-text transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-50 aria-[invalid=true]:border-danger-solid"
+      >
+        <option value="" disabled>Select a default model…</option>
+        <option v-for="modelId in form.models" :key="modelId" :value="modelId">{{ modelId }}</option>
+      </select>
+    </Field>
 
     <div v-if="!isEditing" class="flex items-center gap-2">
       <Checkbox
