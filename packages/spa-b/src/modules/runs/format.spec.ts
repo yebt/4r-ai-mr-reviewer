@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isRunActive, isRunCancelable, runStatusUi, runTitle } from './format'
+import { isRunActive, isRunCancelable, runStatusUi, runTitle, stateSummaryEntries } from './format'
 import type { RoutineRun } from './types'
 
 function makeRun(overrides: Partial<RoutineRun> = {}): RoutineRun {
@@ -82,5 +82,31 @@ describe('isRunCancelable', () => {
   it('is false once a run reaches a terminal status', () => {
     expect(isRunCancelable('done')).toBe(false)
     expect(isRunCancelable('cancelled')).toBe(false)
+  })
+})
+
+describe('stateSummaryEntries', () => {
+  it('picks the notable keys present in state, labeled, in a stable order', () => {
+    expect(
+      stateSummaryEntries(
+        makeRun({ state: { lastTag: '2.56.0', nextTag: '2.56.1', featCount: 0, fixCount: 1, decision: 'merge' } }),
+      ),
+    ).toEqual([
+      { key: 'lastTag', label: 'Last tag', value: '2.56.0' },
+      { key: 'nextTag', label: 'Next tag', value: '2.56.1' },
+      { key: 'featCount', label: 'Features', value: '0' },
+      { key: 'fixCount', label: 'Fixes', value: '1' },
+      { key: 'decision', label: 'Decision', value: 'merge' },
+    ])
+  })
+
+  it('skips missing, null, and empty-string keys rather than rendering them blank', () => {
+    expect(stateSummaryEntries(makeRun({ state: { lastTag: '2.56.0', nextTag: null, decision: '' } }))).toEqual([
+      { key: 'lastTag', label: 'Last tag', value: '2.56.0' },
+    ])
+  })
+
+  it('returns an empty array when state has none of the notable keys', () => {
+    expect(stateSummaryEntries(makeRun({ state: { headSHA: 'abc123' } }))).toEqual([])
   })
 })

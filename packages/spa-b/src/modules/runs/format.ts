@@ -95,6 +95,38 @@ export function flowLabel(flow: string | undefined): string | null {
   return null
 }
 
+/** One notable `state` key rendered in the detail page's summary. */
+export interface StateSummaryEntry {
+  key: string
+  label: string
+  value: string
+}
+
+/**
+ * Notable `state` keys the detail page knows how to label, in the order
+ * they should render. `state` is a free-form per-run scratch bag (see
+ * `types.ts#RoutineRun`), so this is best-effort: any key that's absent,
+ * `null`, or an empty string is silently skipped rather than rendered blank.
+ */
+const STATE_SUMMARY_FIELDS: { key: string; label: string }[] = [
+  { key: 'lastTag', label: 'Last tag' },
+  { key: 'nextTag', label: 'Next tag' },
+  { key: 'featCount', label: 'Features' },
+  { key: 'fixCount', label: 'Fixes' },
+  { key: 'decision', label: 'Decision' },
+]
+
+/** Builds the detail page's best-effort `state` summary — see `STATE_SUMMARY_FIELDS`. */
+export function stateSummaryEntries(run: RoutineRun): StateSummaryEntry[] {
+  const entries: StateSummaryEntry[] = []
+  for (const field of STATE_SUMMARY_FIELDS) {
+    const value = run.state[field.key]
+    if (value === undefined || value === null || value === '') continue
+    entries.push({ key: field.key, label: field.label, value: String(value) })
+  }
+  return entries
+}
+
 /** Compact date/time formatter for run rows. */
 export function formatDateTime(iso: string): string {
   if (!iso) return ''

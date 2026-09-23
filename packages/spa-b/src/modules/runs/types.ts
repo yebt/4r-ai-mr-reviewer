@@ -43,3 +43,6 @@ export interface RoutineRun {
   sourceBranch?: string
   targetBranch?: string
 }
+
+/** `POST /routines/{id}/confirm` body's `decision` field. */
+export type RoutineConfirmDecision = 'merge' | 'wait'

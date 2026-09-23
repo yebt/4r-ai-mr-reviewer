@@ -1,11 +1,16 @@
 <script setup lang="ts">
 /**
- * Runs list — organism, first cut: global list + live polling only (no
- * launch modal, no detail route — those land in a later milestone). Mirrors
- * `RepositoriesSection`'s dense-list-rows-with-a-`⋯`-`DropdownMenu` shape,
- * backed by `useRunsStore` (query + live polling + the 4 action mutations).
+ * Runs list — organism. Mirrors `RepositoriesSection`'s dense-list-rows-
+ * with-a-`⋯`-`DropdownMenu` shape, backed by `useRunsStore` (query + live
+ * polling + the 4 action mutations), plus a repo/status filter bar and
+ * per-row navigation to the detail route (`/runs/{id}`, see
+ * `src/pages/runs/[id].vue`).
+ *
+ * `useReposStore` is deep-imported read-only, purely to resolve repo id →
+ * name for the repo filter's options (never for repo mutations) — mirrors
+ * the task's "read-only" boundary between the runs and repos modules.
  */
-import { onUnmounted, ref } from 'vue'
+import { computed, onUnmounted, ref } from 'vue'
 import {
   DropdownMenuContent,
   DropdownMenuItem,
@@ -14,13 +19,30 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from 'reka-ui'
-import { Alert, Badge, Button, ConfirmDialog, Icon, Skeleton, Switch, Text } from '@shared/ui/design-system'
+import { Alert, Badge, Button, ConfirmDialog, Icon, Select, Skeleton, Switch, Text } from '@shared/ui/design-system'
+import { useReposStore } from '@modules/repos/store'
 import RunStatusChip from './RunStatusChip.vue'
 import { useRunsStore } from '../store'
+import {
+  ALL_REPOS_VALUE,
+  ALL_STATUSES_VALUE,
+  RUN_STATUS_FILTER_OPTIONS,
+  filterRuns,
+  repoFilterOptions,
+} from '../filters'
 import { flowLabel, formatDateTime, isRunActive, isRunCancelable, routineKindLabel, runTitle } from '../format'
 import type { RoutineRun } from '../types'
 
 const store = useRunsStore()
+const reposStore = useReposStore()
+
+const repoFilter = ref(ALL_REPOS_VALUE)
+const statusFilter = ref(ALL_STATUSES_VALUE)
+
+const repoOptions = computed(() => repoFilterOptions(store.runs, reposStore.repos))
+const filteredRuns = computed(() =>
+  filterRuns(store.runs, { repoId: repoFilter.value, status: statusFilter.value }),
+)
 
 // The store's polling `watch` only reacts to `hasActiveRun`/document
 // visibility — it has no idea whether this page is still mounted. Without
@@ -99,6 +121,17 @@ async function handleDelete(run: RoutineRun) {
       </label>
     </div>
 
+    <div class="flex flex-wrap items-end gap-3">
+      <div class="flex w-full flex-col gap-1 sm:w-48">
+        <label for="runs-repo-filter" class="text-sm text-text-muted">Repository</label>
+        <Select id="runs-repo-filter" v-model="repoFilter" :items="repoOptions" />
+      </div>
+      <div class="flex w-full flex-col gap-1 sm:w-48">
+        <label for="runs-status-filter" class="text-sm text-text-muted">Status</label>
+        <Select id="runs-status-filter" v-model="statusFilter" :items="RUN_STATUS_FILTER_OPTIONS" />
+      </div>
+    </div>
+
     <div
       v-if="store.runsState.status === 'pending'"
       class="flex flex-col gap-2"
@@ -123,25 +156,32 @@ async function handleDelete(run: RoutineRun) {
     </Alert>
 
     <div
-      v-else-if="store.runs.length === 0"
+      v-else-if="filteredRuns.length === 0"
       class="flex flex-col items-center gap-2 rounded-lg border border-dashed border-line p-8 text-center"
     >
       <Icon name="list" size="lg" class="text-text-muted" />
-      <Text muted>{{ store.archived ? 'No archived runs.' : 'No runs yet.' }}</Text>
+      <Text v-if="store.runs.length === 0" muted>{{ store.archived ? 'No archived runs.' : 'No runs yet.' }}</Text>
+      <Text v-else muted>No runs match the selected filters.</Text>
     </div>
 
     <ul v-else class="flex flex-col gap-2">
       <li
-        v-for="run in store.runs"
+        v-for="run in filteredRuns"
         :key="run.id"
         class="flex items-center gap-3 rounded-lg border border-line-subtle bg-bg-panel px-3 py-2.5"
+        :class="{ 'opacity-60': run.archived }"
         data-testid="run-row"
       >
-        <div class="flex min-w-0 flex-1 flex-col gap-1">
+        <RouterLink
+          :to="`/runs/${run.id}`"
+          :aria-label="`View run ${runTitle(run)}`"
+          class="flex min-w-0 flex-1 flex-col gap-1 rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+        >
           <div class="flex flex-wrap items-center gap-2">
-            <Text class="truncate font-medium">{{ run.repoName ?? 'Unknown repo' }}</Text>
-            <Text muted size="sm" class="truncate">{{ runTitle(run) }}</Text>
+            <Text class="truncate font-semibold">{{ runTitle(run) }}</Text>
+            <Badge v-if="run.archived" status="neutral" data-testid="run-archived-badge">Archived</Badge>
           </div>
+          <Text muted size="sm" class="truncate">{{ run.repoName ?? 'Unknown repo' }}</Text>
           <div class="flex flex-wrap items-center gap-2">
             <RunStatusChip :status="run.status" />
             <Badge status="neutral">{{ routineKindLabel[run.kind] }}</Badge>
@@ -153,12 +193,12 @@ async function handleDelete(run: RoutineRun) {
             </Badge>
             <Text muted size="xs">{{ formatDateTime(run.updatedAt) }}</Text>
           </div>
-        </div>
+        </RouterLink>
 
         <div class="flex shrink-0 items-center gap-1">
           <DropdownMenuRoot>
             <DropdownMenuTrigger as-child>
-              <Button variant="ghost" size="sm" :aria-label="`More actions for ${runTitle(run)}`">
+              <Button variant="ghost" size="sm" :aria-label="`More actions for ${runTitle(run)}`" @click.stop>
                 <Icon name="ellipsis" size="sm" />
               </Button>
             </DropdownMenuTrigger>

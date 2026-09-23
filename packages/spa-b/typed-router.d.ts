@@ -52,18 +52,32 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
-    '/reviews': RouteRecordInfo<
-      '/reviews',
+    '/reviews/': RouteRecordInfo<
+      '/reviews/',
       '/reviews',
       Record<never, never>,
       Record<never, never>,
       | never
     >,
-    '/runs': RouteRecordInfo<
-      '/runs',
+    '/reviews/[id]': RouteRecordInfo<
+      '/reviews/[id]',
+      '/reviews/:id',
+      { id: ParamValue<true> },
+      { id: ParamValue<false> },
+      | never
+    >,
+    '/runs/': RouteRecordInfo<
+      '/runs/',
       '/runs',
       Record<never, never>,
       Record<never, never>,
+      | never
+    >,
+    '/runs/[id]': RouteRecordInfo<
+      '/runs/[id]',
+      '/runs/:id',
+      { id: ParamValue<true> },
+      { id: ParamValue<false> },
       | never
     >,
     '/settings/': RouteRecordInfo<
@@ -152,21 +166,37 @@ declare module 'vue-router/auto-routes' {
       pathParamNames:
         | never
     }
-    'src/pages/reviews.vue': {
+    'src/pages/reviews/index.vue': {
       routes:
-        | '/reviews'
+        | '/reviews/'
       views:
         | never
       pathParamNames:
         | never
     }
-    'src/pages/runs.vue': {
+    'src/pages/reviews/[id].vue': {
       routes:
-        | '/runs'
+        | '/reviews/[id]'
+      views:
+        | never
+      pathParamNames:
+        | 'id'
+    }
+    'src/pages/runs/index.vue': {
+      routes:
+        | '/runs/'
       views:
         | never
       pathParamNames:
         | never
+    }
+    'src/pages/runs/[id].vue': {
+      routes:
+        | '/runs/[id]'
+      views:
+        | never
+      pathParamNames:
+        | 'id'
     }
     'src/pages/settings/index.vue': {
       routes:
