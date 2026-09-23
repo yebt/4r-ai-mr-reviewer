@@ -24,6 +24,18 @@ export interface Repo {
   createdAt: string
 }
 
+/**
+ * A GitLab project from `GET /accounts/{id}/projects`, used to power the
+ * add-repo project search (`webUrl` fills the repo URL on selection;
+ * `pathWithNamespace` is the primary label, e.g. "group/project").
+ */
+export interface AccountProject {
+  id: number
+  name: string
+  pathWithNamespace: string
+  webUrl: string
+}
+
 /** `POST /repos` body — `accountId` is required; `providerId`/`model`/`profileId` are optional. */
 export interface CreateRepoPayload {
   name: string

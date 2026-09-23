@@ -4,11 +4,22 @@
  * `RepositoriesSection`. Keyed by `repo?.id ?? 'create'` in the parent so
  * switching context always remounts with fresh local state.
  *
- * CREATE mode: Account (required Select — `name`/`url` are only ever set at
- * create time, so both are plain required Inputs here) + Provider/Model/
- * Profile (all optional — "use default"). If there are no accounts yet, the
- * form is replaced by an info Alert pointing at /settings/accounts, since
+ * CREATE mode: Account (required Select) + Project (required search
+ * combobox, see below) + Name (required Input) + Provider/Model/Profile
+ * (all optional — "use default"). If there are no accounts yet, the form is
+ * replaced by an info Alert pointing at /settings/accounts, since
  * `accountId` is required by the backend and there's nothing to pick.
+ *
+ * Project field: once an Account is selected, the field searches that
+ * account's GitLab projects (`GET /accounts/{id}/projects?search=`, only
+ * while the field is focused/non-empty — the same anti-lag, capped,
+ * only-on-query shape as ProviderForm's OpenRouter model search) and shows
+ * matches inline below it. The field itself is bound to `form.url` — it
+ * doubles as the URL, so a manual paste is a fully valid fallback exactly
+ * like the old spa's picker allowed; picking a result overwrites `form.url`
+ * with the project's `webUrl` and pre-fills Name from the project's name,
+ * but only while Name is still empty or holds a previous auto-fill (never
+ * clobbers a hand-typed name).
  *
  * EDIT mode ("Reassign"): `name`/`url` are NOT editable after create (per
  * `PATCH /repos/{id}/assign`), so they render as read-only text; only
@@ -28,8 +39,9 @@
  * of truth (and the submit payload) whether the free-text Input or the
  * Select is rendered.
  */
-import { computed, nextTick, reactive, ref } from 'vue'
-import { Alert, Button, Field, Input, Select, Text } from '@shared/ui/design-system'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
+import { watchDebounced } from '@vueuse/core'
+import { Alert, Button, Field, Icon, Input, Select, Spinner, Text } from '@shared/ui/design-system'
 import type { SelectItemOption } from '@shared/ui/design-system'
 // Deep-imported (not through each module's barrel, which only re-exports
 // its Section component + types, not the store) — read-only reuse, per the
@@ -38,7 +50,9 @@ import { useAccountsStore } from '@modules/accounts/store'
 import { useProfilesStore } from '@modules/profiles/store'
 import { useProvidersStore } from '@modules/providers/store'
 import { useReposStore } from '../store'
-import type { Repo } from '../types'
+import { searchAccountProjects } from '../api'
+import { projectToDraft } from '../projectSearch'
+import type { AccountProject, Repo } from '../types'
 
 const NO_PROVIDER_VALUE = '__use_default_provider__'
 const NO_PROFILE_VALUE = '__no_default_profile__'
@@ -110,6 +124,76 @@ const errors = reactive<FormErrors>({})
 const formRef = ref<HTMLFormElement | null>(null)
 const saving = ref(false)
 const formError = ref<string | null>(null)
+
+// --- Project search (inline, only-on-query, focus-gated) -------------------
+// The field is bound to `form.url` itself: typing searches the selected
+// account's projects, and whatever ends up in `form.url` is what gets
+// submitted, so a manual paste that matches nothing is still a valid URL.
+// Results only render while the field is focused, so a stale "no matches"
+// panel never lingers after a pick or after the user tabs away.
+const projects = ref<AccountProject[]>([])
+const searching = ref(false)
+const searchError = ref<string | null>(null)
+const resultsOpen = ref(false)
+const pickedFromSearch = ref(false)
+const lastAutoName = ref('')
+
+async function runProjectSearch() {
+  if (!resultsOpen.value || !form.accountId) return
+  const query = form.url.trim()
+  if (!query) {
+    projects.value = []
+    searchError.value = null
+    return
+  }
+  searching.value = true
+  searchError.value = null
+  try {
+    projects.value = await searchAccountProjects(form.accountId, query)
+  } catch (err) {
+    searchError.value = err instanceof Error ? err.message : 'Failed to search projects'
+    projects.value = []
+  } finally {
+    searching.value = false
+  }
+}
+
+watchDebounced(() => form.url, runProjectSearch, { debounce: 300 })
+
+// Switching accounts invalidates any in-flight/previous results — they
+// belong to a different account's project catalog.
+watch(
+  () => form.accountId,
+  () => {
+    projects.value = []
+    searchError.value = null
+    resultsOpen.value = false
+  },
+)
+
+function openResults() {
+  if (!form.accountId) return
+  resultsOpen.value = true
+  void runProjectSearch()
+}
+
+function closeResults() {
+  resultsOpen.value = false
+}
+
+function selectProject(project: AccountProject) {
+  const draft = projectToDraft(project)
+  form.url = draft.url
+  pickedFromSearch.value = true
+  // Only fill the name when the user hasn't typed their own (or only has a
+  // previously auto-filled one) — never clobber a hand-typed name.
+  if (form.name.trim() === '' || form.name === lastAutoName.value) {
+    form.name = draft.name
+    lastAutoName.value = draft.name
+  }
+  resultsOpen.value = false
+  projects.value = []
+}
 
 async function handleSubmit() {
   errors.accountId = form.accountId ? undefined : 'Account is required'
@@ -195,16 +279,75 @@ async function handleSubmit() {
       />
     </Field>
 
-    <Field v-if="!isEditing" label="URL" required :error="errors.url" v-slot="{ id, describedBy, invalid }">
-      <Input
-        :id="id"
-        v-model="form.url"
-        type="url"
-        inputmode="url"
-        placeholder="https://gitlab.com/group/project"
-        :aria-describedby="describedBy"
-        :aria-invalid="invalid"
-      />
+    <Field
+      v-if="!isEditing"
+      label="Project"
+      required
+      :error="errors.url"
+      description="Search your account's GitLab projects, or paste a project URL."
+      v-slot="{ id, describedBy, invalid }"
+    >
+      <p v-if="!form.accountId" class="text-xs text-text-muted">
+        Select an account first to search its projects.
+      </p>
+      <div v-else class="flex flex-col gap-1.5">
+        <div
+          class="flex h-8 items-center gap-2 rounded-md border bg-bg-panel px-2.5 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus-ring"
+          :class="invalid ? 'border-danger-solid' : 'border-line'"
+        >
+          <Icon name="search" size="sm" class="shrink-0 text-text-muted" />
+          <input
+            :id="id"
+            v-model="form.url"
+            type="text"
+            autocomplete="off"
+            role="combobox"
+            aria-controls="repo-project-results"
+            :aria-expanded="resultsOpen"
+            :aria-describedby="describedBy"
+            :aria-invalid="invalid"
+            placeholder="Search projects or paste a URL…"
+            class="h-full min-w-0 flex-1 bg-transparent text-sm text-text outline-none placeholder:text-text-placeholder"
+            @focus="openResults"
+            @blur="closeResults"
+            @keydown.esc="closeResults"
+          />
+        </div>
+
+        <div
+          v-if="resultsOpen"
+          id="repo-project-results"
+          class="max-h-56 overflow-y-auto rounded-md border border-line bg-bg-panel-raised p-1"
+        >
+          <div v-if="searching" class="flex items-center gap-2 p-2">
+            <Spinner size="sm" />
+            <Text size="sm" muted>Searching projects…</Text>
+          </div>
+          <p v-else-if="searchError" class="p-2 text-xs text-danger-text">{{ searchError }}</p>
+          <p v-else-if="!form.url.trim()" class="p-2 text-xs text-text-muted">
+            Type to search your account's projects.
+          </p>
+          <p v-else-if="projects.length === 0" class="p-2 text-xs text-text-muted">
+            No matches — you can still use this as a manual project URL.
+          </p>
+          <ul v-else class="flex flex-col gap-0.5">
+            <li v-for="project in projects" :key="project.id">
+              <button
+                type="button"
+                data-testid="project-result"
+                class="flex w-full flex-col gap-0.5 rounded-md px-2.5 py-1.5 text-left text-sm text-text outline-none hover:bg-accent-subtle-bg hover:text-accent-text-strong focus-visible:bg-accent-subtle-bg focus-visible:text-accent-text-strong"
+                @mousedown.prevent
+                @click="selectProject(project)"
+              >
+                <span class="truncate font-mono text-xs">{{ project.pathWithNamespace }}</span>
+                <span class="truncate text-text-muted">{{ project.name }}</span>
+              </button>
+            </li>
+          </ul>
+        </div>
+
+        <p v-if="pickedFromSearch" class="text-xs text-text-muted">Selected from search.</p>
+      </div>
     </Field>
 
     <Field v-if="!isEditing" label="Name" required :error="errors.name" v-slot="{ id, describedBy, invalid }">
