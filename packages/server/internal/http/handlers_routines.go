@@ -177,7 +177,14 @@ func (s *Server) getRoutine(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err, http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusOK, toRun(run))
+	// Best-effort repoName, matching listRecentRoutines: the detail page shows
+	// which repo the run belongs to. An unresolvable repo yields an empty
+	// repoName rather than failing the request.
+	dto := toRun(run)
+	if rp, gerr := s.repos.Get(r.Context(), run.RepoID); gerr == nil {
+		dto.RepoName = rp.Name
+	}
+	writeJSON(w, http.StatusOK, dto)
 }
 
 // listRoutines returns a repo's routine runs, newest first.
@@ -439,9 +446,10 @@ type routineRunResp struct {
 	CreatedAt time.Time         `json:"createdAt"`
 	UpdatedAt time.Time         `json:"updatedAt"`
 	Archived  bool              `json:"archived"`
-	// RepoName is a best-effort repo display name, populated only on the global
-	// recent-runs list (listRecentRoutines); it stays empty (and omitted) on the
-	// per-repo and single-run paths, which already know their repo context.
+	// RepoName is a best-effort repo display name, populated on the global
+	// recent-runs list (listRecentRoutines) and the single-run detail
+	// (getRoutine), which both render across repos. It stays empty (and
+	// omitted) on the per-repo paths, which already know their repo context.
 	RepoName string `json:"repoName,omitempty"`
 	// Flow, SourceBranch and TargetBranch are decoded best-effort from a release
 	// run's immutable params so the UI can show which branches a run moves and

@@ -231,6 +231,49 @@ func TestListRecentRoutinesOverHTTP(t *testing.T) {
 	}
 }
 
+// TestGetRoutineOverHTTP verifies GET /routines/{id} returns the single run
+// with a best-effort repoName, matching the recent-runs list — the detail page
+// renders across repos and needs to show which repo the run belongs to.
+func TestGetRoutineOverHTTP(t *testing.T) {
+	srv := newTestServer(t)
+	repoID := newRepoForRoutine(t, srv)
+
+	create := postJSON(t, srv.URL+"/repos/"+repoID+"/routines/approve-and-tag", map[string]any{"mrIid": 9})
+	if create.StatusCode != http.StatusCreated {
+		t.Fatalf("create routine status = %d, want 201", create.StatusCode)
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	decodeBody(t, create, &created)
+	if created.ID == "" {
+		t.Fatal("created run has no id")
+	}
+
+	resp, err := http.Get(srv.URL + "/routines/" + created.ID)
+	if err != nil {
+		t.Fatalf("GET routine: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("get routine status = %d, want 200", resp.StatusCode)
+	}
+	var run struct {
+		ID       string `json:"id"`
+		RepoID   string `json:"repoId"`
+		RepoName string `json:"repoName"`
+	}
+	decodeBody(t, resp, &run)
+	if run.ID != created.ID {
+		t.Errorf("id = %q, want %q", run.ID, created.ID)
+	}
+	if run.RepoID != repoID {
+		t.Errorf("repoId = %q, want %q", run.RepoID, repoID)
+	}
+	if run.RepoName != "web" {
+		t.Errorf("repoName = %q, want web", run.RepoName)
+	}
+}
+
 // fakeReleaseMRGitLab serves a single dev-flow MR so CreateRelease's up-front MR
 // fetch (for the target-branch gate) resolves over HTTP.
 func fakeReleaseMRGitLab(t *testing.T) *httptest.Server {
