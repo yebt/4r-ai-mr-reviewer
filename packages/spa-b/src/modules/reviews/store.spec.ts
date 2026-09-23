@@ -107,10 +107,11 @@ describe('fetchAllReviews (fan-out)', () => {
     expect(mockedListRepos).toHaveBeenCalledTimes(1)
     expect(mockedListRepoReviews).toHaveBeenCalledWith('repo-1', false)
     expect(mockedListRepoReviews).toHaveBeenCalledWith('repo-2', false)
-    expect(result).toEqual([
+    expect(result.reviews).toEqual([
       { ...makeReview({ id: 'r1', repoId: 'repo-1' }), repoName: 'alpha' },
       { ...makeReview({ id: 'r2', repoId: 'repo-2' }), repoName: 'beta' },
     ])
+    expect(result.failedRepoNames).toEqual([])
   })
 
   it('returns an empty list when there are no repos, without calling listRepoReviews', async () => {
@@ -118,7 +119,8 @@ describe('fetchAllReviews (fan-out)', () => {
 
     const result = await fetchAllReviews(false)
 
-    expect(result).toEqual([])
+    expect(result.reviews).toEqual([])
+    expect(result.failedRepoNames).toEqual([])
     expect(mockedListRepoReviews).not.toHaveBeenCalled()
   })
 
@@ -129,6 +131,26 @@ describe('fetchAllReviews (fan-out)', () => {
     await fetchAllReviews(true)
 
     expect(mockedListRepoReviews).toHaveBeenCalledWith('repo-1', true)
+  })
+
+  it('merges the fulfilled repos and reports the rejected ones by name, instead of failing closed', async () => {
+    mockedListRepos.mockResolvedValueOnce([
+      makeRepo({ id: 'repo-1', name: 'alpha' }),
+      makeRepo({ id: 'repo-2', name: 'beta' }),
+      makeRepo({ id: 'repo-3', name: 'gamma' }),
+    ])
+    mockedListRepoReviews.mockImplementation((repoId) => {
+      if (repoId === 'repo-2') return Promise.reject(new Error('unreachable'))
+      return Promise.resolve([makeReview({ id: `r-${repoId}`, repoId })])
+    })
+
+    const result = await fetchAllReviews(false)
+
+    expect(result.reviews).toEqual([
+      { ...makeReview({ id: 'r-repo-1', repoId: 'repo-1' }), repoName: 'alpha' },
+      { ...makeReview({ id: 'r-repo-3', repoId: 'repo-3' }), repoName: 'gamma' },
+    ])
+    expect(result.failedRepoNames).toEqual(['beta'])
   })
 })
 
@@ -164,7 +186,7 @@ describe('useReviewsStore (@pinia/colada)', () => {
     await flushPromises()
 
     expect(mockedRetryReview).toHaveBeenCalledWith('r1')
-    expect(mockToastSuccess).toHaveBeenCalledWith('Review retry queued')
+    expect(mockToastSuccess).toHaveBeenCalledWith('Review retried')
     // Invalidation on settle triggers a refetch of the ['reviews', {archived}] query.
     expect(mockedListRepoReviews.mock.calls.length).toBeGreaterThanOrEqual(2)
   })
@@ -200,5 +222,21 @@ describe('useReviewsStore (@pinia/colada)', () => {
     await flushPromises()
 
     expect(mockedListRepoReviews).toHaveBeenCalledWith('repo-1', true)
+  })
+
+  it('store.reviews still holds the successful repos and store.failedRepoCount reports the rejected one', async () => {
+    mockedListRepos.mockResolvedValueOnce([makeRepo({ id: 'repo-1', name: 'alpha' }), makeRepo({ id: 'repo-2', name: 'beta' })])
+    mockedListRepoReviews.mockImplementation((repoId) => {
+      if (repoId === 'repo-2') return Promise.reject(new Error('unreachable'))
+      return Promise.resolve([makeReview({ id: 'r1', repoId: 'repo-1' })])
+    })
+
+    const { store } = mountStore()
+    await flushPromises()
+
+    expect(store.reviews).toEqual([{ ...makeReview({ id: 'r1', repoId: 'repo-1' }), repoName: 'alpha' }])
+    expect(store.failedRepoCount).toBe(1)
+    expect(store.failedRepoNames).toEqual(['beta'])
+    expect(store.state.status).toBe('success')
   })
 })

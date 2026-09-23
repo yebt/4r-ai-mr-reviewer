@@ -9,6 +9,13 @@ import type { ReviewWithRepo } from './types'
 
 export const REVIEWS_QUERY_KEY = 'reviews' as const
 
+/** Result of the per-repo fan-out: the merged list from every repo that
+ * answered, plus which repos (if any) failed to load. */
+export interface ReviewsFanOutResult {
+  reviews: ReviewWithRepo[]
+  failedRepoNames: string[]
+}
+
 /**
  * There is no global reviews endpoint — the list is a fan-out over every
  * repo's `GET /repos/{id}/reviews`, with each row's owning `repoName`
@@ -16,17 +23,35 @@ export const REVIEWS_QUERY_KEY = 'reviews' as const
  * lookup. Kept self-contained (calls `repos/api` directly) rather than
  * depending on `useReposStore`, so this module's data layer doesn't need a
  * live repos store instance to function.
+ *
+ * Uses `Promise.allSettled` rather than `Promise.all` so one repo's rejected
+ * request doesn't fail the whole list closed — a single unreachable repo
+ * (e.g. a dead webhook/provider) would otherwise empty out every other
+ * repo's reviews too. Fulfilled repos are merged into `reviews`; rejected
+ * ones are reported (by name) in `failedRepoNames` so the UI can surface a
+ * non-blocking warning above the list instead of failing the query.
  */
-export async function fetchAllReviews(archived: boolean): Promise<ReviewWithRepo[]> {
+export async function fetchAllReviews(archived: boolean): Promise<ReviewsFanOutResult> {
   const repos = await listRepos()
-  const perRepo = await Promise.all(
+  const settled = await Promise.allSettled(
     repos.map((repo) =>
       reviewsApi
         .listRepoReviews(repo.id, archived)
         .then((reviews) => reviews.map((review) => ({ ...review, repoName: repo.name }))),
     ),
   )
-  return perRepo.flat()
+
+  const reviews: ReviewWithRepo[] = []
+  const failedRepoNames: string[] = []
+  settled.forEach((result, index) => {
+    if (result.status === 'fulfilled') {
+      reviews.push(...result.value)
+    } else {
+      failedRepoNames.push(repos[index]!.name)
+    }
+  })
+
+  return { reviews, failedRepoNames }
 }
 
 /**
@@ -56,7 +81,9 @@ export const useReviewsStore = defineStore('reviews', () => {
     query: () => fetchAllReviews(archived.value),
   })
 
-  const reviews = computed(() => query.data.value ?? [])
+  const reviews = computed(() => query.data.value?.reviews ?? [])
+  const failedRepoNames = computed(() => query.data.value?.failedRepoNames ?? [])
+  const failedRepoCount = computed(() => failedRepoNames.value.length)
 
   function invalidate() {
     queryCache.invalidateQueries({ key: [REVIEWS_QUERY_KEY] })
@@ -65,7 +92,7 @@ export const useReviewsStore = defineStore('reviews', () => {
   const retryMutation = useMutation({
     mutation: (id: string) => reviewsApi.retryReview(id),
     onSuccess() {
-      toast.success('Review retry queued')
+      toast.success('Review retried')
     },
     onError(err) {
       toast.error(resolveErrorMessage(err, 'Failed to retry review'))
@@ -120,6 +147,8 @@ export const useReviewsStore = defineStore('reviews', () => {
   return {
     // ['reviews', { archived }] query surface
     reviews,
+    failedRepoNames,
+    failedRepoCount,
     state: query.state,
     asyncStatus: query.asyncStatus,
     isLoading: query.isLoading,

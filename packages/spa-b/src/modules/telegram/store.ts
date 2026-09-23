@@ -139,7 +139,7 @@ export const useTelegramStore = defineStore('telegram', () => {
     },
   })
 
-  /** Never throws for a reachable-but-rejecting target — resolves `{ ok, error? }`. */
+  /** Delegates to the API — resolves (void) on success, rejects if the target is unreachable or delivery fails. */
   function testTarget(id: string): Promise<void> {
     return telegramApi.testTelegramTarget(id)
   }

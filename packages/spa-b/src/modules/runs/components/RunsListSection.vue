@@ -5,7 +5,7 @@
  * `RepositoriesSection`'s dense-list-rows-with-a-`⋯`-`DropdownMenu` shape,
  * backed by `useRunsStore` (query + live polling + the 4 action mutations).
  */
-import { ref } from 'vue'
+import { onUnmounted, ref } from 'vue'
 import {
   DropdownMenuContent,
   DropdownMenuItem,
@@ -17,10 +17,18 @@ import {
 import { Alert, Badge, Button, ConfirmDialog, Icon, Skeleton, Switch, Text } from '@shared/ui/design-system'
 import RunStatusChip from './RunStatusChip.vue'
 import { useRunsStore } from '../store'
-import { flowLabel, formatDateTime, isRunCancelable, routineKindLabel, runTitle } from '../format'
+import { flowLabel, formatDateTime, isRunActive, isRunCancelable, routineKindLabel, runTitle } from '../format'
 import type { RoutineRun } from '../types'
 
 const store = useRunsStore()
+
+// The store's polling `watch` only reacts to `hasActiveRun`/document
+// visibility — it has no idea whether this page is still mounted. Without
+// this, navigating away from `/runs` while a run is active leaves the
+// 2.5s `useIntervalFn` refetching in the background forever.
+onUnmounted(() => {
+  store.pausePolling()
+})
 
 // Per-row pending id, mirroring `RepositoriesSection`'s `deletingId` pattern
 // — scopes the ConfirmDialog/DropdownMenu-item loading spinner to the row
@@ -161,15 +169,17 @@ async function handleDelete(run: RoutineRun) {
                 class="z-30 min-w-40 rounded-md border border-line bg-bg-panel-raised p-1 shadow-token-lg"
               >
                 <DropdownMenuItem
-                  v-if="!run.archived"
-                  class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-text outline-none data-[highlighted]:bg-bg-hover"
+                  v-if="!run.archived && !isRunActive(run.status)"
+                  :disabled="store.isArchiving"
+                  class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-text outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-bg-hover"
                   @select="handleArchive(run)"
                 >
                   Archive
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  v-else
-                  class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-text outline-none data-[highlighted]:bg-bg-hover"
+                  v-else-if="run.archived"
+                  :disabled="store.isUnarchiving"
+                  class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-text outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-bg-hover"
                   @select="handleUnarchive(run)"
                 >
                   Unarchive
@@ -186,7 +196,8 @@ async function handleDelete(run: RoutineRun) {
                   >
                     <template #trigger>
                       <DropdownMenuItem
-                        class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-danger-text outline-none data-[highlighted]:bg-danger-bg"
+                        :disabled="store.isCancelling"
+                        class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-danger-text outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-danger-bg"
                         @select.prevent
                       >
                         Cancel
@@ -199,14 +210,15 @@ async function handleDelete(run: RoutineRun) {
                   <DropdownMenuSeparator class="my-1 h-px bg-line-subtle" />
                   <ConfirmDialog
                     title="Delete this run?"
-                    description="Permanently removes this run's history."
+                    description="Permanently removes this run's history. This cannot be undone."
                     confirm-label="Delete"
                     :pending="deletingId === run.id"
                     @confirm="handleDelete(run)"
                   >
                     <template #trigger>
                       <DropdownMenuItem
-                        class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-danger-text outline-none data-[highlighted]:bg-danger-bg"
+                        :disabled="store.isRemoving"
+                        class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-danger-text outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-danger-bg"
                         @select.prevent
                       >
                         Delete

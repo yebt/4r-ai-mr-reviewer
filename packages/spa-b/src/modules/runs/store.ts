@@ -1,7 +1,7 @@
 import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { useMutation, useQuery, useQueryCache } from '@pinia/colada'
-import { useIntervalFn } from '@vueuse/core'
+import { useDocumentVisibility, useIntervalFn } from '@vueuse/core'
 import { useToast } from '@shared/composables/useToast'
 import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
 import * as runsApi from './api'
@@ -46,9 +46,15 @@ export function shouldPoll(runs: RoutineRun[]): boolean {
  * archived list independently from the active one.
  *
  * Live polling: `useIntervalFn` refetches every 2.5s, started only while
- * `runs.some(isRunActive)` and paused otherwise — a `watch` on that
- * derived boolean (immediate, so a page load that already has an active
- * run starts polling right away) drives `resume()`/`pause()`.
+ * `runs.some(isRunActive)` AND the document is visible (`useDocumentVisibility`
+ * — a backgrounded tab has no reason to keep hitting the API every 2.5s) —
+ * a `watch` on that combined `canPoll` boolean (immediate, so a page load
+ * that already has an active run starts polling right away) drives
+ * `resume()`/`pause()`. `pausePolling` is exposed so a consuming component
+ * can stop the interval on `onUnmounted` — `useIntervalFn`'s own cleanup
+ * only fires when the *component that called it* unmounts, which is this
+ * store's setup function, not necessarily the page that renders it (Pinia
+ * stores outlive the component that first instantiated them).
  */
 export const useRunsStore = defineStore('runs', () => {
   const queryCache = useQueryCache()
@@ -64,11 +70,14 @@ export const useRunsStore = defineStore('runs', () => {
   const runs = computed(() => query.data.value ?? [])
   const hasActiveRun = computed(() => shouldPoll(runs.value))
 
+  const documentVisibility = useDocumentVisibility()
+  const canPoll = computed(() => hasActiveRun.value && documentVisibility.value === 'visible')
+
   const { pause, resume, isActive: isPolling } = useIntervalFn(() => query.refetch(), POLL_INTERVAL_MS, {
     immediate: false,
   })
 
-  watch(hasActiveRun, (active) => (active ? resume() : pause()), { immediate: true })
+  watch(canPoll, (active) => (active ? resume() : pause()), { immediate: true })
 
   function invalidate() {
     queryCache.invalidateQueries({ key: RUNS_QUERY_ROOT })
@@ -111,8 +120,10 @@ export const useRunsStore = defineStore('runs', () => {
     refetch: query.refetch,
     archived,
 
-    // live-polling status, for the "live" indicator
+    // live-polling status, for the "live" indicator, and a manual pause the
+    // list page calls on unmount so navigating away actually stops the poll.
     isPolling,
+    pausePolling: pause,
 
     // mutations — `mutateAsync` rethrows so callers keep their own
     // try/catch (e.g. clearing a row-local "pending" id in `finally`).

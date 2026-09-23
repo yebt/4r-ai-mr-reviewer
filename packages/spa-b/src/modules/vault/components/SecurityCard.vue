@@ -14,7 +14,7 @@
  * toast — missing that instruction could lock the user out after a restart.
  */
 import { computed, reactive, ref } from 'vue'
-import { Alert, Badge, Button, Checkbox, Field, Input, Skeleton, Text } from '@shared/ui/design-system'
+import { Alert, Badge, Button, Checkbox, Field, Icon, Input, Skeleton, Text } from '@shared/ui/design-system'
 import { useToast } from '@shared/composables/useToast'
 import { resolveVaultErrorMessage, useVaultStore } from '../store'
 
@@ -138,8 +138,15 @@ async function handleSubmit() {
               :aria-invalid="invalid"
               class="flex-1"
             />
-            <Button type="button" variant="ghost" size="sm" @click="showOld = !showOld">
-              {{ showOld ? 'Hide' : 'Show' }}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              :aria-label="showOld ? 'Hide password' : 'Show password'"
+              :aria-pressed="showOld"
+              @click="showOld = !showOld"
+            >
+              <Icon :name="showOld ? 'eye-off' : 'eye'" size="sm" />
             </Button>
           </div>
         </Field>
@@ -160,8 +167,15 @@ async function handleSubmit() {
                 :aria-invalid="invalid"
                 class="flex-1"
               />
-              <Button type="button" variant="ghost" size="sm" @click="showNew = !showNew">
-                {{ showNew ? 'Hide' : 'Show' }}
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                :aria-label="showNew ? 'Hide password' : 'Show password'"
+                :aria-pressed="showNew"
+                @click="showNew = !showNew"
+              >
+                <Icon :name="showNew ? 'eye-off' : 'eye'" size="sm" />
               </Button>
             </div>
           </Field>

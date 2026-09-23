@@ -6,12 +6,11 @@
  * followed by an "Unrouted events" coverage panel flagging events with no
  * enabled rule — their notifications won't be delivered until one is added.
  *
- * `useReposStore` (@modules/repos) is a parallel module owned by a different
- * writer; it backs the optional per-repo Scope select and only resolves at
- * integration time once that module lands.
+ * `useReposStore` (@modules/repos) backs the optional per-repo Scope select
+ * and the rule-row scope label (`scopeLabel`).
  */
 import { computed, ref } from 'vue'
-import { Alert, Button, ConfirmDialog, Field, Select, Skeleton, Switch, Text } from '@shared/ui/design-system'
+import { Alert, Button, ConfirmDialog, Field, Icon, Select, Skeleton, Switch, Text } from '@shared/ui/design-system'
 import type { SelectItemOption } from '@shared/ui/design-system'
 import { useTelegramStore } from '@modules/telegram/store'
 import { useReposStore } from '@modules/repos/store'
@@ -212,7 +211,14 @@ const showUnrouted = computed(() => store.eventsState.status === 'success' && un
             @confirm="handleDelete(rule)"
           >
             <template #trigger>
-              <Button variant="ghost" size="sm" class="text-danger-text hover:bg-danger-bg">Delete</Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                class="text-danger-text hover:bg-danger-bg"
+                :aria-label="`Delete the ${eventLabel(rule.event)} rule`"
+              >
+                <Icon name="trash-2" size="sm" />
+              </Button>
             </template>
           </ConfirmDialog>
         </div>

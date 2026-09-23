@@ -14,7 +14,7 @@
  */
 import { computed, ref, watch } from 'vue'
 import { DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui'
-import { Alert, Button, ConfirmDialog, Switch, Text } from '@shared/ui/design-system'
+import { Alert, Button, ConfirmDialog, Icon, Switch, Text } from '@shared/ui/design-system'
 import { useReposStore } from '../store'
 import type { Repo } from '../types'
 
@@ -134,6 +134,7 @@ async function handleRotate() {
             <Switch
               :model-value="repo.webhookEnabled"
               :disabled="savingEnabled"
+              aria-label="Enable webhook"
               @update:model-value="(value) => handleToggleEnabled(value === true)"
             />
           </div>
@@ -146,6 +147,7 @@ async function handleRotate() {
             <Switch
               :model-value="repo.webhookRequireConfirmation"
               :disabled="!repo.webhookEnabled || savingConfirmation"
+              aria-label="Require confirmation"
               @update:model-value="(value) => handleToggleConfirmation(value === true)"
             />
           </div>
@@ -169,8 +171,15 @@ async function handleRotate() {
                 <code class="min-w-0 flex-1 truncate rounded-md border border-line bg-bg-panel px-2.5 py-1.5 text-xs text-text">
                   {{ secretVisible ? repo.webhookSecret || '—' : '••••••••••••••••' }}
                 </code>
-                <Button type="button" variant="outline" size="sm" @click="secretVisible = !secretVisible">
-                  {{ secretVisible ? 'Hide' : 'Show' }}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  :aria-label="secretVisible ? 'Hide secret' : 'Show secret'"
+                  :aria-pressed="secretVisible"
+                  @click="secretVisible = !secretVisible"
+                >
+                  <Icon :name="secretVisible ? 'eye-off' : 'eye'" size="sm" />
                 </Button>
                 <Button type="button" variant="outline" size="sm" @click="copy('secret', repo.webhookSecret)">
                   {{ copiedField === 'secret' ? 'Copied' : 'Copy' }}

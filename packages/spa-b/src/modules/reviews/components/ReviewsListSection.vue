@@ -7,7 +7,10 @@
  *
  * There is no global reviews endpoint, so the list is a per-repo fan-out
  * (see `store.ts`) — expect the empty state to be the common case until
- * reviews actually run against a connected repo.
+ * reviews actually run against a connected repo. The fan-out uses
+ * `Promise.allSettled`, so one repo failing to load never empties the whole
+ * list — `store.failedRepoCount` surfaces a non-blocking warning Alert above
+ * the list instead.
  *
  * Row actions collapse into a single `⋯` `DropdownMenu`, same as
  * ProvidersSection's row actions: the safe ones (Retry, Archive/Unarchive)
@@ -152,6 +155,11 @@ async function handleDiscard(review: ReviewWithRepo) {
       </label>
     </div>
 
+    <Alert v-if="store.failedRepoCount > 0" status="warning">
+      Couldn't load reviews from {{ store.failedRepoCount }}
+      {{ store.failedRepoCount === 1 ? 'repository' : 'repositories' }}.
+    </Alert>
+
     <div
       v-if="store.state.status === 'pending'"
       class="flex flex-col gap-2"
@@ -222,6 +230,7 @@ async function handleDiscard(review: ReviewWithRepo) {
                 class="z-30 min-w-44 rounded-md border border-line bg-bg-panel-raised p-1 shadow-token-lg"
               >
                 <DropdownMenuItem
+                  v-if="review.status === 'error' || review.status === 'cancelled'"
                   :disabled="pendingActionId === review.id"
                   class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-text outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-bg-hover"
                   @select="handleRetry(review)"

@@ -85,7 +85,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
     toPatch: toEnabledPatch,
     messages: {
       createSuccess: 'Notification rule added',
-      updateSuccess: 'Notification rule updated',
+      updateSuccess: 'Notification rule saved',
       removeSuccess: 'Notification rule deleted',
       removeErrorFallback: 'Failed to delete notification rule',
     },

@@ -4,8 +4,9 @@
  * `defaultProfileId` of `''` mean "use default"; `webhookSecret` is `''`
  * until the webhook is enabled.
  *
- * Preflight/branches/reviews/routines belong to a future Reviews/Runs
- * module — out of scope here.
+ * Preflight/branches belong to a future milestone — out of scope here.
+ * Reviews and Runs now live in their own `modules/reviews` and
+ * `modules/runs` — this file stays repo-only.
  */
 
 export interface Repo {
