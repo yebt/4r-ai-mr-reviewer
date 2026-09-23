@@ -1,16 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { filterReviewsByKey } from './filters'
+import { ALL_REPOS_VALUE, ALL_STATUSES_VALUE, REVIEW_STATUS_FILTER_OPTIONS, filterReviews, repoFilterOptions } from './filters'
 import type { ReviewWithRepo } from './types'
 
 function makeReview(overrides: Partial<ReviewWithRepo> = {}): ReviewWithRepo {
   return {
-    id: 'r1',
-    repoId: 'repo-1',
+    id: 'rev1',
+    repoId: 'repo1',
     repoName: 'repo-one',
-    mrIid: 1,
+    mrIid: 42,
     contextMode: 'fast',
-    status: 'pending',
-    phase: 'queued',
+    status: 'running',
+    phase: 'review',
     archived: false,
     summaryPublished: false,
     summary: '',
@@ -26,30 +26,65 @@ function makeReview(overrides: Partial<ReviewWithRepo> = {}): ReviewWithRepo {
   }
 }
 
-describe('filterReviewsByKey', () => {
+describe('REVIEW_STATUS_FILTER_OPTIONS', () => {
+  it('starts with "All statuses" followed by every ReviewStatus', () => {
+    expect(REVIEW_STATUS_FILTER_OPTIONS[0]).toEqual({ label: 'All statuses', value: ALL_STATUSES_VALUE })
+    expect(REVIEW_STATUS_FILTER_OPTIONS.map((o) => o.value).slice(1)).toEqual([
+      'awaiting_approval',
+      'pending',
+      'running',
+      'done',
+      'error',
+      'cancelled',
+    ])
+  })
+})
+
+describe('repoFilterOptions', () => {
+  it('returns the distinct repos present in the list (sorted by name), prefixed with "All repositories"', () => {
+    const reviews = [
+      makeReview({ id: 'r1', repoId: 'repo2', repoName: 'zeta' }),
+      makeReview({ id: 'r2', repoId: 'repo1', repoName: 'alpha' }),
+      makeReview({ id: 'r3', repoId: 'repo1', repoName: 'alpha' }),
+    ]
+    expect(repoFilterOptions(reviews)).toEqual([
+      { label: 'All repositories', value: ALL_REPOS_VALUE },
+      { label: 'alpha', value: 'repo1' },
+      { label: 'zeta', value: 'repo2' },
+    ])
+  })
+
+  it('returns just the "All repositories" sentinel for an empty list', () => {
+    expect(repoFilterOptions([])).toEqual([{ label: 'All repositories', value: ALL_REPOS_VALUE }])
+  })
+})
+
+describe('filterReviews', () => {
   const reviews = [
-    makeReview({ id: 'r1', status: 'awaiting_approval' }),
-    makeReview({ id: 'r2', status: 'running' }),
-    makeReview({ id: 'r3', status: 'done' }),
-    makeReview({ id: 'r4', status: 'error' }),
-    makeReview({ id: 'r5', status: 'pending' }),
-    makeReview({ id: 'r6', status: 'cancelled' }),
+    makeReview({ id: 'r1', repoId: 'repo1', status: 'running' }),
+    makeReview({ id: 'r2', repoId: 'repo1', status: 'done' }),
+    makeReview({ id: 'r3', repoId: 'repo2', status: 'running' }),
   ]
 
-  it('"all" returns every row unfiltered, including statuses with no dedicated tab', () => {
-    expect(filterReviewsByKey(reviews, 'all')).toEqual(reviews)
+  it('returns every review when both filters use the "all" sentinel', () => {
+    expect(filterReviews(reviews, { repoId: ALL_REPOS_VALUE, status: ALL_STATUSES_VALUE })).toEqual(reviews)
   })
 
-  it.each([
-    ['awaiting_approval', ['r1']],
-    ['running', ['r2']],
-    ['done', ['r3']],
-    ['error', ['r4']],
-  ] as const)('"%s" matches only reviews with that status', (key, expectedIds) => {
-    expect(filterReviewsByKey(reviews, key).map((r) => r.id)).toEqual(expectedIds)
+  it('filters by repoId', () => {
+    expect(filterReviews(reviews, { repoId: 'repo1', status: ALL_STATUSES_VALUE }).map((r) => r.id)).toEqual([
+      'r1',
+      'r2',
+    ])
   })
 
-  it('returns an empty list when no review matches the filter', () => {
-    expect(filterReviewsByKey([makeReview({ id: 'r1', status: 'pending' })], 'error')).toEqual([])
+  it('filters by status', () => {
+    expect(filterReviews(reviews, { repoId: ALL_REPOS_VALUE, status: 'running' }).map((r) => r.id)).toEqual([
+      'r1',
+      'r3',
+    ])
+  })
+
+  it('combines both filters', () => {
+    expect(filterReviews(reviews, { repoId: 'repo1', status: 'running' }).map((r) => r.id)).toEqual(['r1'])
   })
 })

@@ -23,6 +23,11 @@
  * listed first/undecorated, Approve below a separator, and Discard last,
  * danger-styled and behind a `ConfirmDialog` (mirrors ProvidersSection's
  * Delete).
+ *
+ * The repo + status filter bar mirrors `RunsListSection`'s exactly: two
+ * `Select`s driven by local refs, filtered client-side via `../filters.ts`'s
+ * pure `filterReviews`/`repoFilterOptions` (replaces the earlier 5-tab
+ * status-only filter, which had no repo axis).
  */
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
@@ -34,8 +39,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from 'reka-ui'
-import { Alert, Badge, Button, ConfirmDialog, Icon, Skeleton, Switch, Text } from '@shared/ui/design-system'
-import { REVIEW_FILTERS, filterReviewsByKey, type ReviewFilterKey } from '../filters'
+import { Alert, Badge, Button, ConfirmDialog, Icon, Select, Skeleton, Switch, Text } from '@shared/ui/design-system'
+import {
+  ALL_REPOS_VALUE,
+  ALL_STATUSES_VALUE,
+  REVIEW_STATUS_FILTER_OPTIONS,
+  filterReviews,
+  repoFilterOptions,
+} from '../filters'
 import { RECOMMENDATION_LABELS } from '../labels'
 import { useReviewsStore } from '../store'
 import ReviewStatusChip from './ReviewStatusChip.vue'
@@ -48,16 +59,13 @@ function goToReview(review: ReviewWithRepo) {
   router.push(`/reviews/${review.id}`)
 }
 
-const activeFilter = ref<ReviewFilterKey>('all')
+const repoFilter = ref(ALL_REPOS_VALUE)
+const statusFilter = ref(ALL_STATUSES_VALUE)
 
-const filterCounts = computed(() =>
-  REVIEW_FILTERS.map((filter) => ({
-    ...filter,
-    count: filterReviewsByKey(store.reviews, filter.key).length,
-  })),
+const repoOptions = computed(() => repoFilterOptions(store.reviews))
+const filteredReviews = computed(() =>
+  filterReviews(store.reviews, { repoId: repoFilter.value, status: statusFilter.value }),
 )
-
-const filteredReviews = computed(() => filterReviewsByKey(store.reviews, activeFilter.value))
 
 function shortId(id: string): string {
   return id.slice(0, 8)
@@ -135,31 +143,22 @@ async function handleDiscard(review: ReviewWithRepo) {
       </div>
     </div>
 
-    <div class="flex flex-wrap items-center justify-between gap-3">
-      <div class="flex flex-wrap items-center gap-1" role="tablist" aria-label="Filter reviews by status">
-        <button
-          v-for="filter in filterCounts"
-          :key="filter.key"
-          type="button"
-          role="tab"
-          :aria-selected="activeFilter === filter.key"
-          class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
-          :class="
-            activeFilter === filter.key
-              ? 'bg-accent-subtle-bg text-accent-text'
-              : 'text-text-muted hover:bg-bg-hover hover:text-text'
-          "
-          @click="activeFilter = filter.key"
-        >
-          {{ filter.label }}
-          <Badge :status="activeFilter === filter.key ? 'info' : 'neutral'">{{ filter.count }}</Badge>
-        </button>
-      </div>
-
+    <div class="flex items-center justify-end gap-3">
       <label class="flex shrink-0 items-center gap-2 text-sm text-text-muted">
         Show archived
         <Switch :model-value="store.archived" @update:model-value="store.archived = $event" />
       </label>
+    </div>
+
+    <div class="flex flex-wrap items-end gap-3">
+      <div class="flex w-full flex-col gap-1 sm:w-48">
+        <label for="reviews-repo-filter" class="text-sm text-text-muted">Repository</label>
+        <Select id="reviews-repo-filter" v-model="repoFilter" :items="repoOptions" />
+      </div>
+      <div class="flex w-full flex-col gap-1 sm:w-48">
+        <label for="reviews-status-filter" class="text-sm text-text-muted">Status</label>
+        <Select id="reviews-status-filter" v-model="statusFilter" :items="REVIEW_STATUS_FILTER_OPTIONS" />
+      </div>
     </div>
 
     <Alert v-if="store.failedRepoCount > 0" status="warning">
@@ -195,8 +194,9 @@ async function handleDiscard(review: ReviewWithRepo) {
       class="flex flex-col items-center gap-2 rounded-lg border border-dashed border-line p-8 text-center"
     >
       <Icon name="list" size="lg" class="text-text-muted" />
-      <Text muted>No reviews yet.</Text>
-      <Text muted size="sm">
+      <Text v-if="store.reviews.length === 0" muted>No reviews yet.</Text>
+      <Text v-else muted>No reviews match the selected filters.</Text>
+      <Text v-if="store.reviews.length === 0" muted size="sm">
         Reviews launched against a connected repository will show up here.
       </Text>
     </div>
@@ -207,7 +207,7 @@ async function handleDiscard(review: ReviewWithRepo) {
         :key="review.id"
         role="link"
         tabindex="0"
-        :aria-label="`View review !${review.mrIid}`"
+        :aria-label="`View review ${review.repoName} !${review.mrIid}`"
         class="flex cursor-pointer items-center gap-3 rounded-lg border border-line-subtle bg-bg-panel px-3 py-2.5 transition-colors hover:bg-bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
         :class="review.archived ? 'opacity-60' : ''"
         @click="goToReview(review)"
@@ -215,10 +215,11 @@ async function handleDiscard(review: ReviewWithRepo) {
       >
         <div class="flex min-w-0 flex-1 flex-col gap-0.5">
           <div class="flex flex-wrap items-center gap-2">
-            <Text class="truncate font-medium">{{ review.repoName }} · !{{ review.mrIid }}</Text>
+            <Text class="truncate font-medium">!{{ review.mrIid }}</Text>
             <ReviewStatusChip :status="review.status" />
             <Badge v-if="review.archived" status="neutral">Archived</Badge>
           </div>
+          <Text muted size="sm" class="truncate">{{ review.repoName }}</Text>
           <Text muted size="sm" class="truncate">{{ metaLine(review) }}</Text>
           <div v-if="review.status === 'done'" class="mt-0.5 flex flex-wrap items-center gap-2">
             <Badge status="neutral">{{ RECOMMENDATION_LABELS[review.recommendation] }}</Badge>
