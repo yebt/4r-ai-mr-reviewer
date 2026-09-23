@@ -11,6 +11,11 @@ export function listRepoReviews(repoId: string, archived = false): Promise<Revie
   return request<Review[]>('GET', `/repos/${repoId}/reviews${query}`)
 }
 
+/** The full `Review` (with `findings`/`reasonings`) for the detail page. */
+export function getReview(id: string): Promise<Review> {
+  return request<Review>('GET', `/reviews/${id}`)
+}
+
 /** Returns the newly created retry `Review` (201). */
 export function retryReview(id: string): Promise<Review> {
   return request<Review>('POST', `/reviews/${id}/retry`)

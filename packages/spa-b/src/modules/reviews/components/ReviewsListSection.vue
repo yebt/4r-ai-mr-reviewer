@@ -1,9 +1,8 @@
 <script setup lang="ts">
 /**
- * Reviews list — organism. First cut: list only (no launch modal, no detail
- * route — those land in a later milestone). Follows the same shape as
- * `ProvidersSection`: query states (loading skeleton / error+retry / empty /
- * list) rendered here, data fetching + mutations owned by `../store.ts`.
+ * Reviews list — organism. Follows the same shape as `ProvidersSection`:
+ * query states (loading skeleton / error+retry / empty / list) rendered
+ * here, data fetching + mutations owned by `../store.ts`.
  *
  * There is no global reviews endpoint, so the list is a per-repo fan-out
  * (see `store.ts`) — expect the empty state to be the common case until
@@ -12,6 +11,13 @@
  * list — `store.failedRepoCount` surfaces a non-blocking warning Alert above
  * the list instead.
  *
+ * Each row navigates to `/reviews/{id}` (the detail page) on click; the
+ * archived toggle returns archived rows (`review.archived`), rendered
+ * visually distinct (`opacity-60` + an "Archived" Badge) so it's obvious the
+ * list is showing the archived set. The trailing `⋯` action column stops
+ * click propagation so opening the menu (or any action inside it) never
+ * also navigates the row.
+ *
  * Row actions collapse into a single `⋯` `DropdownMenu`, same as
  * ProvidersSection's row actions: the safe ones (Retry, Archive/Unarchive)
  * listed first/undecorated, Approve below a separator, and Discard last,
@@ -19,6 +25,7 @@
  * Delete).
  */
 import { computed, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import {
   DropdownMenuContent,
   DropdownMenuItem,
@@ -29,11 +36,17 @@ import {
 } from 'reka-ui'
 import { Alert, Badge, Button, ConfirmDialog, Icon, Skeleton, Switch, Text } from '@shared/ui/design-system'
 import { REVIEW_FILTERS, filterReviewsByKey, type ReviewFilterKey } from '../filters'
+import { RECOMMENDATION_LABELS } from '../labels'
 import { useReviewsStore } from '../store'
 import ReviewStatusChip from './ReviewStatusChip.vue'
-import type { ReviewRecommendation, ReviewWithRepo } from '../types'
+import type { ReviewWithRepo } from '../types'
 
 const store = useReviewsStore()
+const router = useRouter()
+
+function goToReview(review: ReviewWithRepo) {
+  router.push(`/reviews/${review.id}`)
+}
 
 const activeFilter = ref<ReviewFilterKey>('all')
 
@@ -59,12 +72,6 @@ function metaLine(review: ReviewWithRepo): string {
   if (review.model) parts.push(review.model)
   parts.push(shortId(review.id))
   return parts.join(' · ')
-}
-
-const recommendationLabels: Record<ReviewRecommendation, string> = {
-  approve: 'Approve',
-  request_changes: 'Request changes',
-  comment: 'Comment',
 }
 
 const pendingActionId = ref<string | null>(null)
@@ -198,21 +205,28 @@ async function handleDiscard(review: ReviewWithRepo) {
       <li
         v-for="review in filteredReviews"
         :key="review.id"
-        class="flex items-center gap-3 rounded-lg border border-line-subtle bg-bg-panel px-3 py-2.5"
+        role="link"
+        tabindex="0"
+        :aria-label="`View review !${review.mrIid}`"
+        class="flex cursor-pointer items-center gap-3 rounded-lg border border-line-subtle bg-bg-panel px-3 py-2.5 transition-colors hover:bg-bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+        :class="review.archived ? 'opacity-60' : ''"
+        @click="goToReview(review)"
+        @keydown.enter="goToReview(review)"
       >
         <div class="flex min-w-0 flex-1 flex-col gap-0.5">
           <div class="flex flex-wrap items-center gap-2">
             <Text class="truncate font-medium">{{ review.repoName }} · !{{ review.mrIid }}</Text>
             <ReviewStatusChip :status="review.status" />
+            <Badge v-if="review.archived" status="neutral">Archived</Badge>
           </div>
           <Text muted size="sm" class="truncate">{{ metaLine(review) }}</Text>
           <div v-if="review.status === 'done'" class="mt-0.5 flex flex-wrap items-center gap-2">
-            <Badge status="neutral">{{ recommendationLabels[review.recommendation] }}</Badge>
+            <Badge status="neutral">{{ RECOMMENDATION_LABELS[review.recommendation] }}</Badge>
             <Text muted size="sm">Score {{ review.score }}</Text>
           </div>
         </div>
 
-        <div class="flex shrink-0 items-center gap-1">
+        <div class="flex shrink-0 items-center gap-1" @click.stop>
           <DropdownMenuRoot>
             <DropdownMenuTrigger as-child>
               <Button
