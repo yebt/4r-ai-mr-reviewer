@@ -6,7 +6,7 @@
  * section component; this page only owns the route shell (back link,
  * heading, title).
  */
-import { Heading, Icon } from '@shared/ui/design-system'
+import { Icon } from '@shared/ui/design-system'
 import { ProvidersSection } from '@modules/providers'
 </script>
 
@@ -19,7 +19,6 @@ import { ProvidersSection } from '@modules/providers'
       <Icon name="chevron-down" size="sm" class="rotate-90" />
       Settings
     </RouterLink>
-    <Heading :level="1" size="2xl">Providers</Heading>
     <ProvidersSection />
   </div>
 </template>

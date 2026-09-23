@@ -6,7 +6,7 @@
  * component; this page only owns the route shell (back link, heading,
  * title).
  */
-import { Heading, Icon } from '@shared/ui/design-system'
+import { Icon } from '@shared/ui/design-system'
 import { ProfilesSection } from '@modules/profiles'
 </script>
 
@@ -19,7 +19,6 @@ import { ProfilesSection } from '@modules/profiles'
       <Icon name="chevron-down" size="sm" class="rotate-90" />
       Settings
     </RouterLink>
-    <Heading :level="1" size="2xl">Profiles</Heading>
     <ProfilesSection />
   </div>
 </template>
