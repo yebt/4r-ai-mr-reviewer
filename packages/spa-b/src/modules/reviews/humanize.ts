@@ -4,8 +4,10 @@
  * finding back into the exact markdown body the server would have generated
  * itself (`formatFinding` in `packages/server/internal/app/reviews/publish.go`),
  * so a finding override posted to the MR is byte-for-byte compatible with an
- * un-humanized publish. Kept dependency-free (no store/component imports),
- * matching `findings.ts`/`publish.ts`.
+ * un-humanized publish. Also (U1) `buildFindingMarkdown`, a standalone
+ * Markdown rendering of a finding for the per-card copy action. Kept
+ * dependency-free (no store/component imports), matching `findings.ts`/
+ * `publish.ts`.
  */
 import type { Finding, ReviewFindingDimension } from './types'
 
@@ -40,4 +42,32 @@ export function buildFindingBody(finding: Finding, parts: { issue: string; why: 
     body += `\n_Blocking._`
   }
   return body
+}
+
+/**
+ * Assembles a finding as standalone Markdown for the copy-to-clipboard
+ * action (U1) — unlike `buildFindingBody` (an MR comment body, posted
+ * inline on the file so it omits the location), this includes the
+ * `file:line` location since a copied snippet has no surrounding context.
+ * Mirrors the old spa's `buildFindingMarkdown`
+ * (`packages/spa/src/modules/reviews/humanize-overrides.ts`) byte-for-byte,
+ * ported to this package's `DIMENSION_LABELS`/`Finding` shape. `parts` is
+ * the active tab's text (Original or a humanize run) — same contract as
+ * `buildFindingBody`.
+ */
+export function buildFindingMarkdown(finding: Finding, parts: { issue: string; why: string; fix: string }): string {
+  let markdown = `**[${DIMENSION_LABELS[finding.dimension]} · ${finding.severity.toUpperCase()}]** ${parts.issue}\n`
+  if (finding.file) {
+    markdown += `\n\`${finding.file}${finding.line > 0 ? `:${finding.line}` : ''}\`\n`
+  }
+  if (parts.why) {
+    markdown += `\n**Why:** ${parts.why}\n`
+  }
+  if (parts.fix) {
+    markdown += `\n**Suggested fix:** ${parts.fix}\n`
+  }
+  if (finding.blocking) {
+    markdown += `\n_Blocking._\n`
+  }
+  return markdown
 }

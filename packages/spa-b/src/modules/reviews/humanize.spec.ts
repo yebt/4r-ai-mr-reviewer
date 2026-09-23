@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildFindingBody, DIMENSION_LABELS, ORIGINAL } from './humanize'
+import { buildFindingBody, buildFindingMarkdown, DIMENSION_LABELS, ORIGINAL } from './humanize'
 import type { Finding } from './types'
 
 function makeFinding(overrides: Partial<Finding> = {}): Finding {
@@ -71,5 +71,55 @@ describe('buildFindingBody', () => {
     const finding = makeFinding({ severity: 'medium' })
     const body = buildFindingBody(finding, { issue: 'Issue', why: '', fix: '' })
     expect(body.startsWith('**[R1 Risk · MEDIUM]**')).toBe(true)
+  })
+})
+
+describe('buildFindingMarkdown', () => {
+  it('builds a blocking risk/high finding with file, why and fix — exact string', () => {
+    const finding = makeFinding({ dimension: 'risk', severity: 'high', file: 'src/app.ts', line: 12, blocking: true })
+    const markdown = buildFindingMarkdown(finding, { issue: 'Issue text', why: 'Why text', fix: 'Fix text' })
+
+    expect(markdown).toBe(
+      '**[R1 Risk · HIGH]** Issue text\n' +
+        '\n`src/app.ts:12`\n' +
+        '\n**Why:** Why text\n' +
+        '\n**Suggested fix:** Fix text\n' +
+        '\n_Blocking._\n',
+    )
+  })
+
+  it('omits the location line when file is empty', () => {
+    const finding = makeFinding({ file: '', blocking: false })
+    const markdown = buildFindingMarkdown(finding, { issue: 'Issue text', why: '', fix: '' })
+
+    expect(markdown).toBe('**[R1 Risk · HIGH]** Issue text\n')
+  })
+
+  it('omits the line number when line is not positive but keeps the file', () => {
+    const finding = makeFinding({ file: 'src/app.ts', line: 0, blocking: false })
+    const markdown = buildFindingMarkdown(finding, { issue: 'Issue text', why: '', fix: '' })
+
+    expect(markdown).toBe('**[R1 Risk · HIGH]** Issue text\n\n`src/app.ts`\n')
+  })
+
+  it('omits the Why paragraph when why is empty', () => {
+    const finding = makeFinding({ file: '', blocking: false })
+    const markdown = buildFindingMarkdown(finding, { issue: 'Issue text', why: '', fix: 'Fix text' })
+
+    expect(markdown).toBe('**[R1 Risk · HIGH]** Issue text\n' + '\n**Suggested fix:** Fix text\n')
+  })
+
+  it('omits the Suggested fix paragraph when fix is empty', () => {
+    const finding = makeFinding({ file: '', blocking: false })
+    const markdown = buildFindingMarkdown(finding, { issue: 'Issue text', why: 'Why text', fix: '' })
+
+    expect(markdown).toBe('**[R1 Risk · HIGH]** Issue text\n' + '\n**Why:** Why text\n')
+  })
+
+  it('omits the Blocking suffix when the finding is not blocking', () => {
+    const finding = makeFinding({ file: '', blocking: false })
+    const markdown = buildFindingMarkdown(finding, { issue: 'Issue text', why: '', fix: '' })
+
+    expect(markdown).toBe('**[R1 Risk · HIGH]** Issue text\n')
   })
 })

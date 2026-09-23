@@ -37,30 +37,34 @@
  * (`summaryOverride`/`findingOverride`/`findingOverridesFor`) so a non-
  * Original active tab replaces the generated MR comment body wholesale —
  * see `modules/reviews/humanize.ts`'s doc comment for the exact contract.
+ *
+ * Humanize-all modal (U3): the header no longer shows an always-visible
+ * profile `<Select>` — `HumanizeAllDialog` (a Reka Dialog, same pattern as
+ * `TelegramSection.vue`) opens from the "Humanize all" action button and
+ * owns the profile picker + explanation + confirm. Per-card Humanize
+ * buttons stay on the summary/finding cards and reuse the composable's
+ * `profileId` unchanged; if it's still empty when one of those is clicked
+ * (no profile selected yet), `handleHumanizeSummary`/`handleHumanizeFinding`
+ * open the same modal first instead of calling the composable with an
+ * empty id.
  */
 import { computed, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import {
-  Alert,
-  Badge,
-  Button,
-  ConfirmDialog,
-  Field,
-  Select,
-  Skeleton,
-  Text,
-} from '@shared/ui/design-system'
+import { Alert, Badge, Button, ConfirmDialog, Icon, Skeleton, Text } from '@shared/ui/design-system'
 import type { SelectItemOption } from '@shared/ui/design-system'
+import { useToast } from '@shared/composables/useToast'
 import { useReposStore } from '@modules/repos/store'
 import { useReviewDetail } from '@modules/reviews/detail'
 import { FINDING_DIMENSIONS, FINDING_SEVERITY_BADGE, groupFindingsByDimension } from '@modules/reviews/findings'
-import { RECOMMENDATION_LABELS } from '@modules/reviews/labels'
+import { buildFindingMarkdown } from '@modules/reviews/humanize'
 import { hasUnpublished } from '@modules/reviews/publish'
 import { useReviewsStore } from '@modules/reviews/store'
 import { useReviewHumanize } from '@modules/reviews/useReviewHumanize'
 import type { Finding } from '@modules/reviews/types'
 import ReviewStatusChip from '@modules/reviews/components/ReviewStatusChip.vue'
 import HumanizeTabs from '@modules/reviews/components/HumanizeTabs.vue'
+import HumanizeAllDialog from '@modules/reviews/components/HumanizeAllDialog.vue'
+import ScoreMeter from '@modules/reviews/components/ScoreMeter.vue'
 
 const route = useRoute('/reviews/[id]')
 const router = useRouter()
@@ -105,6 +109,55 @@ const {
 const profileSelectItems = computed<SelectItemOption[]>(() =>
   readyProfiles.value.map((profile) => ({ label: profile.name, value: profile.id })),
 )
+
+// Humanize-all modal (U3) — opened by the header action button, or by a
+// per-card Humanize click while no profile is selected yet.
+const humanizeAllDialogOpen = ref(false)
+
+function handleHumanizeSummary() {
+  if (!profileId.value) {
+    humanizeAllDialogOpen.value = true
+    return
+  }
+  void humanizeSummary()
+}
+
+function handleHumanizeFinding(index: number) {
+  if (!profileId.value) {
+    humanizeAllDialogOpen.value = true
+    return
+  }
+  void humanizeFinding(index)
+}
+
+async function handleHumanizeAllConfirm() {
+  // humanizeAll() never throws — each run's own try/catch already toasts
+  // its own failure — so the dialog always closes once it settles.
+  await humanizeAll()
+  humanizeAllDialogOpen.value = false
+}
+
+// Copy-as-markdown (U1) — per-finding icon button. Swaps to a `check` icon
+// for ~1.2s as a lightweight inline confirmation instead of a toast.
+const toast = useToast()
+const copiedFindingIndex = ref<number | null>(null)
+let copyResetTimer: ReturnType<typeof setTimeout> | undefined
+onUnmounted(() => clearTimeout(copyResetTimer))
+
+async function handleCopyFinding(finding: Finding) {
+  const parts = review.value?.status === 'done' ? activeFindingParts(finding) : finding
+  const markdown = buildFindingMarkdown(finding, parts)
+  try {
+    await navigator.clipboard.writeText(markdown)
+    copiedFindingIndex.value = finding.index
+    clearTimeout(copyResetTimer)
+    copyResetTimer = setTimeout(() => {
+      if (copiedFindingIndex.value === finding.index) copiedFindingIndex.value = null
+    }, 1200)
+  } catch {
+    toast.error('Failed to copy finding to clipboard')
+  }
+}
 
 const reviewsStore = useReviewsStore()
 type PendingAction = 'retry' | 'archive' | 'unarchive' | 'approve' | 'discard'
@@ -221,9 +274,8 @@ function handlePublishAll() {
           <Text muted size="sm">
             {{ review.contextMode }}<span v-if="review.model"> · {{ review.model }}</span>
           </Text>
-          <div v-if="review.status === 'done'" class="mt-0.5 flex flex-wrap items-center gap-2">
-            <Badge status="neutral">{{ RECOMMENDATION_LABELS[review.recommendation] }}</Badge>
-            <Text muted size="sm">Score {{ review.score }}</Text>
+          <div v-if="review.status === 'done'" class="mt-1.5 flex flex-col gap-1.5">
+            <ScoreMeter :score="review.score" :recommendation="review.recommendation" />
             <Text muted size="sm">{{ review.inputTokens }} in / {{ review.outputTokens }} out tokens</Text>
           </div>
         </div>
@@ -254,6 +306,14 @@ function handlePublishAll() {
             @click="handleApprove"
           >
             Approve
+          </Button>
+          <Button
+            v-if="review.status === 'done'"
+            variant="outline"
+            size="sm"
+            @click="humanizeAllDialogOpen = true"
+          >
+            Humanize all
           </Button>
           <ConfirmDialog
             v-if="review.status === 'done'"
@@ -287,29 +347,17 @@ function handlePublishAll() {
         {{ review.error }}
       </Alert>
 
-      <div
+      <HumanizeAllDialog
         v-if="review.status === 'done'"
-        class="flex flex-wrap items-center gap-3 rounded-lg border border-line-subtle bg-bg-panel p-3"
-      >
-        <Field v-if="hasReadyProfile" label="Voice profile" class="w-56" v-slot="{ id }">
-          <Select :id="id" v-model="profileId" :items="profileSelectItems" />
-        </Field>
-        <Text v-else muted size="sm">
-          <RouterLink to="/settings" class="font-medium underline underline-offset-2">Add a ready profile</RouterLink>
-          to humanize findings and the summary.
-        </Text>
-        <Button
-          variant="outline"
-          size="sm"
-          :disabled="!hasReadyProfile"
-          :loading="isHumanizingAll"
-          @click="humanizeAll()"
-        >
-          Humanize all
-        </Button>
-      </div>
+        v-model:open="humanizeAllDialogOpen"
+        v-model:profile-id="profileId"
+        :items="profileSelectItems"
+        :has-ready-profile="hasReadyProfile"
+        :pending="isHumanizingAll"
+        @confirm="handleHumanizeAllConfirm"
+      />
 
-      <div v-if="review.summary" class="rounded-lg border border-line-subtle bg-bg-panel p-4">
+      <div v-if="review.summary" class="min-w-0 rounded-lg border border-line-subtle bg-bg-panel p-4">
         <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
           <Text as="h2" size="lg" class="font-semibold">Summary</Text>
           <div class="flex flex-wrap items-center gap-2">
@@ -319,7 +367,7 @@ function handlePublishAll() {
               size="sm"
               :disabled="!hasReadyProfile"
               :loading="isHumanizingSummary"
-              @click="humanizeSummary()"
+              @click="handleHumanizeSummary"
             >
               Humanize
             </Button>
@@ -346,7 +394,9 @@ function handlePublishAll() {
           class="mb-2"
           @select="setSummaryTab"
         />
-        <Text class="whitespace-pre-wrap">{{ review.status === 'done' ? activeSummaryText(review) : review.summary }}</Text>
+        <Text class="min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{{
+          review.status === 'done' ? activeSummaryText(review) : review.summary
+        }}</Text>
       </div>
 
       <div class="flex flex-col gap-4">
@@ -362,22 +412,34 @@ function handlePublishAll() {
                 <li
                   v-for="finding in groupedFindings![dimension]"
                   :key="finding.index"
-                  class="flex flex-col gap-1 rounded-lg border border-line-subtle bg-bg-panel p-3"
+                  class="flex min-w-0 flex-col gap-2 rounded-lg border border-line-subtle bg-bg-panel p-3"
                 >
                   <div class="flex flex-wrap items-center justify-between gap-2">
-                    <div class="flex flex-wrap items-center gap-2">
+                    <div class="flex min-w-0 flex-wrap items-center gap-2">
                       <Badge :status="FINDING_SEVERITY_BADGE[finding.severity]">{{ finding.severity }}</Badge>
                       <Badge v-if="finding.blocking" status="danger">Blocking</Badge>
-                      <Text mono size="sm" muted>{{ finding.file }}:{{ finding.line }}</Text>
+                      <Text mono size="sm" muted class="break-words [overflow-wrap:anywhere]"
+                        >{{ finding.file }}:{{ finding.line }}</Text
+                      >
                     </div>
                     <div class="flex flex-wrap items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        :aria-label="
+                          copiedFindingIndex === finding.index ? 'Finding copied' : 'Copy finding as markdown'
+                        "
+                        @click="handleCopyFinding(finding)"
+                      >
+                        <Icon :name="copiedFindingIndex === finding.index ? 'check' : 'copy'" size="sm" />
+                      </Button>
                       <Button
                         v-if="review.status === 'done'"
                         variant="ghost"
                         size="sm"
                         :disabled="!hasReadyProfile"
                         :loading="isHumanizingFinding(finding.index)"
-                        @click="humanizeFinding(finding.index)"
+                        @click="handleHumanizeFinding(finding.index)"
                       >
                         Humanize
                       </Button>
@@ -403,13 +465,27 @@ function handlePublishAll() {
                     :active="findingTab(finding.index)"
                     @select="(tab) => setFindingTab(finding.index, tab)"
                   />
-                  <Text class="font-medium">{{
+                  <Text class="min-w-0 break-words font-medium [overflow-wrap:anywhere]">{{
                     review.status === 'done' ? activeFindingParts(finding).issue : finding.issue
                   }}</Text>
-                  <Text muted size="sm">{{ review.status === 'done' ? activeFindingParts(finding).why : finding.why }}</Text>
-                  <Text muted size="sm">
-                    Fix: {{ review.status === 'done' ? activeFindingParts(finding).fix : finding.fix }}
-                  </Text>
+                  <div
+                    v-if="(review.status === 'done' ? activeFindingParts(finding).why : finding.why)"
+                    class="min-w-0 border-t border-line-subtle pt-2"
+                  >
+                    <Text size="xs" class="font-medium uppercase tracking-wide text-text-muted">Why</Text>
+                    <Text muted size="sm" class="min-w-0 break-words [overflow-wrap:anywhere]">{{
+                      review.status === 'done' ? activeFindingParts(finding).why : finding.why
+                    }}</Text>
+                  </div>
+                  <div
+                    v-if="(review.status === 'done' ? activeFindingParts(finding).fix : finding.fix)"
+                    class="min-w-0 border-t border-line-subtle pt-2"
+                  >
+                    <Text size="xs" class="font-medium uppercase tracking-wide text-text-muted">Suggested fix</Text>
+                    <Text muted size="sm" class="min-w-0 break-words [overflow-wrap:anywhere]">{{
+                      review.status === 'done' ? activeFindingParts(finding).fix : finding.fix
+                    }}</Text>
+                  </div>
                 </li>
               </ul>
             </div>
