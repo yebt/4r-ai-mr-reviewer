@@ -124,7 +124,7 @@ const showUnrouted = computed(() => store.eventsState.status === 'success' && un
     </Alert>
 
     <div v-else class="flex flex-col gap-3 rounded-lg border border-line-subtle bg-bg-panel p-3">
-      <div class="flex flex-wrap items-end gap-3">
+      <div class="flex flex-wrap items-start gap-3">
         <Field label="Event" required class="min-w-40 flex-1" v-slot="{ id, describedBy, invalid }">
           <Select
             :id="id"
@@ -148,6 +148,8 @@ const showUnrouted = computed(() => store.eventsState.status === 'success' && un
         <Field label="Scope" description="Optional — defaults to all repositories." class="min-w-40 flex-1" v-slot="{ id, describedBy }">
           <Select :id="id" v-model="newScope" :items="scopeOptions" placeholder="All repositories" :aria-describedby="describedBy" />
         </Field>
+      </div>
+      <div class="flex justify-end">
         <Button :disabled="!canAdd" :loading="adding" @click="handleAdd">Add rule</Button>
       </div>
       <Alert v-if="addError" status="danger">{{ addError }}</Alert>
