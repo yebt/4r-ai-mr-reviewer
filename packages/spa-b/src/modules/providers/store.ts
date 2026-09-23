@@ -1,8 +1,12 @@
 import { computed } from 'vue'
 import { defineStore } from 'pinia'
-import { useMutation, useQuery, useQueryCache } from '@pinia/colada'
-import { useToast } from '@shared/composables/useToast'
-import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
+import { useMutation, useQuery } from '@pinia/colada'
+import {
+  createCrudResource,
+  resolveErrorMessage,
+  withoutItem,
+  withPatchedItem,
+} from '@shared/data/createCrudResource'
 import * as providersApi from './api'
 import type {
   CreateProviderPayload,
@@ -20,6 +24,10 @@ export const OPENROUTER_MODELS_QUERY_KEY = ['openrouter-models'] as const
  * Pure cache-patch helpers used by the mutations' `onMutate` hooks below.
  * Exported so the optimistic-update logic can be unit-tested directly,
  * without spinning up a full Pinia Colada (Vue app + plugin) context.
+ *
+ * `withOptimisticCreate` stays provider-specific (unlike accounts/telegram/
+ * profiles, which just delegate to the generic helper): a new row created as
+ * the default must unflip every other row's `isDefault` too.
  */
 export function withOptimisticCreate(providers: Provider[], optimistic: Provider): Provider[] {
   const base = optimistic.isDefault
@@ -29,7 +37,7 @@ export function withOptimisticCreate(providers: Provider[], optimistic: Provider
 }
 
 export function withoutProvider(providers: Provider[], id: string): Provider[] {
-  return providers.filter((provider) => provider.id !== id)
+  return withoutItem(providers, id)
 }
 
 export function withPatchedProvider(
@@ -37,7 +45,7 @@ export function withPatchedProvider(
   id: string,
   patch: Partial<Omit<Provider, 'id'>>,
 ): Provider[] {
-  return providers.map((provider) => (provider.id === id ? { ...provider, ...patch } : provider))
+  return withPatchedItem(providers, id, patch)
 }
 
 export function withDefaultFlippedTo(providers: Provider[], id: string): Provider[] {
@@ -86,135 +94,60 @@ export function makeOptimisticProvider(payload: CreateProviderPayload): Provider
 export { resolveErrorMessage }
 
 /**
- * Providers store, backed by @pinia/colada. The `['providers']` query is the
- * single source of truth for the list — it owns caching, request dedupe, and
- * async loading state. Every mutation (create/update/remove/setDefault)
- * patches that cache entry optimistically in `onMutate` (snapshotting the
- * previous value first), rolls back to the snapshot in `onError` (plus a
- * `toast.error`), and reconciles with the server in `onSettled` via
- * `invalidateQueries` so the authoritative response always wins.
+ * Providers store, backed by @pinia/colada via `createCrudResource`. The
+ * `['providers']` query is the single source of truth for the list — it owns
+ * caching, request dedupe, and async loading state. The base mutations
+ * (create/update/remove) patch that cache entry optimistically in `onMutate`
+ * (snapshotting the previous value first), roll back to the snapshot in
+ * `onError` (plus a `toast.error` for remove only), and reconcile with the
+ * server in `onSettled` via `invalidateQueries` so the authoritative response
+ * always wins.
+ *
+ * `setDefaultProvider` is a providers-specific extra layered on top of the
+ * factory: it shares the resource's `queryCache`/`toast` but follows the same
+ * optimistic-patch → rollback-on-error → invalidate shape by hand, since it
+ * isn't one of the 3 base CRUD mutations.
  */
 export const useProvidersStore = defineStore('providers', () => {
-  const queryCache = useQueryCache()
-  const toast = useToast()
-
-  const providersQuery = useQuery({
-    key: PROVIDERS_QUERY_KEY,
-    query: providersApi.listProviders,
-  })
-
-  const providers = computed(() => providersQuery.data.value ?? [])
-
-  const createMutation = useMutation({
-    mutation: (payload: CreateProviderPayload) => providersApi.createProvider(payload),
-    onMutate(payload) {
-      queryCache.cancelQueries({ key: PROVIDERS_QUERY_KEY })
-      const previous = queryCache.getQueryData<Provider[]>(PROVIDERS_QUERY_KEY)
-      const optimistic = makeOptimisticProvider(payload)
-      queryCache.setQueryData<Provider[]>(
-        PROVIDERS_QUERY_KEY,
-        withOptimisticCreate(previous ?? [], optimistic),
-      )
-      return { previous, tempId: optimistic.id }
-    },
-    onSuccess(created, _payload, { tempId }) {
-      const current = queryCache.getQueryData<Provider[]>(PROVIDERS_QUERY_KEY) ?? []
-      queryCache.setQueryData<Provider[]>(
-        PROVIDERS_QUERY_KEY,
-        current.map((provider) => (provider.id === tempId ? created : provider)),
-      )
-      toast.success('Provider added')
-    },
-    // No `toast.error` here: the open form's inline `formError` banner is
-    // the contextual surface for create/update failures. Toasting here too
-    // would show the same error twice.
-    onError(_err, _payload, context) {
-      if (context?.previous !== undefined) {
-        queryCache.setQueryData(PROVIDERS_QUERY_KEY, context.previous)
-      }
-    },
-    onSettled() {
-      queryCache.invalidateQueries({ key: PROVIDERS_QUERY_KEY })
-    },
-  })
-
-  const updateMutation = useMutation({
-    mutation: (vars: { id: string; payload: UpdateProviderPayload }) =>
-      providersApi.updateProvider(vars.id, vars.payload),
-    onMutate(vars) {
-      queryCache.cancelQueries({ key: PROVIDERS_QUERY_KEY })
-      const previous = queryCache.getQueryData<Provider[]>(PROVIDERS_QUERY_KEY)
-      queryCache.setQueryData<Provider[]>(
-        PROVIDERS_QUERY_KEY,
-        withPatchedProvider(previous ?? [], vars.id, toProviderPatch(vars.payload)),
-      )
-      return { previous }
-    },
-    onSuccess(updated) {
-      const current = queryCache.getQueryData<Provider[]>(PROVIDERS_QUERY_KEY) ?? []
-      queryCache.setQueryData<Provider[]>(
-        PROVIDERS_QUERY_KEY,
-        withPatchedProvider(current, updated.id, updated),
-      )
-      toast.success('Provider saved')
-    },
-    // No `toast.error` here: the open form's inline `formError` banner is
-    // the contextual surface for create/update failures. Toasting here too
-    // would show the same error twice.
-    onError(_err, _vars, context) {
-      if (context?.previous !== undefined) {
-        queryCache.setQueryData(PROVIDERS_QUERY_KEY, context.previous)
-      }
-    },
-    onSettled() {
-      queryCache.invalidateQueries({ key: PROVIDERS_QUERY_KEY })
-    },
-  })
-
-  const removeMutation = useMutation({
-    mutation: (id: string) => providersApi.deleteProvider(id),
-    onMutate(id) {
-      queryCache.cancelQueries({ key: PROVIDERS_QUERY_KEY })
-      const previous = queryCache.getQueryData<Provider[]>(PROVIDERS_QUERY_KEY)
-      queryCache.setQueryData<Provider[]>(PROVIDERS_QUERY_KEY, withoutProvider(previous ?? [], id))
-      return { previous }
-    },
-    onSuccess() {
-      toast.success('Provider deleted')
-    },
-    onError(err, _id, context) {
-      if (context?.previous !== undefined) {
-        queryCache.setQueryData(PROVIDERS_QUERY_KEY, context.previous)
-      }
-      toast.error(resolveErrorMessage(err, 'Failed to delete provider'))
-    },
-    onSettled() {
-      queryCache.invalidateQueries({ key: PROVIDERS_QUERY_KEY })
+  const resource = createCrudResource<Provider, CreateProviderPayload, UpdateProviderPayload>({
+    queryKey: PROVIDERS_QUERY_KEY,
+    list: providersApi.listProviders,
+    create: providersApi.createProvider,
+    update: providersApi.updateProvider,
+    remove: providersApi.deleteProvider,
+    makeOptimistic: makeOptimisticProvider,
+    toPatch: toProviderPatch,
+    applyOptimisticCreate: withOptimisticCreate,
+    messages: {
+      createSuccess: 'Provider added',
+      updateSuccess: 'Provider saved',
+      removeSuccess: 'Provider deleted',
+      removeErrorFallback: 'Failed to delete provider',
     },
   })
 
   const setDefaultMutation = useMutation({
     mutation: (id: string) => providersApi.setDefaultProvider(id),
     onMutate(id) {
-      queryCache.cancelQueries({ key: PROVIDERS_QUERY_KEY })
-      const previous = queryCache.getQueryData<Provider[]>(PROVIDERS_QUERY_KEY)
-      queryCache.setQueryData<Provider[]>(
+      resource.queryCache.cancelQueries({ key: PROVIDERS_QUERY_KEY })
+      const previous = resource.queryCache.getQueryData<Provider[]>(PROVIDERS_QUERY_KEY)
+      resource.queryCache.setQueryData<Provider[]>(
         PROVIDERS_QUERY_KEY,
         withDefaultFlippedTo(previous ?? [], id),
       )
       return { previous }
     },
     onSuccess() {
-      toast.success('Set as default')
+      resource.toast.success('Set as default')
     },
     onError(err, _id, context) {
       if (context?.previous !== undefined) {
-        queryCache.setQueryData(PROVIDERS_QUERY_KEY, context.previous)
+        resource.queryCache.setQueryData(PROVIDERS_QUERY_KEY, context.previous)
       }
-      toast.error(resolveErrorMessage(err, 'Failed to set default provider'))
+      resource.toast.error(resolveErrorMessage(err, 'Failed to set default provider'))
     },
     onSettled() {
-      queryCache.invalidateQueries({ key: PROVIDERS_QUERY_KEY })
+      resource.queryCache.invalidateQueries({ key: PROVIDERS_QUERY_KEY })
     },
   })
 
@@ -239,12 +172,12 @@ export const useProvidersStore = defineStore('providers', () => {
 
   return {
     // ['providers'] query surface
-    providers,
-    providersState: providersQuery.state,
-    asyncStatus: providersQuery.asyncStatus,
-    isLoading: providersQuery.isLoading,
-    error: providersQuery.error,
-    refetch: providersQuery.refetch,
+    providers: resource.items,
+    providersState: resource.state,
+    asyncStatus: resource.asyncStatus,
+    isLoading: resource.isLoading,
+    error: resource.error,
+    refetch: resource.refetch,
 
     // ['openrouter-models'] lazy query surface
     openRouterModels,
@@ -255,13 +188,12 @@ export const useProvidersStore = defineStore('providers', () => {
     // mutations — `mutateAsync` rethrows so callers keep their existing
     // try/catch flows (e.g. ProviderForm's inline `formError`) on top of the
     // store-level optimistic update + rollback + toast handled above.
-    createProvider: createMutation.mutateAsync,
-    isCreating: createMutation.isLoading,
-    updateProvider: (id: string, payload: UpdateProviderPayload) =>
-      updateMutation.mutateAsync({ id, payload }),
-    isUpdating: updateMutation.isLoading,
-    removeProvider: removeMutation.mutateAsync,
-    isRemoving: removeMutation.isLoading,
+    createProvider: resource.create,
+    isCreating: resource.isCreating,
+    updateProvider: resource.update,
+    isUpdating: resource.isUpdating,
+    removeProvider: resource.remove,
+    isRemoving: resource.isRemoving,
     setDefaultProvider: setDefaultMutation.mutateAsync,
     isSettingDefault: setDefaultMutation.isLoading,
     testConnection,

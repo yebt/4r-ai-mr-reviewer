@@ -1,8 +1,12 @@
-import { computed } from 'vue'
 import { defineStore } from 'pinia'
-import { useMutation, useQuery, useQueryCache } from '@pinia/colada'
-import { useToast } from '@shared/composables/useToast'
-import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
+import { useMutation } from '@pinia/colada'
+import {
+  createCrudResource,
+  resolveErrorMessage,
+  withOptimisticCreate,
+  withoutItem,
+  withPatchedItem,
+} from '@shared/data/createCrudResource'
 import * as telegramApi from './api'
 import type {
   CreateTelegramTargetPayload,
@@ -16,13 +20,16 @@ export const TELEGRAM_QUERY_KEY = ['telegram'] as const
  * Pure cache-patch helpers used by the mutations' `onMutate` hooks below.
  * Exported so the optimistic-update logic can be unit-tested directly,
  * without spinning up a full Pinia Colada (Vue app + plugin) context.
+ *
+ * `withOptimisticCreate`, `withoutTarget` and `withPatchedTarget` are thin,
+ * entity-named wrappers around the generic helpers in `createCrudResource` —
+ * a newly created target is never optimistically default (`isBot`/`isDefault`
+ * come straight off the payload/default), so no unflip is needed here.
  */
-export function withOptimisticCreate(targets: TelegramTarget[], optimistic: TelegramTarget): TelegramTarget[] {
-  return [...targets, optimistic]
-}
+export { withOptimisticCreate }
 
 export function withoutTarget(targets: TelegramTarget[], id: string): TelegramTarget[] {
-  return targets.filter((target) => target.id !== id)
+  return withoutItem(targets, id)
 }
 
 export function withPatchedTarget(
@@ -30,7 +37,7 @@ export function withPatchedTarget(
   id: string,
   patch: Partial<Omit<TelegramTarget, 'id'>>,
 ): TelegramTarget[] {
-  return targets.map((target) => (target.id === id ? { ...target, ...patch } : target))
+  return withPatchedItem(targets, id, patch)
 }
 
 export function withDefaultFlippedTo(targets: TelegramTarget[], id: string): TelegramTarget[] {
@@ -76,136 +83,59 @@ export function makeOptimisticTarget(payload: CreateTelegramTargetPayload): Tele
 export { resolveErrorMessage }
 
 /**
- * Telegram store, backed by @pinia/colada. Mirrors `providers/store.ts`:
- * the `['telegram']` query is the single source of truth for the list — it
- * owns caching, request dedupe, and async loading state. Every mutation
- * (create/update/remove/setDefault) patches that cache entry optimistically
- * in `onMutate` (snapshotting the previous value first), rolls back to the
- * snapshot in `onError` (plus a `toast.error`), and reconciles with the
- * server in `onSettled` via `invalidateQueries` so the authoritative
- * response always wins.
+ * Telegram store, backed by @pinia/colada via `createCrudResource`. Mirrors
+ * `providers/store.ts`: the `['telegram']` query is the single source of
+ * truth for the list — it owns caching, request dedupe, and async loading
+ * state. The base mutations (create/update/remove) patch that cache entry
+ * optimistically in `onMutate` (snapshotting the previous value first), roll
+ * back to the snapshot in `onError` (plus a `toast.error` for remove only),
+ * and reconcile with the server in `onSettled` via `invalidateQueries` so the
+ * authoritative response always wins.
+ *
+ * `setDefaultTarget` is a telegram-specific extra layered on top of the
+ * factory: it shares the resource's `queryCache`/`toast` but follows the
+ * same optimistic-patch → rollback-on-error → invalidate shape by hand,
+ * since it isn't one of the 3 base CRUD mutations.
  */
 export const useTelegramStore = defineStore('telegram', () => {
-  const queryCache = useQueryCache()
-  const toast = useToast()
-
-  const targetsQuery = useQuery({
-    key: TELEGRAM_QUERY_KEY,
-    query: telegramApi.listTelegramTargets,
-  })
-
-  const targets = computed(() => targetsQuery.data.value ?? [])
-
-  const createMutation = useMutation({
-    mutation: (payload: CreateTelegramTargetPayload) => telegramApi.createTelegramTarget(payload),
-    onMutate(payload) {
-      queryCache.cancelQueries({ key: TELEGRAM_QUERY_KEY })
-      const previous = queryCache.getQueryData<TelegramTarget[]>(TELEGRAM_QUERY_KEY)
-      const optimistic = makeOptimisticTarget(payload)
-      queryCache.setQueryData<TelegramTarget[]>(
-        TELEGRAM_QUERY_KEY,
-        withOptimisticCreate(previous ?? [], optimistic),
-      )
-      return { previous, tempId: optimistic.id }
-    },
-    onSuccess(created, _payload, { tempId }) {
-      const current = queryCache.getQueryData<TelegramTarget[]>(TELEGRAM_QUERY_KEY) ?? []
-      queryCache.setQueryData<TelegramTarget[]>(
-        TELEGRAM_QUERY_KEY,
-        current.map((target) => (target.id === tempId ? created : target)),
-      )
-      toast.success('Telegram target added')
-    },
-    // No `toast.error` here: the open form's inline `formError` banner is
-    // the contextual surface for create/update failures. Toasting here too
-    // would show the same error twice.
-    onError(_err, _payload, context) {
-      if (context?.previous !== undefined) {
-        queryCache.setQueryData(TELEGRAM_QUERY_KEY, context.previous)
-      }
-    },
-    onSettled() {
-      queryCache.invalidateQueries({ key: TELEGRAM_QUERY_KEY })
-    },
-  })
-
-  const updateMutation = useMutation({
-    mutation: (vars: { id: string; payload: UpdateTelegramTargetPayload }) =>
-      telegramApi.updateTelegramTarget(vars.id, vars.payload),
-    onMutate(vars) {
-      queryCache.cancelQueries({ key: TELEGRAM_QUERY_KEY })
-      const previous = queryCache.getQueryData<TelegramTarget[]>(TELEGRAM_QUERY_KEY)
-      queryCache.setQueryData<TelegramTarget[]>(
-        TELEGRAM_QUERY_KEY,
-        withPatchedTarget(previous ?? [], vars.id, toTargetPatch(vars.payload)),
-      )
-      return { previous }
-    },
-    onSuccess(updated) {
-      const current = queryCache.getQueryData<TelegramTarget[]>(TELEGRAM_QUERY_KEY) ?? []
-      queryCache.setQueryData<TelegramTarget[]>(
-        TELEGRAM_QUERY_KEY,
-        withPatchedTarget(current, updated.id, updated),
-      )
-      toast.success('Telegram target saved')
-    },
-    // No `toast.error` here: the open form's inline `formError` banner is
-    // the contextual surface for create/update failures. Toasting here too
-    // would show the same error twice.
-    onError(_err, _vars, context) {
-      if (context?.previous !== undefined) {
-        queryCache.setQueryData(TELEGRAM_QUERY_KEY, context.previous)
-      }
-    },
-    onSettled() {
-      queryCache.invalidateQueries({ key: TELEGRAM_QUERY_KEY })
-    },
-  })
-
-  const removeMutation = useMutation({
-    mutation: (id: string) => telegramApi.deleteTelegramTarget(id),
-    onMutate(id) {
-      queryCache.cancelQueries({ key: TELEGRAM_QUERY_KEY })
-      const previous = queryCache.getQueryData<TelegramTarget[]>(TELEGRAM_QUERY_KEY)
-      queryCache.setQueryData<TelegramTarget[]>(TELEGRAM_QUERY_KEY, withoutTarget(previous ?? [], id))
-      return { previous }
-    },
-    onSuccess() {
-      toast.success('Telegram target deleted')
-    },
-    onError(err, _id, context) {
-      if (context?.previous !== undefined) {
-        queryCache.setQueryData(TELEGRAM_QUERY_KEY, context.previous)
-      }
-      toast.error(resolveErrorMessage(err, 'Failed to delete Telegram target'))
-    },
-    onSettled() {
-      queryCache.invalidateQueries({ key: TELEGRAM_QUERY_KEY })
+  const resource = createCrudResource<TelegramTarget, CreateTelegramTargetPayload, UpdateTelegramTargetPayload>({
+    queryKey: TELEGRAM_QUERY_KEY,
+    list: telegramApi.listTelegramTargets,
+    create: telegramApi.createTelegramTarget,
+    update: telegramApi.updateTelegramTarget,
+    remove: telegramApi.deleteTelegramTarget,
+    makeOptimistic: makeOptimisticTarget,
+    toPatch: toTargetPatch,
+    messages: {
+      createSuccess: 'Telegram target added',
+      updateSuccess: 'Telegram target saved',
+      removeSuccess: 'Telegram target deleted',
+      removeErrorFallback: 'Failed to delete Telegram target',
     },
   })
 
   const setDefaultMutation = useMutation({
     mutation: (id: string) => telegramApi.setDefaultTelegramTarget(id),
     onMutate(id) {
-      queryCache.cancelQueries({ key: TELEGRAM_QUERY_KEY })
-      const previous = queryCache.getQueryData<TelegramTarget[]>(TELEGRAM_QUERY_KEY)
-      queryCache.setQueryData<TelegramTarget[]>(
+      resource.queryCache.cancelQueries({ key: TELEGRAM_QUERY_KEY })
+      const previous = resource.queryCache.getQueryData<TelegramTarget[]>(TELEGRAM_QUERY_KEY)
+      resource.queryCache.setQueryData<TelegramTarget[]>(
         TELEGRAM_QUERY_KEY,
         withDefaultFlippedTo(previous ?? [], id),
       )
       return { previous }
     },
     onSuccess() {
-      toast.success('Set as default')
+      resource.toast.success('Set as default')
     },
     onError(err, _id, context) {
       if (context?.previous !== undefined) {
-        queryCache.setQueryData(TELEGRAM_QUERY_KEY, context.previous)
+        resource.queryCache.setQueryData(TELEGRAM_QUERY_KEY, context.previous)
       }
-      toast.error(resolveErrorMessage(err, 'Failed to set default Telegram target'))
+      resource.toast.error(resolveErrorMessage(err, 'Failed to set default Telegram target'))
     },
     onSettled() {
-      queryCache.invalidateQueries({ key: TELEGRAM_QUERY_KEY })
+      resource.queryCache.invalidateQueries({ key: TELEGRAM_QUERY_KEY })
     },
   })
 
@@ -216,23 +146,22 @@ export const useTelegramStore = defineStore('telegram', () => {
 
   return {
     // ['telegram'] query surface
-    targets,
-    targetsState: targetsQuery.state,
-    asyncStatus: targetsQuery.asyncStatus,
-    isLoading: targetsQuery.isLoading,
-    error: targetsQuery.error,
-    refetch: targetsQuery.refetch,
+    targets: resource.items,
+    targetsState: resource.state,
+    asyncStatus: resource.asyncStatus,
+    isLoading: resource.isLoading,
+    error: resource.error,
+    refetch: resource.refetch,
 
     // mutations — `mutateAsync` rethrows so callers keep their existing
     // try/catch flows on top of the store-level optimistic update +
     // rollback + toast handled above.
-    createTarget: createMutation.mutateAsync,
-    isCreating: createMutation.isLoading,
-    updateTarget: (id: string, payload: UpdateTelegramTargetPayload) =>
-      updateMutation.mutateAsync({ id, payload }),
-    isUpdating: updateMutation.isLoading,
-    removeTarget: removeMutation.mutateAsync,
-    isRemoving: removeMutation.isLoading,
+    createTarget: resource.create,
+    isCreating: resource.isCreating,
+    updateTarget: resource.update,
+    isUpdating: resource.isUpdating,
+    removeTarget: resource.remove,
+    isRemoving: resource.isRemoving,
     setDefaultTarget: setDefaultMutation.mutateAsync,
     isSettingDefault: setDefaultMutation.isLoading,
     testTarget,
