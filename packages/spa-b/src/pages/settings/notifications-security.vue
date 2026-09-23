@@ -2,12 +2,14 @@
 /**
  * Notifications & Security settings (`/settings/notifications-security`) —
  * one of the dedicated per-section settings pages from the IA restructure
- * (see src/pages/settings/index.vue). No real UI yet, so this renders the
- * shared "coming soon" stub; this page only owns the route shell (back
- * link, title).
+ * (see src/pages/settings/index.vue). Composes the two independent
+ * sub-modules owned by this page: notification rules and vault/security.
+ * This page only owns the route shell (back link, title) plus the divider
+ * between the two stacked sections.
  */
 import { Icon } from '@shared/ui/design-system'
-import SettingsSectionStub from '@shared/ui/design-system/organisms/SettingsSectionStub.vue'
+import { NotificationRulesSection } from '@modules/notifications'
+import { SecurityCard } from '@modules/vault'
 </script>
 
 <template>
@@ -19,11 +21,12 @@ import SettingsSectionStub from '@shared/ui/design-system/organisms/SettingsSect
       <Icon name="chevron-down" size="sm" class="rotate-90" />
       Settings
     </RouterLink>
-    <SettingsSectionStub
-      title="Notifications & Security"
-      description="Manage notification preferences and security settings. Coming soon."
-      icon="shield"
-    />
+
+    <NotificationRulesSection />
+
+    <hr class="border-line-subtle" />
+
+    <SecurityCard />
   </div>
 </template>
 
