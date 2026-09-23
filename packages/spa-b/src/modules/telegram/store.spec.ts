@@ -298,14 +298,15 @@ describe('useTelegramStore (@pinia/colada)', () => {
     expect(mockToastError).not.toHaveBeenCalled()
   })
 
-  it('testTarget delegates straight to the API and never throws for a rejecting target', async () => {
+  it('testTarget delegates to the API: resolves on success, rejects on delivery failure', async () => {
     mockedListTelegramTargets.mockResolvedValueOnce([])
     const { store } = mountStore()
     await flushPromises()
 
-    vi.mocked(telegramApi.testTelegramTarget).mockResolvedValueOnce({ ok: false, error: 'Chat not found' })
-    const result = await store.testTarget('t1')
+    vi.mocked(telegramApi.testTelegramTarget).mockResolvedValueOnce(undefined)
+    await expect(store.testTarget('t1')).resolves.toBeUndefined()
 
-    expect(result).toEqual({ ok: false, error: 'Chat not found' })
+    vi.mocked(telegramApi.testTelegramTarget).mockRejectedValueOnce(new Error('Chat not found'))
+    await expect(store.testTarget('t1')).rejects.toThrow('Chat not found')
   })
 })

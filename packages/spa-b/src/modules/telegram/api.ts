@@ -2,7 +2,6 @@ import { request } from '@shared/api/client'
 import type {
   CreateTelegramTargetPayload,
   TelegramTarget,
-  TestTelegramTargetResult,
   UpdateTelegramTargetPayload,
 } from './types'
 
@@ -25,9 +24,13 @@ export function setDefaultTelegramTarget(id: string): Promise<void> {
   return request<void>('POST', `/telegram/${id}/default`)
 }
 
-/** Never throws for a reachable-but-rejecting target — the backend always resolves `{ ok, error? }`. */
-export function testTelegramTarget(id: string): Promise<TestTelegramTargetResult> {
-  return request<TestTelegramTargetResult>('POST', `/telegram/${id}/test`)
+/**
+ * Sends a test message to the target. Resolves on success (the backend returns
+ * 200 {status:'sent'}); throws ApiError on failure (404 unknown target, 502
+ * delivery failure).
+ */
+export function testTelegramTarget(id: string): Promise<void> {
+  return request<void>('POST', `/telegram/${id}/test`)
 }
 
 export function deleteTelegramTarget(id: string): Promise<void> {

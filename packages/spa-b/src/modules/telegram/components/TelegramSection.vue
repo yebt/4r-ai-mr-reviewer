@@ -112,8 +112,10 @@ const testResults = ref<Record<string, TestTelegramTargetResult>>({})
 async function handleTest(target: TelegramTarget) {
   testingId.value = target.id
   try {
-    const result = await store.testTarget(target.id)
-    testResults.value = { ...testResults.value, [target.id]: result }
+    // A resolved request means the test message was delivered: the backend
+    // returns 200 {status:'sent'} on success and throws (404/502) on failure.
+    await store.testTarget(target.id)
+    testResults.value = { ...testResults.value, [target.id]: { ok: true } }
   } catch (err) {
     testResults.value = {
       ...testResults.value,

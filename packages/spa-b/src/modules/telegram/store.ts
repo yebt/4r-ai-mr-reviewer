@@ -7,7 +7,6 @@ import * as telegramApi from './api'
 import type {
   CreateTelegramTargetPayload,
   TelegramTarget,
-  TestTelegramTargetResult,
   UpdateTelegramTargetPayload,
 } from './types'
 
@@ -211,7 +210,7 @@ export const useTelegramStore = defineStore('telegram', () => {
   })
 
   /** Never throws for a reachable-but-rejecting target — resolves `{ ok, error? }`. */
-  function testTarget(id: string): Promise<TestTelegramTargetResult> {
+  function testTarget(id: string): Promise<void> {
     return telegramApi.testTelegramTarget(id)
   }
 
