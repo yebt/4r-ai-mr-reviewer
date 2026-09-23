@@ -1,5 +1,5 @@
 import { request } from '@shared/api/client'
-import type { Review } from './types'
+import type { FindingHumanized, Humanizations, Review, SummaryHumanized } from './types'
 
 /**
  * There is no global reviews endpoint — reviews are always scoped to a
@@ -41,8 +41,8 @@ export function deleteReview(id: string): Promise<void> {
  * Selection payload for `POST /reviews/{id}/publish`. All fields optional —
  * `all: true` publishes every not-yet-published finding plus the summary (if
  * not yet published); otherwise `indices`/`includeSummary` select what to
- * post. `summaryOverride`/`findingOverrides` are accepted by the backend but
- * unused by this slice (no text-override UI yet).
+ * post. `summaryOverride`/`findingOverrides` (slice 2) replace the generated
+ * body wholesale with humanized text — see `modules/reviews/humanize.ts`.
  */
 export interface PublishSelection {
   all?: boolean
@@ -55,4 +55,23 @@ export interface PublishSelection {
 /** Posts findings/summary to the live GitLab MR. The 200 body is `{status:"published"}`; callers only need the outcome. */
 export function publishReview(id: string, selection: PublishSelection): Promise<void> {
   return request<{ status: string }>('POST', `/reviews/${id}/publish`, selection).then(() => undefined)
+}
+
+/**
+ * Runs one humanize pass over a single finding, in `profileId`'s voice. Each
+ * run is persisted server-side (see `getHumanizations`), so calling this
+ * again for the same finding produces a new tab, not a replacement.
+ */
+export function humanizeFinding(id: string, profileId: string, index: number): Promise<FindingHumanized> {
+  return request<FindingHumanized>('POST', `/reviews/${id}/humanize`, { profileId, target: 'finding', index })
+}
+
+/** Runs one humanize pass over the review summary, in `profileId`'s voice. */
+export function humanizeSummary(id: string, profileId: string): Promise<SummaryHumanized> {
+  return request<SummaryHumanized>('POST', `/reviews/${id}/humanize`, { profileId, target: 'summary' })
+}
+
+/** Every past humanize run for a review, in run order (= tab order). */
+export function getHumanizations(id: string): Promise<Humanizations> {
+  return request<Humanizations>('GET', `/reviews/${id}/humanizations`)
 }

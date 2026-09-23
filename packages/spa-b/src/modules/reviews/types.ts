@@ -63,3 +63,28 @@ export interface Review {
 
 /** A `Review` with its owning repo's name attached — the list's fan-out shape. */
 export type ReviewWithRepo = Review & { repoName: string }
+
+/**
+ * Humanize (slice 2) — a single profile-voiced rewrite of a finding's
+ * issue/why/fix, per `POST /reviews/{id}/humanize` with `target:"finding"`.
+ */
+export interface FindingHumanized {
+  issue: string
+  why: string
+  fix: string
+}
+
+/** A single profile-voiced rewrite of the review summary. */
+export interface SummaryHumanized {
+  summary: string
+}
+
+/**
+ * `GET /reviews/{id}/humanizations` — every past humanize run for a review,
+ * in run order (= tab order). `findings` is keyed by the finding's `index`
+ * as a string (JSON object keys are always strings).
+ */
+export interface Humanizations {
+  summary: SummaryHumanized[]
+  findings: Record<string, FindingHumanized[]>
+}

@@ -3,8 +3,8 @@
  * Review detail page (`/reviews/:id`, file-based route: `reviews/[id].vue`,
  * sibling of `reviews/index.vue` which is the list). Read-only: renders the
  * full `Review` from `GET /reviews/{id}` — summary, findings grouped by
- * dimension, and a collapsible reasoning trail, plus publish-to-MR actions
- * (see below). Humanize is deferred to a later milestone.
+ * dimension, and a collapsible reasoning trail, plus publish-to-MR and
+ * humanize actions (see below).
  *
  * Data comes from `modules/reviews/detail.ts`'s `useReviewDetail`
  * composable, which polls every 2.5s while the review is non-terminal
@@ -27,6 +27,16 @@
  * (`pendingPublishTarget`) tracks which control is loading; on success the
  * detail composable's `refetch()` re-fetches the review so `published` /
  * `summaryPublished` flip reactively (never hand-mutated locally).
+ *
+ * Humanize (slice 2): also gated on `status === 'done'`, `useReviewHumanize`
+ * owns profile selection + past/new humanize runs + active-tab state; the
+ * summary card and each finding card render its `activeSummaryText`/
+ * `activeFindingParts` (Original or a humanized tab) instead of the raw
+ * `Review`/`Finding` text, with a `HumanizeTabs` strip once runs exist. The
+ * three publish handlers below merge in the composable's override builders
+ * (`summaryOverride`/`findingOverride`/`findingOverridesFor`) so a non-
+ * Original active tab replaces the generated MR comment body wholesale —
+ * see `modules/reviews/humanize.ts`'s doc comment for the exact contract.
  */
 import { computed, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -35,16 +45,22 @@ import {
   Badge,
   Button,
   ConfirmDialog,
+  Field,
+  Select,
   Skeleton,
   Text,
 } from '@shared/ui/design-system'
+import type { SelectItemOption } from '@shared/ui/design-system'
 import { useReposStore } from '@modules/repos/store'
 import { useReviewDetail } from '@modules/reviews/detail'
 import { FINDING_DIMENSIONS, FINDING_SEVERITY_BADGE, groupFindingsByDimension } from '@modules/reviews/findings'
 import { RECOMMENDATION_LABELS } from '@modules/reviews/labels'
 import { hasUnpublished } from '@modules/reviews/publish'
 import { useReviewsStore } from '@modules/reviews/store'
+import { useReviewHumanize } from '@modules/reviews/useReviewHumanize'
+import type { Finding } from '@modules/reviews/types'
 import ReviewStatusChip from '@modules/reviews/components/ReviewStatusChip.vue'
+import HumanizeTabs from '@modules/reviews/components/HumanizeTabs.vue'
 
 const route = useRoute('/reviews/[id]')
 const router = useRouter()
@@ -62,6 +78,33 @@ const repoName = computed(() => {
 })
 
 const groupedFindings = computed(() => (review.value ? groupFindingsByDimension(review.value.findings) : null))
+
+const {
+  readyProfiles,
+  hasReadyProfile,
+  profileId,
+  summaryTabs,
+  findingTabs,
+  summaryTab,
+  setSummaryTab,
+  findingTab,
+  setFindingTab,
+  activeSummaryText,
+  activeFindingParts,
+  humanizeSummary,
+  humanizeFinding,
+  humanizeAll,
+  isHumanizingSummary,
+  isHumanizingFinding,
+  isHumanizingAll,
+  summaryOverride,
+  findingOverride,
+  findingOverridesFor,
+} = useReviewHumanize(reviewId, review)
+
+const profileSelectItems = computed<SelectItemOption[]>(() =>
+  readyProfiles.value.map((profile) => ({ label: profile.name, value: profile.id })),
+)
 
 const reviewsStore = useReviewsStore()
 type PendingAction = 'retry' | 'archive' | 'unarchive' | 'approve' | 'discard'
@@ -125,16 +168,26 @@ async function runPublish(target: string, selection: Parameters<typeof reviewsSt
   }
 }
 
-function handlePublishFinding(index: number) {
-  void runPublish(`finding:${index}`, { indices: [index], includeSummary: false })
+function handlePublishFinding(finding: Finding) {
+  const override = findingOverride(finding)
+  void runPublish(`finding:${finding.index}`, {
+    indices: [finding.index],
+    includeSummary: false,
+    findingOverrides: override ? [override] : undefined,
+  })
 }
 
 function handlePublishSummary() {
-  void runPublish('summary', { indices: [], includeSummary: true })
+  void runPublish('summary', { indices: [], includeSummary: true, summaryOverride: summaryOverride() })
 }
 
 function handlePublishAll() {
-  void runPublish('all', { all: true })
+  if (!review.value) return
+  void runPublish('all', {
+    all: true,
+    findingOverrides: findingOverridesFor(review.value.findings),
+    summaryOverride: summaryOverride(),
+  })
 }
 </script>
 
@@ -234,25 +287,66 @@ function handlePublishAll() {
         {{ review.error }}
       </Alert>
 
+      <div
+        v-if="review.status === 'done'"
+        class="flex flex-wrap items-center gap-3 rounded-lg border border-line-subtle bg-bg-panel p-3"
+      >
+        <Field v-if="hasReadyProfile" label="Voice profile" class="w-56" v-slot="{ id }">
+          <Select :id="id" v-model="profileId" :items="profileSelectItems" />
+        </Field>
+        <Text v-else muted size="sm">
+          <RouterLink to="/settings" class="font-medium underline underline-offset-2">Add a ready profile</RouterLink>
+          to humanize findings and the summary.
+        </Text>
+        <Button
+          variant="outline"
+          size="sm"
+          :disabled="!hasReadyProfile"
+          :loading="isHumanizingAll"
+          @click="humanizeAll()"
+        >
+          Humanize all
+        </Button>
+      </div>
+
       <div v-if="review.summary" class="rounded-lg border border-line-subtle bg-bg-panel p-4">
         <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
           <Text as="h2" size="lg" class="font-semibold">Summary</Text>
-          <Badge v-if="review.status === 'done' && review.summaryPublished" status="success">Published</Badge>
-          <ConfirmDialog
-            v-else-if="review.status === 'done'"
-            title="Publish the summary to the MR?"
-            description="Posts a comment to the live merge request. This can't be undone."
-            confirm-label="Publish"
-            :danger="false"
-            :pending="pendingPublishTarget === 'summary'"
-            @confirm="handlePublishSummary"
-          >
-            <template #trigger>
-              <Button variant="outline" size="sm">Publish</Button>
-            </template>
-          </ConfirmDialog>
+          <div class="flex flex-wrap items-center gap-2">
+            <Button
+              v-if="review.status === 'done'"
+              variant="ghost"
+              size="sm"
+              :disabled="!hasReadyProfile"
+              :loading="isHumanizingSummary"
+              @click="humanizeSummary()"
+            >
+              Humanize
+            </Button>
+            <Badge v-if="review.status === 'done' && review.summaryPublished" status="success">Published</Badge>
+            <ConfirmDialog
+              v-else-if="review.status === 'done'"
+              title="Publish the summary to the MR?"
+              description="Posts a comment to the live merge request. This can't be undone."
+              confirm-label="Publish"
+              :danger="false"
+              :pending="pendingPublishTarget === 'summary'"
+              @confirm="handlePublishSummary"
+            >
+              <template #trigger>
+                <Button variant="outline" size="sm">Publish</Button>
+              </template>
+            </ConfirmDialog>
+          </div>
         </div>
-        <Text class="whitespace-pre-wrap">{{ review.summary }}</Text>
+        <HumanizeTabs
+          v-if="review.status === 'done' && summaryTabs > 0"
+          :tab-count="summaryTabs"
+          :active="summaryTab"
+          class="mb-2"
+          @select="setSummaryTab"
+        />
+        <Text class="whitespace-pre-wrap">{{ review.status === 'done' ? activeSummaryText(review) : review.summary }}</Text>
       </div>
 
       <div class="flex flex-col gap-4">
@@ -276,24 +370,46 @@ function handlePublishAll() {
                       <Badge v-if="finding.blocking" status="danger">Blocking</Badge>
                       <Text mono size="sm" muted>{{ finding.file }}:{{ finding.line }}</Text>
                     </div>
-                    <Badge v-if="review.status === 'done' && finding.published" status="success">Published</Badge>
-                    <ConfirmDialog
-                      v-else-if="review.status === 'done'"
-                      title="Publish this finding to the MR?"
-                      description="Posts a comment to the live merge request. This can't be undone."
-                      confirm-label="Publish"
-                      :danger="false"
-                      :pending="pendingPublishTarget === `finding:${finding.index}`"
-                      @confirm="handlePublishFinding(finding.index)"
-                    >
-                      <template #trigger>
-                        <Button variant="outline" size="sm">Publish</Button>
-                      </template>
-                    </ConfirmDialog>
+                    <div class="flex flex-wrap items-center gap-2">
+                      <Button
+                        v-if="review.status === 'done'"
+                        variant="ghost"
+                        size="sm"
+                        :disabled="!hasReadyProfile"
+                        :loading="isHumanizingFinding(finding.index)"
+                        @click="humanizeFinding(finding.index)"
+                      >
+                        Humanize
+                      </Button>
+                      <Badge v-if="review.status === 'done' && finding.published" status="success">Published</Badge>
+                      <ConfirmDialog
+                        v-else-if="review.status === 'done'"
+                        title="Publish this finding to the MR?"
+                        description="Posts a comment to the live merge request. This can't be undone."
+                        confirm-label="Publish"
+                        :danger="false"
+                        :pending="pendingPublishTarget === `finding:${finding.index}`"
+                        @confirm="handlePublishFinding(finding)"
+                      >
+                        <template #trigger>
+                          <Button variant="outline" size="sm">Publish</Button>
+                        </template>
+                      </ConfirmDialog>
+                    </div>
                   </div>
-                  <Text class="font-medium">{{ finding.issue }}</Text>
-                  <Text muted size="sm">{{ finding.why }}</Text>
-                  <Text muted size="sm">Fix: {{ finding.fix }}</Text>
+                  <HumanizeTabs
+                    v-if="review.status === 'done' && findingTabs(finding.index) > 0"
+                    :tab-count="findingTabs(finding.index)"
+                    :active="findingTab(finding.index)"
+                    @select="(tab) => setFindingTab(finding.index, tab)"
+                  />
+                  <Text class="font-medium">{{
+                    review.status === 'done' ? activeFindingParts(finding).issue : finding.issue
+                  }}</Text>
+                  <Text muted size="sm">{{ review.status === 'done' ? activeFindingParts(finding).why : finding.why }}</Text>
+                  <Text muted size="sm">
+                    Fix: {{ review.status === 'done' ? activeFindingParts(finding).fix : finding.fix }}
+                  </Text>
                 </li>
               </ul>
             </div>

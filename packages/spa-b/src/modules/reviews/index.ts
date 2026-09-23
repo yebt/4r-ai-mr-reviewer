@@ -3,6 +3,8 @@ export { default as ReviewStatusChip } from './components/ReviewStatusChip.vue'
 
 export type {
   Finding,
+  FindingHumanized,
+  Humanizations,
   Reasoning,
   Review,
   ReviewContextMode,
@@ -11,6 +13,7 @@ export type {
   ReviewRecommendation,
   ReviewStatus,
   ReviewWithRepo,
+  SummaryHumanized,
 } from './types'
 
 export { FINDING_DIMENSIONS, FINDING_SEVERITY_BADGE, groupFindingsByDimension } from './findings'
@@ -19,3 +22,5 @@ export { isReviewActive, useReviewDetail } from './detail'
 export { getReview } from './api'
 export type { PublishSelection } from './api'
 export { hasUnpublished, unpublishedFindingIndices } from './publish'
+export { buildFindingBody, DIMENSION_LABELS, ORIGINAL } from './humanize'
+export { useReviewHumanize } from './useReviewHumanize'
