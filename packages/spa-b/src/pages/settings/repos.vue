@@ -2,11 +2,11 @@
 /**
  * Repos settings (`/settings/repos`) — one of the dedicated per-section
  * settings pages from the IA restructure (see src/pages/settings/index.vue).
- * No real UI yet, so this renders the shared "coming soon" stub; this page
- * only owns the route shell (back link, title).
+ * Renders the Repos module's own section component; this page only owns the
+ * route shell (back link, heading, title).
  */
 import { Icon } from '@shared/ui/design-system'
-import SettingsSectionStub from '@shared/ui/design-system/organisms/SettingsSectionStub.vue'
+import { RepositoriesSection } from '@modules/repos'
 </script>
 
 <template>
@@ -18,11 +18,7 @@ import SettingsSectionStub from '@shared/ui/design-system/organisms/SettingsSect
       <Icon name="chevron-down" size="sm" class="rotate-90" />
       Settings
     </RouterLink>
-    <SettingsSectionStub
-      title="Repos"
-      description="Manage connected repositories. Coming soon."
-      icon="git-branch"
-    />
+    <RepositoriesSection />
   </div>
 </template>
 
