@@ -9,6 +9,15 @@
  * Positioned bottom-right on desktop, bottom-center above the mobile
  * bottom nav (+ safe-area) on mobile — a CSS reflow (Tailwind `md:`), not a
  * separate render branch, since only the viewport's position changes.
+ *
+ * Card prominence is status-driven (same `bg-{status}-bg` /
+ * `border-{status}-solid` vocabulary as the Alert molecule) plus a left
+ * accent bar, so a toast reads as relevant at a glance rather than a
+ * neutral panel with only a tinted icon. Entrance is an intentional
+ * slide/fade (a local `toast-card-in` keyframe); exit stays a passive fade
+ * only. Both durations resolve `var(--duration-base)`, which tokens.css
+ * already zeroes under `prefers-reduced-motion: reduce` — no separate
+ * motion-reduce styling needed here.
  */
 import { ToastClose, ToastDescription, ToastProvider, ToastRoot, ToastTitle, ToastViewport } from 'reka-ui'
 import { useToast, type ToastKind } from '@shared/composables/useToast'
@@ -34,6 +43,20 @@ const kindIconClassMap: Record<ToastKind, string> = {
   info: 'text-info-text',
 }
 
+// `error` maps onto the shared `danger` status token — the rest of the
+// vocabulary (success/info) already lines up with ToastKind 1:1.
+const kindCardClassMap: Record<ToastKind, string> = {
+  success: 'border-success-solid/30 bg-success-bg',
+  error: 'border-danger-solid/30 bg-danger-bg',
+  info: 'border-info-solid/30 bg-info-bg',
+}
+
+const kindBarClassMap: Record<ToastKind, string> = {
+  success: 'bg-success-solid',
+  error: 'bg-danger-solid',
+  info: 'bg-info-solid',
+}
+
 function handleOpenChange(id: string, open: boolean) {
   // Reka flips `open` to false on Escape, the close button, or a swipe
   // dismiss — any of those should remove the toast from the queue too.
@@ -47,9 +70,11 @@ function handleOpenChange(id: string, open: boolean) {
       v-for="toast in toasts"
       :key="toast.id"
       :type="toast.kind === 'error' ? 'foreground' : 'background'"
-      class="pointer-events-auto flex w-full items-start gap-2.5 rounded-lg border border-line bg-bg-panel-raised p-3 text-sm shadow-token-lg transition-[opacity,transform] duration-[var(--duration-base)] ease-[var(--ease-standard)] data-[state=closed]:opacity-0 data-[state=closed]:translate-y-1 data-[swipe=move]:transition-none"
+      :class="kindCardClassMap[toast.kind]"
+      class="pointer-events-auto relative flex w-full items-start gap-2.5 overflow-hidden rounded-lg border p-3 pl-4 text-sm shadow-token-lg transition-[opacity] duration-[var(--duration-base)] ease-[var(--ease-standard)] data-[state=closed]:opacity-0 data-[state=open]:animate-[toast-card-in_var(--duration-base)_var(--ease-standard)] data-[swipe=move]:transition-none"
       @update:open="(open) => handleOpenChange(toast.id, open)"
     >
+      <span aria-hidden="true" :class="kindBarClassMap[toast.kind]" class="absolute inset-y-0 left-0 w-1" />
       <Icon
         :name="kindIconMap[toast.kind]"
         size="sm"
@@ -72,3 +97,19 @@ function handleOpenChange(id: string, open: boolean) {
     />
   </ToastProvider>
 </template>
+
+<style>
+/* Deliberately unscoped: Vue renames keyframes declared inside `scoped`
+   styles, which would break the `animate-[toast-card-in_...]` arbitrary
+   Tailwind utility above (it references this name literally). */
+@keyframes toast-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+</style>

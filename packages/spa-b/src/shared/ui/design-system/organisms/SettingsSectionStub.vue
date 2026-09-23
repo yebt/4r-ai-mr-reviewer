@@ -1,10 +1,11 @@
 <script setup lang="ts">
 /**
  * "Coming soon" placeholder panel for a settings section that hasn't been
- * built yet. Used by every stub section in the unified Settings view
- * (src/pages/settings.vue) until each one's real UI lands in a later
- * milestone. See DESIGN.md's atomic-design layering — this is an organism:
- * a distinct, self-contained section of a screen, no route awareness.
+ * built yet. Used by the dedicated settings/repos.vue and
+ * settings/notifications-security.vue pages (src/pages/settings/*.vue)
+ * until each one's real UI lands in a later milestone. See DESIGN.md's
+ * atomic-design layering — this is an organism: a distinct, self-contained
+ * section of a screen, no route awareness.
  */
 import Heading from '../atoms/Heading.vue'
 import Text from '../atoms/Text.vue'

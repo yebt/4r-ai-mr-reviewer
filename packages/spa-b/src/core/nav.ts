@@ -29,6 +29,14 @@ export interface NavItem {
    * drawer only — kept off the bottom tab bar per the 3–5 tab guidance.
    */
   section: NavSection
+  /**
+   * Reachable only via the command palette and the mobile "More" drawer —
+   * kept out of the persistent desktop sidebar's flat list. Used by the
+   * settings sub-pages (src/pages/settings/*.vue), which already have a
+   * dedicated entry point (the Settings menu, /settings) and would just be
+   * redundant clutter if also listed inline in the sidebar.
+   */
+  deepLinkOnly?: boolean
 }
 
 export const navItems: NavItem[] = [
@@ -36,10 +44,29 @@ export const navItems: NavItem[] = [
   { label: 'Reviews', icon: 'git-pull-request', to: '/reviews', section: 'primary' },
   { label: 'Runs', icon: 'activity', to: '/runs', section: 'primary' },
   { label: 'Settings', icon: 'settings', to: '/settings', section: 'secondary' },
+  // The dedicated settings sub-pages (src/pages/settings/*.vue) — listed
+  // here too so they're deep-linkable from the command palette and the
+  // mobile "More" drawer, not just from the Settings menu itself.
+  { label: 'Providers', icon: 'cable', to: '/settings/providers', section: 'secondary', deepLinkOnly: true },
+  { label: 'Accounts', icon: 'user', to: '/settings/accounts', section: 'secondary', deepLinkOnly: true },
+  { label: 'Telegram', icon: 'send', to: '/settings/telegram', section: 'secondary', deepLinkOnly: true },
+  { label: 'Profiles', icon: 'users', to: '/settings/profiles', section: 'secondary', deepLinkOnly: true },
+  { label: 'Repos', icon: 'git-branch', to: '/settings/repos', section: 'secondary', deepLinkOnly: true },
+  {
+    label: 'Notifications & Security',
+    icon: 'shield',
+    to: '/settings/notifications-security',
+    section: 'secondary',
+    deepLinkOnly: true,
+  },
 ]
 
 export const primaryNavItems: NavItem[] = navItems.filter((item) => item.section === 'primary')
 export const secondaryNavItems: NavItem[] = navItems.filter((item) => item.section === 'secondary')
+/** Every item the persistent desktop sidebar renders inline — primary
+ * destinations plus top-level secondary entry points, excluding
+ * `deepLinkOnly` items (see AppSidebar.vue). */
+export const sidebarNavItems: NavItem[] = navItems.filter((item) => !item.deepLinkOnly)
 
 /**
  * Active-state helper shared by every nav surface: exact match for the root

@@ -122,7 +122,11 @@ watch(isOpen, async (open) => {
 
           <span class="sr-only" role="status" aria-live="polite">{{ resultCount }} results</span>
 
-          <ComboboxContent force-mount class="min-h-0 flex-1 overflow-y-auto p-2">
+          <ComboboxContent
+            force-mount
+            class="min-h-0 flex-1 overflow-y-auto p-2"
+            @escape-key-down="handleClose"
+          >
             <ComboboxViewport class="flex flex-col gap-3">
               <p v-if="resultCount === 0" class="px-2 py-6 text-center text-sm text-text-muted">
                 No results for “{{ query }}”

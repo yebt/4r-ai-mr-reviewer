@@ -8,6 +8,12 @@
  * (a real JS branch) rather than `hidden md:flex`, so only the active
  * tree is ever mounted — matching the playbook's "two actual render
  * branches, not just reflow" guidance for structural nav changes.
+ *
+ * AppShell owns the desktop layout, so it's the single source of truth for
+ * the sidebar's rendered width: it derives `--sidebar-w` from the shared
+ * useSidebar() collapse state and exposes it as a CSS var on the desktop
+ * wrapper; AppSidebar.vue only ever consumes `var(--sidebar-w)`, never
+ * duplicates the width literals.
  */
 import { computed } from 'vue'
 import { useMediaQuery } from '@vueuse/core'
@@ -15,6 +21,7 @@ import { useRoute } from 'vue-router'
 import { navItems } from '@core/nav'
 import { useCommandPalette } from '@shared/composables/useCommandPalette'
 import { useColorScheme } from '@shared/composables/useColorScheme'
+import { useSidebar } from '@shared/composables/useSidebar'
 import AppSidebar from '../organisms/AppSidebar.vue'
 import AppBottomNav from '../organisms/AppBottomNav.vue'
 import AppHeader from '../organisms/AppHeader.vue'
@@ -23,8 +30,10 @@ import Icon from '../atoms/Icon.vue'
 const route = useRoute()
 const { open: openPalette } = useCommandPalette()
 const { colorMode } = useColorScheme()
+const { collapsed: sidebarCollapsed } = useSidebar()
 
 const themeToggleIcon = computed(() => (colorMode.value === 'dark' ? 'sun' : 'moon'))
+const sidebarWidthStyle = computed(() => ({ '--sidebar-w': sidebarCollapsed.value ? '3.5rem' : '15rem' }))
 
 function toggleTheme() {
   colorMode.value = colorMode.value === 'dark' ? 'light' : 'dark'
@@ -43,7 +52,7 @@ const pageTitle = computed(() => {
 <template>
   <div class="min-h-dvh bg-bg-app text-text">
     <!-- Desktop: persistent sidebar + main column -->
-    <div v-if="isDesktop" class="flex min-h-dvh">
+    <div v-if="isDesktop" class="flex min-h-dvh" :style="sidebarWidthStyle">
       <AppSidebar />
       <div class="flex min-w-0 flex-1 flex-col">
         <AppHeader :title="pageTitle">

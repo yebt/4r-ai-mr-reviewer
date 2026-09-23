@@ -66,9 +66,51 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
-    '/settings': RouteRecordInfo<
+    '/settings/': RouteRecordInfo<
+      '/settings/',
       '/settings',
-      '/settings',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/accounts': RouteRecordInfo<
+      '/settings/accounts',
+      '/settings/accounts',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/notifications-security': RouteRecordInfo<
+      '/settings/notifications-security',
+      '/settings/notifications-security',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/profiles': RouteRecordInfo<
+      '/settings/profiles',
+      '/settings/profiles',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/providers': RouteRecordInfo<
+      '/settings/providers',
+      '/settings/providers',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/repos': RouteRecordInfo<
+      '/settings/repos',
+      '/settings/repos',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/telegram': RouteRecordInfo<
+      '/settings/telegram',
+      '/settings/telegram',
       Record<never, never>,
       Record<never, never>,
       | never
@@ -126,9 +168,57 @@ declare module 'vue-router/auto-routes' {
       pathParamNames:
         | never
     }
-    'src/pages/settings.vue': {
+    'src/pages/settings/index.vue': {
       routes:
-        | '/settings'
+        | '/settings/'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/accounts.vue': {
+      routes:
+        | '/settings/accounts'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/notifications-security.vue': {
+      routes:
+        | '/settings/notifications-security'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/profiles.vue': {
+      routes:
+        | '/settings/profiles'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/providers.vue': {
+      routes:
+        | '/settings/providers'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/repos.vue': {
+      routes:
+        | '/settings/repos'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/telegram.vue': {
+      routes:
+        | '/settings/telegram'
       views:
         | never
       pathParamNames:

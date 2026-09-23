@@ -15,3 +15,7 @@ import { Heading, Text } from '@shared/ui/design-system'
     <Text muted>The reviews list and detail view are coming soon.</Text>
   </div>
 </template>
+
+<route lang="json">
+{ "meta": { "title": "Reviews" } }
+</route>

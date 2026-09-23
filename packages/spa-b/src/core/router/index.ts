@@ -4,6 +4,7 @@ import { routes, handleHotUpdate } from 'vue-router/auto-routes'
 import { onUnauthorized } from '@shared/api/client'
 import { useAuthStore } from '@modules/auth/store'
 import LoginPage from '@modules/auth/pages/LoginPage.vue'
+import { formatDocumentTitle } from './documentTitle'
 
 NProgress.configure({ showSpinner: false })
 
@@ -66,6 +67,10 @@ router.beforeEach(async (to) => {
 
 router.afterEach(() => {
   NProgress.done()
+})
+
+router.afterEach((to) => {
+  document.title = formatDocumentTitle(to.meta.title)
 })
 
 router.onError(() => {
