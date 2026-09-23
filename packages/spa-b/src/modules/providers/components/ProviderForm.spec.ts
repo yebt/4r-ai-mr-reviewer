@@ -79,6 +79,14 @@ describe('ProviderForm', () => {
   })
 
   describe('Base URL validation', () => {
+    it('renders a required Base URL field for openai-compat (the default kind)', () => {
+      const wrapper = mount(ProviderForm)
+
+      const label = wrapper.findAll('label').find((candidate) => candidate.text().trim().startsWith('Base URL'))
+      expect(label).toBeDefined()
+      expect(label!.text()).toContain('*')
+    })
+
     it('blocks submit with a required-field error when openai-compat has a blank Base URL', async () => {
       const wrapper = mount(ProviderForm)
 
@@ -93,12 +101,22 @@ describe('ProviderForm', () => {
       expect(createProviderMock).not.toHaveBeenCalled()
     })
 
+    it('hides the Base URL field entirely for openrouter (fixed endpoint, empty baseUrl stored)', async () => {
+      const wrapper = mount(ProviderForm)
+
+      await setSelectKind(wrapper, 'openrouter')
+
+      const label = wrapper.findAll('label').find((candidate) => candidate.text().trim().startsWith('Base URL'))
+      expect(label).toBeUndefined()
+    })
+
     it('submits fine with a blank Base URL for openrouter (backend uses its default endpoint)', async () => {
       const wrapper = mount(ProviderForm)
 
       await setSelectKind(wrapper, 'openrouter')
       await fieldControl(wrapper, 'Name').setValue('My OpenRouter provider')
-      // Base URL intentionally left blank.
+      // Base URL field is hidden for openrouter; form.baseUrl stays at its
+      // initial empty-string value.
 
       // Add a model so the Model select has something to pick, then select it.
       const search = wrapper.get('input[placeholder="Search OpenRouter models…"]')

@@ -6,10 +6,13 @@
  * local state, rather than trying to reset a shared instance in place.
  *
  * Field order and requiredness are kind-dependent:
- * - Base URL is required (with the `*`) only for `openai-compat`. The other
- *   three kinds have fixed default endpoints and the backend accepts an
- *   empty `baseUrl` for them, so the field stays visible (a power user can
- *   still override it) but optional, with a muted hint.
+ * - Base URL is required (with the `*`) only for `openai-compat`. `anthropic`
+ *   and `gemini` have fixed default endpoints but can still proxy through a
+ *   custom one, so the field stays visible (a power user can override it) but
+ *   optional, with a muted hint. `openrouter` has a single fixed endpoint —
+ *   the backend always stores an empty `baseUrl` for it — so the field is
+ *   hidden entirely rather than shown as a confusing always-empty optional
+ *   input.
  * - For `kind === 'openrouter'`, the "Model" (default) field moves after the
  *   Models section and becomes a `<select>` populated from `form.models`
  *   (the models the user has actually added), since the default model must
@@ -223,6 +226,7 @@ async function handleSubmit() {
     </Field>
 
     <Field
+      v-if="form.kind !== 'openrouter'"
       label="Base URL"
       :required="isBaseUrlRequired"
       :error="errors.baseUrl"

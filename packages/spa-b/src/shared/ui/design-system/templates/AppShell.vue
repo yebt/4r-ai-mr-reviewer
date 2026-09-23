@@ -17,17 +17,13 @@
  */
 import { computed } from 'vue'
 import { useMediaQuery } from '@vueuse/core'
-import { useRoute } from 'vue-router'
-import { navItems } from '@core/nav'
 import { useCommandPalette } from '@shared/composables/useCommandPalette'
 import { useColorScheme } from '@shared/composables/useColorScheme'
 import { useSidebar } from '@shared/composables/useSidebar'
 import AppSidebar from '../organisms/AppSidebar.vue'
 import AppBottomNav from '../organisms/AppBottomNav.vue'
-import AppHeader from '../organisms/AppHeader.vue'
 import Icon from '../atoms/Icon.vue'
 
-const route = useRoute()
 const { open: openPalette } = useCommandPalette()
 const { colorMode } = useColorScheme()
 const { collapsed: sidebarCollapsed } = useSidebar()
@@ -42,11 +38,6 @@ function toggleTheme() {
 // Single primary breakpoint (768px) is enough for this app's two-line
 // strategy — see docs/ui-patterns.md #8.
 const isDesktop = useMediaQuery('(min-width: 768px)')
-
-const pageTitle = computed(() => {
-  const match = navItems.find((item) => item.to === route.path)
-  return match?.label ?? route.meta.title ?? 'Overview'
-})
 </script>
 
 <template>
@@ -55,11 +46,6 @@ const pageTitle = computed(() => {
     <div v-if="isDesktop" class="flex min-h-dvh" :style="sidebarWidthStyle">
       <AppSidebar />
       <div class="flex min-w-0 flex-1 flex-col">
-        <AppHeader :title="pageTitle">
-          <template #actions>
-            <slot name="header-actions" />
-          </template>
-        </AppHeader>
         <main class="flex-1 overflow-y-auto px-6 py-6">
           <slot />
         </main>

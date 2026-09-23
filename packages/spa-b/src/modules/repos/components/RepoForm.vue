@@ -18,6 +18,15 @@
  * `Select` reserves the empty string for its own placeholder/unset state, so
  * the sentinel values below stand in for "" in the UI and get mapped back to
  * "" right before the payload is built.
+ *
+ * Model is free text by default, but when the selected provider (resolved
+ * from `form.providerId` against `useProvidersStore().providers`) declares a
+ * non-empty `models` list (e.g. an OpenRouter provider), it becomes a
+ * `Select` over that list — picking an arbitrary model id wouldn't be valid
+ * for that provider. `modelSelectValue` is the same "" -> sentinel proxy used
+ * for Provider/Profile above, so `form.model` itself stays the single source
+ * of truth (and the submit payload) whether the free-text Input or the
+ * Select is rendered.
  */
 import { computed, nextTick, reactive, ref } from 'vue'
 import { Alert, Button, Field, Input, Select, Text } from '@shared/ui/design-system'
@@ -33,6 +42,7 @@ import type { Repo } from '../types'
 
 const NO_PROVIDER_VALUE = '__use_default_provider__'
 const NO_PROFILE_VALUE = '__no_default_profile__'
+const NO_MODEL_VALUE = '__use_default_model__'
 
 const props = defineProps<{
   repo?: Repo | null
@@ -70,6 +80,28 @@ const form = reactive({
   providerId: props.repo?.providerId ? props.repo.providerId : NO_PROVIDER_VALUE,
   model: props.repo?.model ?? '',
   profileId: props.repo?.defaultProfileId ? props.repo.defaultProfileId : NO_PROFILE_VALUE,
+})
+
+// The selected provider's `models` list (empty when no provider is selected,
+// the "use default" sentinel is selected, or the resolved provider declares
+// no models) — drives whether the Model field renders as a Select or falls
+// back to free text.
+const selectedProviderModels = computed<string[]>(() => {
+  if (form.providerId === NO_PROVIDER_VALUE) return []
+  return providersStore.providers.find((provider) => provider.id === form.providerId)?.models ?? []
+})
+const hasProviderModels = computed(() => selectedProviderModels.value.length > 0)
+const modelOptions = computed<SelectItemOption[]>(() => [
+  { label: "Use provider's default model", value: NO_MODEL_VALUE },
+  ...selectedProviderModels.value.map((model) => ({ label: model, value: model })),
+])
+// Proxies form.model (the actual payload value, "" meaning "use default")
+// through the sentinel Select needs, without changing what handleSubmit reads.
+const modelSelectValue = computed<string>({
+  get: () => (form.model ? form.model : NO_MODEL_VALUE),
+  set: (value) => {
+    form.model = value === NO_MODEL_VALUE ? '' : value
+  },
 })
 
 type FormErrors = Partial<Record<'accountId' | 'url' | 'name', string>>
@@ -200,7 +232,14 @@ async function handleSubmit() {
     </Field>
 
     <Field label="Model" description="Optional — overrides the provider's default model." v-slot="{ id, describedBy }">
-      <Input :id="id" v-model="form.model" placeholder="gpt-4o" :aria-describedby="describedBy" />
+      <Select
+        v-if="hasProviderModels"
+        :id="id"
+        v-model="modelSelectValue"
+        :items="modelOptions"
+        :aria-describedby="describedBy"
+      />
+      <Input v-else :id="id" v-model="form.model" placeholder="gpt-4o" :aria-describedby="describedBy" />
     </Field>
 
     <Field label="Default voice profile" v-slot="{ id, describedBy }">
