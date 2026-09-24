@@ -53,8 +53,10 @@ export function repoFilterOptions(reviews: ReviewWithRepo[]): ReviewFilterOption
   for (const review of reviews) {
     if (!seen.has(review.repoId)) seen.set(review.repoId, review.repoName)
   }
-  const repos = [...seen.entries()].map(([value, label]) => ({ value, label }))
-  return [{ label: 'All repositories', value: ALL_REPOS_VALUE }, ...repos.sort((a, b) => a.label.localeCompare(b.label))]
+  const repos = [...seen.entries()]
+    .map(([value, label]) => ({ value, label }))
+    .sort((a, b) => a.label.localeCompare(b.label))
+  return [{ label: 'All repositories', value: ALL_REPOS_VALUE }, ...repos]
 }
 
 export interface ReviewFilters {
