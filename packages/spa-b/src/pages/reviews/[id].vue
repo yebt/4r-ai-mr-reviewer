@@ -50,18 +50,19 @@
  */
 import { computed, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Alert, Badge, Button, ConfirmDialog, Icon, Skeleton, Text } from '@shared/ui/design-system'
+import { Alert, Badge, Button, ConfirmDialog, Skeleton, Text } from '@shared/ui/design-system'
 import type { SelectItemOption } from '@shared/ui/design-system'
 import { useToast } from '@shared/composables/useToast'
 import { useReposStore } from '@modules/repos/store'
 import { useReviewDetail } from '@modules/reviews/detail'
-import { FINDING_DIMENSIONS, FINDING_SEVERITY_BADGE, groupFindingsByDimension } from '@modules/reviews/findings'
+import { FINDING_DIMENSIONS, groupFindingsByDimension } from '@modules/reviews/findings'
 import { buildFindingMarkdown } from '@modules/reviews/humanize'
 import { hasUnpublished } from '@modules/reviews/publish'
 import { useReviewsStore } from '@modules/reviews/store'
 import { useReviewHumanize } from '@modules/reviews/useReviewHumanize'
 import type { Finding } from '@modules/reviews/types'
 import ReviewStatusChip from '@modules/reviews/components/ReviewStatusChip.vue'
+import FindingCard from '@modules/reviews/components/FindingCard.vue'
 import HumanizeTabs from '@modules/reviews/components/HumanizeTabs.vue'
 import HumanizeAllDialog from '@modules/reviews/components/HumanizeAllDialog.vue'
 import ScoreMeter from '@modules/reviews/components/ScoreMeter.vue'
@@ -409,84 +410,23 @@ function handlePublishAll() {
             <div v-if="groupedFindings![dimension].length > 0" class="flex flex-col gap-2">
               <Text as="h3" size="md" class="font-medium capitalize">{{ dimension }}</Text>
               <ul class="flex flex-col gap-2">
-                <li
+                <FindingCard
                   v-for="finding in groupedFindings![dimension]"
                   :key="finding.index"
-                  class="flex min-w-0 flex-col gap-2 rounded-lg border border-line-subtle bg-bg-panel p-3"
-                >
-                  <div class="flex flex-wrap items-center justify-between gap-2">
-                    <div class="flex min-w-0 flex-wrap items-center gap-2">
-                      <Badge :status="FINDING_SEVERITY_BADGE[finding.severity]">{{ finding.severity }}</Badge>
-                      <Badge v-if="finding.blocking" status="danger">Blocking</Badge>
-                      <Text mono size="sm" muted class="break-words [overflow-wrap:anywhere]"
-                        >{{ finding.file }}:{{ finding.line }}</Text
-                      >
-                    </div>
-                    <div class="flex flex-wrap items-center gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        :aria-label="
-                          copiedFindingIndex === finding.index ? 'Finding copied' : 'Copy finding as markdown'
-                        "
-                        @click="handleCopyFinding(finding)"
-                      >
-                        <Icon :name="copiedFindingIndex === finding.index ? 'check' : 'copy'" size="sm" />
-                      </Button>
-                      <Button
-                        v-if="review.status === 'done'"
-                        variant="ghost"
-                        size="sm"
-                        :disabled="!hasReadyProfile"
-                        :loading="isHumanizingFinding(finding.index)"
-                        @click="handleHumanizeFinding(finding.index)"
-                      >
-                        Humanize
-                      </Button>
-                      <Badge v-if="review.status === 'done' && finding.published" status="success">Published</Badge>
-                      <ConfirmDialog
-                        v-else-if="review.status === 'done'"
-                        title="Publish this finding to the MR?"
-                        description="Posts a comment to the live merge request. This can't be undone."
-                        confirm-label="Publish"
-                        :danger="false"
-                        :pending="pendingPublishTarget === `finding:${finding.index}`"
-                        @confirm="handlePublishFinding(finding)"
-                      >
-                        <template #trigger>
-                          <Button variant="outline" size="sm">Publish</Button>
-                        </template>
-                      </ConfirmDialog>
-                    </div>
-                  </div>
-                  <HumanizeTabs
-                    v-if="review.status === 'done' && findingTabs(finding.index) > 0"
-                    :tab-count="findingTabs(finding.index)"
-                    :active="findingTab(finding.index)"
-                    @select="(tab) => setFindingTab(finding.index, tab)"
-                  />
-                  <Text class="min-w-0 break-words font-medium [overflow-wrap:anywhere]">{{
-                    review.status === 'done' ? activeFindingParts(finding).issue : finding.issue
-                  }}</Text>
-                  <div
-                    v-if="(review.status === 'done' ? activeFindingParts(finding).why : finding.why)"
-                    class="min-w-0 border-t border-line-subtle pt-2"
-                  >
-                    <Text size="xs" class="font-medium uppercase tracking-wide text-text-muted">Why</Text>
-                    <Text muted size="sm" class="min-w-0 break-words [overflow-wrap:anywhere]">{{
-                      review.status === 'done' ? activeFindingParts(finding).why : finding.why
-                    }}</Text>
-                  </div>
-                  <div
-                    v-if="(review.status === 'done' ? activeFindingParts(finding).fix : finding.fix)"
-                    class="min-w-0 border-t border-line-subtle pt-2"
-                  >
-                    <Text size="xs" class="font-medium uppercase tracking-wide text-text-muted">Suggested fix</Text>
-                    <Text muted size="sm" class="min-w-0 break-words [overflow-wrap:anywhere]">{{
-                      review.status === 'done' ? activeFindingParts(finding).fix : finding.fix
-                    }}</Text>
-                  </div>
-                </li>
+                  :finding="finding"
+                  :actions-enabled="review.status === 'done'"
+                  :active-parts="activeFindingParts(finding)"
+                  :tab-count="findingTabs(finding.index)"
+                  :active-tab="findingTab(finding.index)"
+                  :is-humanizing="isHumanizingFinding(finding.index)"
+                  :is-publishing="pendingPublishTarget === `finding:${finding.index}`"
+                  :has-ready-profile="hasReadyProfile"
+                  :copied="copiedFindingIndex === finding.index"
+                  @copy="handleCopyFinding(finding)"
+                  @humanize="handleHumanizeFinding(finding.index)"
+                  @publish="handlePublishFinding(finding)"
+                  @select-tab="(tab) => setFindingTab(finding.index, tab)"
+                />
               </ul>
             </div>
           </div>
