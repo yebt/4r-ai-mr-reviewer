@@ -12,7 +12,7 @@ import { useRoute } from 'vue-router'
 import { Alert, Badge, Button, ConfirmDialog, Icon, Skeleton, Text } from '@shared/ui/design-system'
 import {
   RunStatusChip,
-  StepStatusChip,
+  StepTimeline,
   flowLabel,
   formatDateTime,
   isRunCancelable,
@@ -149,23 +149,9 @@ async function handleCancel() {
         </dl>
       </section>
 
-      <section class="flex flex-col gap-2">
+      <section class="flex flex-col gap-2 rounded-lg border border-line-subtle bg-bg-panel p-3">
         <Text size="sm" class="font-medium">Steps</Text>
-        <ol v-if="run.steps.length > 0" class="flex flex-col gap-2" data-testid="run-step-list">
-          <li
-            v-for="step in run.steps"
-            :key="step.name"
-            class="flex items-center justify-between gap-3 rounded-lg border border-line-subtle bg-bg-panel px-3 py-2"
-            data-testid="run-step-row"
-          >
-            <div class="flex min-w-0 flex-col gap-0.5">
-              <Text class="truncate font-medium">{{ step.name }}</Text>
-              <Text muted size="sm" class="truncate">{{ step.detail }}</Text>
-            </div>
-            <StepStatusChip :status="step.status" />
-          </li>
-        </ol>
-        <Text v-else muted size="sm">No steps recorded yet.</Text>
+        <StepTimeline :steps="run.steps" />
       </section>
 
       <section

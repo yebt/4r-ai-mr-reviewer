@@ -1,6 +1,7 @@
 export { default as RunsListSection } from './components/RunsListSection.vue'
 export { default as RunStatusChip } from './components/RunStatusChip.vue'
 export { default as StepStatusChip } from './components/StepStatusChip.vue'
+export { default as StepTimeline } from './components/StepTimeline.vue'
 
 export { useRunDetail } from './composables/useRunDetail'
 
