@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -228,6 +229,168 @@ func TestListRecentRoutinesOverHTTP(t *testing.T) {
 		if it.RepoName != "web" {
 			t.Errorf("repoName = %q, want web", it.RepoName)
 		}
+	}
+}
+
+// TestListRecentRoutinesKeysetPaginationOverHTTP seeds more runs than a page
+// (limit=2) and pages through GET /routines with the returned X-Next-Cursor,
+// asserting: newest-first order, no duplicates, no gaps (every seeded run is
+// visited exactly once), and the last page omits the header. It also proves
+// ?archived= scopes the same keyset pagination to archived-only runs.
+func TestListRecentRoutinesKeysetPaginationOverHTTP(t *testing.T) {
+	srv := newTestServer(t)
+	repoID := newRepoForRoutine(t, srv)
+
+	const total = 5
+	const limit = 2
+	created := make([]string, 0, total)
+	for i := 0; i < total; i++ {
+		resp := postJSON(t, srv.URL+"/repos/"+repoID+"/routines/approve-and-tag", map[string]any{"mrIid": 100 + i})
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("create routine %d status = %d, want 201", i, resp.StatusCode)
+		}
+		var run struct {
+			ID string `json:"id"`
+		}
+		decodeBody(t, resp, &run)
+		created = append(created, run.ID)
+		// Distinct created_at per run so newest-first order is deterministic.
+		time.Sleep(2 * time.Millisecond)
+	}
+
+	// Page through GET /routines?limit=2 with the returned X-Next-Cursor until
+	// the header is no longer set.
+	var seen []string
+	cursor := ""
+	for page := 0; ; page++ {
+		if page > total {
+			t.Fatalf("pagination did not terminate after %d pages", page)
+		}
+		url := srv.URL + "/routines?limit=" + strconv.Itoa(limit)
+		if cursor != "" {
+			url += "&cursor=" + cursor
+		}
+		resp, err := http.Get(url)
+		if err != nil {
+			t.Fatalf("GET routines page %d: %v", page, err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("page %d status = %d, want 200", page, resp.StatusCode)
+		}
+		var list []struct {
+			ID string `json:"id"`
+		}
+		decodeBody(t, resp, &list)
+		next := resp.Header.Get("X-Next-Cursor")
+
+		if len(list) > limit {
+			t.Fatalf("page %d returned %d rows, want at most %d", page, len(list), limit)
+		}
+		for _, it := range list {
+			seen = append(seen, it.ID)
+		}
+		if next == "" {
+			// Last page: fewer than limit rows were returned (the contract's
+			// end-of-list signal).
+			if len(list) == limit && len(seen) < total {
+				t.Fatalf("page %d was full (%d rows) but omitted X-Next-Cursor before all %d rows were seen", page, len(list), total)
+			}
+			break
+		}
+		cursor = next
+	}
+
+	if len(seen) != total {
+		t.Fatalf("paginated over %d runs, want %d (no gaps/duplicates): %v", len(seen), total, seen)
+	}
+	seenSet := make(map[string]int, len(seen))
+	for _, id := range seen {
+		seenSet[id]++
+	}
+	for _, id := range created {
+		if seenSet[id] != 1 {
+			t.Errorf("run %s seen %d times, want exactly 1", id, seenSet[id])
+		}
+	}
+	// Newest-first: pagination order is the reverse of creation order.
+	for i, id := range seen {
+		want := created[total-1-i]
+		if id != want {
+			t.Fatalf("seen[%d] = %s, want %s (newest-first across pages)", i, id, want)
+		}
+	}
+
+	// ?archived= scopes the same pagination to archived-only runs: cancel then
+	// archive two of the created runs (cancelled is terminal, so archivable),
+	// and verify paging the archived list finds exactly those two, newest
+	// first, with the last page again omitting the header.
+	archivedIDs := created[:2]
+	for _, id := range archivedIDs {
+		cancelResp := postJSON(t, srv.URL+"/routines/"+id+"/cancel", nil)
+		cancelResp.Body.Close()
+		if cancelResp.StatusCode != http.StatusOK {
+			t.Fatalf("cancel %s status = %d, want 200", id, cancelResp.StatusCode)
+		}
+		archiveResp := postJSON(t, srv.URL+"/routines/"+id+"/archive", nil)
+		archiveResp.Body.Close()
+		if archiveResp.StatusCode != http.StatusOK {
+			t.Fatalf("archive %s status = %d, want 200", id, archiveResp.StatusCode)
+		}
+	}
+
+	var seenArchived []string
+	cursor = ""
+	for page := 0; ; page++ {
+		if page > len(archivedIDs) {
+			t.Fatalf("archived pagination did not terminate after %d pages", page)
+		}
+		url := srv.URL + "/routines?archived=1&limit=" + strconv.Itoa(limit)
+		if cursor != "" {
+			url += "&cursor=" + cursor
+		}
+		resp, err := http.Get(url)
+		if err != nil {
+			t.Fatalf("GET archived routines page %d: %v", page, err)
+		}
+		var list []struct {
+			ID string `json:"id"`
+		}
+		decodeBody(t, resp, &list)
+		next := resp.Header.Get("X-Next-Cursor")
+		for _, it := range list {
+			seenArchived = append(seenArchived, it.ID)
+		}
+		if next == "" {
+			break
+		}
+		cursor = next
+	}
+	if len(seenArchived) != len(archivedIDs) {
+		t.Fatalf("archived pagination len = %d, want %d: %v", len(seenArchived), len(archivedIDs), seenArchived)
+	}
+	// archivedIDs = created[:2] in creation order (oldest first); archived
+	// listing is newest-first, so the expected order is reversed.
+	if seenArchived[0] != archivedIDs[1] || seenArchived[1] != archivedIDs[0] {
+		t.Fatalf("archived seen = %v, want newest-first %v", seenArchived, []string{archivedIDs[1], archivedIDs[0]})
+	}
+	// None of the still-active runs leak into the archived listing.
+	for _, id := range seenArchived {
+		if id == created[2] || id == created[3] || id == created[4] {
+			t.Fatalf("archived listing leaked active run %s", id)
+		}
+	}
+}
+
+// TestListRecentRoutinesBadCursorOverHTTP maps a malformed ?cursor to 400.
+func TestListRecentRoutinesBadCursorOverHTTP(t *testing.T) {
+	srv := newTestServer(t)
+	resp, err := http.Get(srv.URL + "/routines?cursor=not-a-valid-cursor!!")
+	if err != nil {
+		t.Fatalf("GET routines: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("bad cursor status = %d, want 400", resp.StatusCode)
 	}
 }
 

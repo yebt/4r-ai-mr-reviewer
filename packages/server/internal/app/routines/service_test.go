@@ -251,7 +251,7 @@ type limitRecorderStore struct {
 	gotLimit int
 }
 
-func (s *limitRecorderStore) ListRecent(_ context.Context, limit int) ([]routine.Run, error) {
+func (s *limitRecorderStore) ListRecent(_ context.Context, limit int, _ time.Time, _ string) ([]routine.Run, error) {
 	s.gotLimit = limit
 	return nil, nil
 }
@@ -271,7 +271,7 @@ func TestServiceListRecentClampsLimit(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			rec := &limitRecorderStore{}
 			svc := NewService(nil, nil, rec, 0, nil, log.New(io.Discard, "", 0))
-			if _, err := svc.ListRecent(context.Background(), tt.in); err != nil {
+			if _, err := svc.ListRecent(context.Background(), tt.in, time.Time{}, ""); err != nil {
 				t.Fatalf("ListRecent(%d): %v", tt.in, err)
 			}
 			if rec.gotLimit != tt.want {

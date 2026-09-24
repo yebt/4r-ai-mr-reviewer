@@ -182,6 +182,43 @@ func (r *ReviewStore) listByRepo(ctx context.Context, repoID string, archived bo
 	return out, rows.Err()
 }
 
+// ListRecent returns the most recent reviews (without findings) across ALL
+// repos, filtered by archived, newest first, capped at limit and
+// keyset-paginated from (cursorTime, cursorID). An empty cursorID means the
+// first page: no keyset predicate is applied.
+func (r *ReviewStore) ListRecent(ctx context.Context, limit int, archived bool, cursorTime time.Time, cursorID string) ([]review.Review, error) {
+	var (
+		rows *sql.Rows
+		err  error
+	)
+	if cursorID == "" {
+		rows, err = r.db.QueryContext(ctx,
+			`SELECT `+reviewCols+` FROM reviews WHERE archived = ? ORDER BY created_at DESC, id DESC LIMIT ?`,
+			boolToInt(archived), limit)
+	} else {
+		ts := formatTime(cursorTime)
+		rows, err = r.db.QueryContext(ctx, `
+			SELECT `+reviewCols+` FROM reviews
+			WHERE archived = ? AND (created_at < ? OR (created_at = ? AND id < ?))
+			ORDER BY created_at DESC, id DESC LIMIT ?`,
+			boolToInt(archived), ts, ts, cursorID, limit)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("review store: list recent: %w", err)
+	}
+	defer rows.Close()
+
+	var out []review.Review
+	for rows.Next() {
+		rv, err := scanReview(rows)
+		if err != nil {
+			return nil, fmt.Errorf("review store: list recent: scan: %w", err)
+		}
+		out = append(out, rv)
+	}
+	return out, rows.Err()
+}
+
 // HasActiveForMR reports whether an in-flight review already exists for the
 // repo + MR IID, so a webhook trigger can skip creating a duplicate. An
 // awaiting_approval review counts as in-flight too: it is held for the user and

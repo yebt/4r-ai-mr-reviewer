@@ -170,6 +170,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /vault/password", s.changeVaultSecret)
 
 	mux.HandleFunc("POST /reviews", s.createReview)
+	mux.HandleFunc("GET /reviews", s.listRecentReviews)
 	mux.HandleFunc("GET /reviews/{id}", s.getReview)
 	mux.HandleFunc("DELETE /reviews/{id}", s.deleteReview)
 	mux.HandleFunc("POST /reviews/{id}/retry", s.retryReview)

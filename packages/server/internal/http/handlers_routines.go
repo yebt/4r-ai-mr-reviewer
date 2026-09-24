@@ -205,8 +205,12 @@ func (s *Server) listRoutines(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-// listRecentRoutines returns recent routine runs across all repos, newest first.
-// An optional ?limit=N caps the result (the service clamps it to a sane range).
+// listRecentRoutines returns recent routine runs across all repos, newest
+// first, keyset-paginated. An optional ?limit=N caps the result (the service
+// clamps it to a sane range); an optional ?cursor=<opaque> continues from a
+// prior page's X-Next-Cursor. A malformed cursor is a 400. When exactly limit
+// rows are returned, the response carries an X-Next-Cursor header for the next
+// page; when fewer are returned, the header is omitted (end of the list).
 // Each item carries a best-effort repoName resolved via the repos service so the
 // global list can show which repo a run belongs to; an unresolvable repo yields
 // an empty repoName rather than failing the whole list.
@@ -217,11 +221,22 @@ func (s *Server) listRecentRoutines(w http.ResponseWriter, r *http.Request) {
 			limit = n
 		}
 	}
+	limit = clampListLimit(limit)
+	var cursorTime time.Time
+	var cursorID string
+	if q := r.URL.Query().Get("cursor"); q != "" {
+		var err error
+		cursorTime, cursorID, err = decodeCursor(q)
+		if err != nil {
+			writeErr(w, err, http.StatusBadRequest)
+			return
+		}
+	}
 	list := s.routines.ListRecent
 	if q := r.URL.Query().Get("archived"); q == "1" || q == "true" {
 		list = s.routines.ListRecentArchived
 	}
-	runs, err := list(r.Context(), limit)
+	runs, err := list(r.Context(), limit, cursorTime, cursorID)
 	if err != nil {
 		writeErr(w, err, http.StatusInternalServerError)
 		return
@@ -240,6 +255,10 @@ func (s *Server) listRecentRoutines(w http.ResponseWriter, r *http.Request) {
 		}
 		dto.RepoName = name
 		out = append(out, dto)
+	}
+	if len(runs) == limit {
+		last := runs[len(runs)-1]
+		w.Header().Set("X-Next-Cursor", encodeCursor(last.CreatedAt, last.ID))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
