@@ -1,188 +1,196 @@
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
-import { useMutation, useQuery, useQueryCache } from '@pinia/colada'
 import { useToast } from '@shared/composables/useToast'
 import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
-import { listRepos } from '@modules/repos/api'
+import { useInfiniteList } from '@shared/data/useInfiniteList'
 import * as reviewsApi from './api'
 import type { PublishSelection } from './api'
 import type { ReviewWithRepo } from './types'
 
-export const REVIEWS_QUERY_KEY = 'reviews' as const
-
-/** Result of the per-repo fan-out: the merged list from every repo that
- * answered, plus which repos (if any) failed to load. */
-export interface ReviewsFanOutResult {
-  reviews: ReviewWithRepo[]
-  failedRepoNames: string[]
-}
+export { resolveErrorMessage }
 
 /**
- * There is no global reviews endpoint — the list is a fan-out over every
- * repo's `GET /repos/{id}/reviews`, with each row's owning `repoName`
- * attached so the list can render `repoName · !{mrIid}` without a second
- * lookup. Kept self-contained (calls `repos/api` directly) rather than
- * depending on `useReposStore`, so this module's data layer doesn't need a
- * live repos store instance to function.
+ * Reviews store — the global review list (every repo, newest first),
+ * cursor-paginated via `useInfiniteList` (see `@shared/data/useInfiniteList`)
+ * over `reviewsApi.listRecentReviews`. Replaces the earlier per-repo
+ * `fetchAllReviews` fan-out (`Promise.allSettled` over every repo's
+ * `GET /repos/{id}/reviews`, removed along with `api.ts#listRepoReviews`)
+ * now that `GET /reviews` is global — see `api.ts`'s module doc. Mirrors
+ * `modules/runs/store.ts`'s shape: not a `createCrudResource` (this
+ * resource's mutations are custom action endpoints, not generic
+ * create/update/remove), so the list + mutations are hand-rolled here too.
  *
- * Uses `Promise.allSettled` rather than `Promise.all` so one repo's rejected
- * request doesn't fail the whole list closed — a single unreachable repo
- * (e.g. a dead webhook/provider) would otherwise empty out every other
- * repo's reviews too. Fulfilled repos are merged into `reviews`; rejected
- * ones are reported (by name) in `failedRepoNames` so the UI can surface a
- * non-blocking warning above the list instead of failing the query.
- */
-export async function fetchAllReviews(archived: boolean): Promise<ReviewsFanOutResult> {
-  const repos = await listRepos()
-  const settled = await Promise.allSettled(
-    repos.map((repo) =>
-      reviewsApi
-        .listRepoReviews(repo.id, archived)
-        .then((reviews) => reviews.map((review) => ({ ...review, repoName: repo.name }))),
-    ),
-  )
-
-  const reviews: ReviewWithRepo[] = []
-  const failedRepoNames: string[] = []
-  settled.forEach((result, index) => {
-    if (result.status === 'fulfilled') {
-      reviews.push(...result.value)
-    } else {
-      failedRepoNames.push(repos[index]!.name)
-    }
-  })
-
-  return { reviews, failedRepoNames }
-}
-
-/**
- * Reviews store, backed by @pinia/colada. Unlike the settings modules
- * (providers/repos/...), reviews are not simple CRUD — there's no single
- * `POST/PATCH/DELETE /reviews` resource to build on `createCrudResource`,
- * so the query and its mutations are hand-rolled here.
+ * `archived` is a plain ref toggle: flipping it resets the accumulated list
+ * and reloads its first page from scratch, since active/archived are
+ * disjoint result sets, not different pages of the same one.
  *
- * The `['reviews', { archived }]` query key is reactive: flipping `archived`
- * changes the key, which lazily fetches the archived fan-out on first use
- * instead of always fetching both up front.
- *
- * Every mutation (retry/archive/unarchive/approve/discard) is a one-off
- * state transition on a single review — there's no optimistic list patch to
- * maintain (unlike an in-place field edit), so each just awaits the
- * request, toasts success/error, and invalidates `['reviews']` to refetch
- * the authoritative list.
+ * Unlike `useRunsStore`, this list does NOT poll on an interval: the earlier
+ * @pinia/colada-backed store had no live-refresh behavior either (it only
+ * ever refetched on an explicit `invalidate()` after a mutation), and the
+ * detail page already owns its own 2.5s poll for the single review in view
+ * (`useReviewDetail`, `reviews/detail.ts`) — so keeping this list free of a
+ * second independent poller avoids two different intervals hitting the API
+ * for overlapping reasons. The list instead refreshes on explicit actions:
+ * a status-changing mutation (retry/approve) merges a fresh first page via
+ * `refreshFirstPage()`, the archived toggle reloads from scratch, and the
+ * section's error-retry button calls `refetch()`.
  */
 export const useReviewsStore = defineStore('reviews', () => {
-  const queryCache = useQueryCache()
   const toast = useToast()
 
   const archived = ref(false)
 
-  const query = useQuery({
-    key: () => [REVIEWS_QUERY_KEY, { archived: archived.value }],
-    query: () => fetchAllReviews(archived.value),
+  const list = useInfiniteList<ReviewWithRepo>((cursor) => reviewsApi.listRecentReviews(cursor, archived.value))
+
+  const reviews = computed(() => list.items.value)
+
+  // Normalizes `list.error` (`unknown`, since `useInfiniteList` is generic
+  // and catches any thrown value) down to `Error | null` — `ReviewsListSection.vue`
+  // reads `.message` off it, and the API layer only ever throws
+  // `ApiError extends Error` anyway.
+  const error = computed<Error | null>(() => (list.error.value instanceof Error ? list.error.value : null))
+
+  // Archived is a disjoint result set from active, not a further page of it —
+  // toggling it starts the accumulated list over from its own first page.
+  watch(archived, () => {
+    list.reset()
+    void list.loadInitial()
   })
 
-  const reviews = computed(() => query.data.value?.reviews ?? [])
-  const failedRepoNames = computed(() => query.data.value?.failedRepoNames ?? [])
-  const failedRepoCount = computed(() => failedRepoNames.value.length)
+  void list.loadInitial()
 
-  function invalidate() {
-    queryCache.invalidateQueries({ key: [REVIEWS_QUERY_KEY] })
+  /** Reset + reload from the first page — used by the section's error-retry button. */
+  function refetch(): Promise<void> {
+    list.reset()
+    return list.loadInitial()
   }
 
-  const retryMutation = useMutation({
-    mutation: (id: string) => reviewsApi.retryReview(id),
-    onSuccess() {
+  /** Drops a review from the accumulated list by id, for mutations that change list membership (archive/unarchive/discard). */
+  function removeReviewLocally(id: string): void {
+    list.items.value = list.items.value.filter((review) => review.id !== id)
+  }
+
+  const isRetrying = ref(false)
+  /** Posts a new retry `Review` server-side; the list keeps the original row and picks up the current state via `refreshFirstPage`. */
+  async function retry(id: string): Promise<void> {
+    isRetrying.value = true
+    try {
+      await reviewsApi.retryReview(id)
       toast.success('Review retried')
-    },
-    onError(err) {
+      await list.refreshFirstPage()
+    } catch (err) {
       toast.error(resolveErrorMessage(err, 'Failed to retry review'))
-    },
-    onSettled: invalidate,
-  })
+      throw err
+    } finally {
+      isRetrying.value = false
+    }
+  }
 
-  const archiveMutation = useMutation({
-    mutation: (id: string) => reviewsApi.archiveReview(id),
-    onSuccess() {
+  const isArchiving = ref(false)
+  async function archive(id: string): Promise<void> {
+    isArchiving.value = true
+    try {
+      await reviewsApi.archiveReview(id)
+      removeReviewLocally(id)
       toast.success('Review archived')
-    },
-    onError(err) {
+    } catch (err) {
       toast.error(resolveErrorMessage(err, 'Failed to archive review'))
-    },
-    onSettled: invalidate,
-  })
+      throw err
+    } finally {
+      isArchiving.value = false
+    }
+  }
 
-  const unarchiveMutation = useMutation({
-    mutation: (id: string) => reviewsApi.unarchiveReview(id),
-    onSuccess() {
+  const isUnarchiving = ref(false)
+  async function unarchive(id: string): Promise<void> {
+    isUnarchiving.value = true
+    try {
+      await reviewsApi.unarchiveReview(id)
+      removeReviewLocally(id)
       toast.success('Review unarchived')
-    },
-    onError(err) {
+    } catch (err) {
       toast.error(resolveErrorMessage(err, 'Failed to unarchive review'))
-    },
-    onSettled: invalidate,
-  })
+      throw err
+    } finally {
+      isUnarchiving.value = false
+    }
+  }
 
-  const approveMutation = useMutation({
-    mutation: (id: string) => reviewsApi.approveReview(id),
-    onSuccess() {
+  const isApproving = ref(false)
+  async function approve(id: string): Promise<void> {
+    isApproving.value = true
+    try {
+      await reviewsApi.approveReview(id)
       toast.success('Review approved')
-    },
-    onError(err) {
+      // Approve keeps the review in view (just changes its status) — merge
+      // the refreshed first page so the row picks up its new status in place.
+      await list.refreshFirstPage()
+    } catch (err) {
       toast.error(resolveErrorMessage(err, 'Failed to approve review'))
-    },
-    onSettled: invalidate,
-  })
+      throw err
+    } finally {
+      isApproving.value = false
+    }
+  }
 
-  const discardMutation = useMutation({
-    mutation: (id: string) => reviewsApi.deleteReview(id),
-    onSuccess() {
+  const isDiscarding = ref(false)
+  async function discard(id: string): Promise<void> {
+    isDiscarding.value = true
+    try {
+      await reviewsApi.deleteReview(id)
+      removeReviewLocally(id)
       toast.success('Review discarded')
-    },
-    onError(err) {
+    } catch (err) {
       toast.error(resolveErrorMessage(err, 'Failed to discard review'))
-    },
-    onSettled: invalidate,
-  })
+      throw err
+    } finally {
+      isDiscarding.value = false
+    }
+  }
 
-  const publishMutation = useMutation({
-    mutation: (args: { id: string; selection: PublishSelection }) =>
-      reviewsApi.publishReview(args.id, args.selection),
-    onSuccess() {
+  const isPublishing = ref(false)
+  /** Posts findings/summary to the live GitLab MR — doesn't change list membership or status, so it never touches the loaded list. */
+  async function publish(args: { id: string; selection: PublishSelection }): Promise<void> {
+    isPublishing.value = true
+    try {
+      await reviewsApi.publishReview(args.id, args.selection)
       toast.success('Published to the MR')
-    },
-    onError(err) {
+    } catch (err) {
       toast.error(resolveErrorMessage(err, 'Failed to publish to the MR'))
-    },
-    onSettled: invalidate,
-  })
+      throw err
+    } finally {
+      isPublishing.value = false
+    }
+  }
 
   return {
-    // ['reviews', { archived }] query surface
+    // Infinite-list surface backing the reviews list.
     reviews,
-    failedRepoNames,
-    failedRepoCount,
-    state: query.state,
-    asyncStatus: query.asyncStatus,
-    isLoading: query.isLoading,
-    error: query.error,
-    refetch: query.refetch,
+    isLoading: list.isLoading,
+    isLoadingMore: list.isLoadingMore,
+    hasMore: list.hasMore,
+    error,
+    loadMore: list.loadMore,
+    refetch,
     archived,
 
-    // mutations — `mutateAsync` rethrows so callers can keep their own
-    // try/catch flows (e.g. clearing a row-local "pending" id) on top of
-    // the toast + invalidate handled above.
-    retry: retryMutation.mutateAsync,
-    isRetrying: retryMutation.isLoading,
-    archive: archiveMutation.mutateAsync,
-    isArchiving: archiveMutation.isLoading,
-    unarchive: unarchiveMutation.mutateAsync,
-    isUnarchiving: unarchiveMutation.isLoading,
-    approve: approveMutation.mutateAsync,
-    isApproving: approveMutation.isLoading,
-    discard: discardMutation.mutateAsync,
-    isDiscarding: discardMutation.isLoading,
-    publish: publishMutation.mutateAsync,
-    isPublishing: publishMutation.isLoading,
+    // mutations — each rethrows so callers keep their own try/catch (e.g.
+    // clearing a row-local "pending" id in `finally`); the store already
+    // toasted the error before rethrowing. Kept 1:1 with the earlier
+    // @pinia/colada mutation surface so the detail page
+    // (`src/pages/reviews/[id].vue`) and `ReviewsListSection.vue` need no
+    // changes to their call sites.
+    retry,
+    isRetrying,
+    archive,
+    isArchiving,
+    unarchive,
+    isUnarchiving,
+    approve,
+    isApproving,
+    discard,
+    isDiscarding,
+    publish,
+    isPublishing,
   }
 })

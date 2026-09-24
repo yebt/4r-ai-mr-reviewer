@@ -1,10 +1,10 @@
 /**
  * Reviews feature — DTO types, per the contract handed to this milestone.
- * There is no global reviews endpoint — reviews are always fetched per-repo
- * (`GET /repos/{id}/reviews`), which is why the list store fans out over
- * every repo (see `store.ts`). `GET /reviews/{id}` returns the full `Review`
- * below, including `findings`/`reasonings` (see `api.ts#getReview`, used by
- * the detail page).
+ * The list is backed by the global `GET /reviews` endpoint (every repo,
+ * cursor-paginated newest-first — see `api.ts#listRecentReviews` and
+ * `store.ts`). `GET /reviews/{id}` returns the full `Review` below,
+ * including `findings`/`reasonings` (see `api.ts#getReview`, used by the
+ * detail page).
  */
 
 export type ReviewStatus = 'awaiting_approval' | 'pending' | 'running' | 'done' | 'error' | 'cancelled'

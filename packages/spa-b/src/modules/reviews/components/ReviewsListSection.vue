@@ -4,12 +4,17 @@
  * query states (loading skeleton / error+retry / empty / list) rendered
  * here, data fetching + mutations owned by `../store.ts`.
  *
- * There is no global reviews endpoint, so the list is a per-repo fan-out
- * (see `store.ts`) — expect the empty state to be the common case until
- * reviews actually run against a connected repo. The fan-out uses
- * `Promise.allSettled`, so one repo failing to load never empties the whole
- * list — `store.failedRepoCount` surfaces a non-blocking warning Alert above
- * the list instead.
+ * The list is backed by the global `GET /reviews` endpoint, cursor-paginated
+ * via `useReviewsStore` (`useInfiniteList`-backed — see that module's doc).
+ * Infinite scroll mirrors `RunsListSection.vue` exactly: a zero-height
+ * sentinel after the list is watched with `useIntersectionObserver` (root =
+ * viewport, so it fires regardless of which ancestor actually scrolls);
+ * entering view triggers `store.loadMore()` while `store.hasMore`, guarded
+ * on `!store.isLoadingMore` so an already-in-view sentinel (e.g. a short
+ * filtered result) doesn't loop. Client-side filters (`filterReviews`) only
+ * see the pages loaded so far — a known v1 limitation, not a bug. There's no
+ * per-repo fan-out anymore, so there's no `failedRepoNames`/warning concept
+ * to surface here either — a failed request is a single `store.error`.
  *
  * Each row navigates to `/reviews/{id}` (the detail page) on click; the
  * archived toggle returns archived rows (`review.archived`), rendered
@@ -31,6 +36,7 @@
  */
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { useIntersectionObserver } from '@vueuse/core'
 import {
   DropdownMenuContent,
   DropdownMenuItem,
@@ -39,7 +45,19 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from 'reka-ui'
-import { Alert, Badge, Button, ConfirmDialog, Icon, Select, Skeleton, Switch, Text } from '@shared/ui/design-system'
+import {
+  Alert,
+  Badge,
+  Button,
+  ConfirmDialog,
+  Icon,
+  Select,
+  Skeleton,
+  Spinner,
+  Switch,
+  Text,
+} from '@shared/ui/design-system'
+import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
 import {
   ALL_REPOS_VALUE,
   ALL_STATUSES_VALUE,
@@ -66,6 +84,16 @@ const repoOptions = computed(() => repoFilterOptions(store.reviews))
 const filteredReviews = computed(() =>
   filterReviews(store.reviews, { repoId: repoFilter.value, status: statusFilter.value }),
 )
+
+// Infinite-scroll sentinel — only rendered while the list has rows (see the
+// template's v-else branch), so this never fires against a detached/empty
+// element. Guarded on `hasMore`/`isLoadingMore`, same as `RunsListSection.vue`.
+const sentinelRef = ref<HTMLElement | null>(null)
+useIntersectionObserver(sentinelRef, ([entry]) => {
+  if (entry?.isIntersecting && store.hasMore && !store.isLoadingMore) {
+    store.loadMore()
+  }
+})
 
 function shortId(id: string): string {
   return id.slice(0, 8)
@@ -161,13 +189,8 @@ async function handleDiscard(review: ReviewWithRepo) {
       </div>
     </div>
 
-    <Alert v-if="store.failedRepoCount > 0" status="warning">
-      Couldn't load reviews from {{ store.failedRepoCount }}
-      {{ store.failedRepoCount === 1 ? 'repository' : 'repositories' }}.
-    </Alert>
-
     <div
-      v-if="store.state.status === 'pending'"
+      v-if="store.isLoading"
       class="flex flex-col gap-2"
       data-testid="reviews-loading-skeleton"
     >
@@ -184,8 +207,8 @@ async function handleDiscard(review: ReviewWithRepo) {
       </div>
     </div>
 
-    <Alert v-else-if="store.state.status === 'error'" status="danger">
-      <p>{{ store.error?.message ?? 'Failed to load reviews' }}</p>
+    <Alert v-else-if="store.error" status="danger">
+      <p>{{ resolveErrorMessage(store.error, 'Failed to load reviews') }}</p>
       <Button variant="outline" size="sm" class="mt-2" @click="store.refetch()">Retry</Button>
     </Alert>
 
@@ -201,96 +224,109 @@ async function handleDiscard(review: ReviewWithRepo) {
       </Text>
     </div>
 
-    <ul v-else class="flex flex-col gap-2">
-      <li
-        v-for="review in filteredReviews"
-        :key="review.id"
-        role="link"
-        tabindex="0"
-        :aria-label="`View review ${review.repoName} !${review.mrIid}`"
-        class="flex cursor-pointer items-center gap-3 rounded-lg border border-line-subtle bg-bg-panel px-3 py-2.5 transition-colors hover:bg-bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
-        :class="review.archived ? 'opacity-60' : ''"
-        @click="goToReview(review)"
-        @keydown.enter="goToReview(review)"
-      >
-        <div class="flex min-w-0 flex-1 flex-col gap-0.5">
-          <div class="flex flex-wrap items-center gap-2">
-            <Text class="truncate font-medium">!{{ review.mrIid }}</Text>
-            <ReviewStatusChip :status="review.status" />
-            <Badge v-if="review.archived" status="neutral">Archived</Badge>
+    <template v-else>
+      <ul class="flex flex-col gap-2">
+        <li
+          v-for="review in filteredReviews"
+          :key="review.id"
+          role="link"
+          tabindex="0"
+          :aria-label="`View review ${review.repoName} !${review.mrIid}`"
+          class="flex cursor-pointer items-center gap-3 rounded-lg border border-line-subtle bg-bg-panel px-3 py-2.5 transition-colors hover:bg-bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+          :class="review.archived ? 'opacity-60' : ''"
+          @click="goToReview(review)"
+          @keydown.enter="goToReview(review)"
+        >
+          <div class="flex min-w-0 flex-1 flex-col gap-0.5">
+            <div class="flex flex-wrap items-center gap-2">
+              <Text class="truncate font-medium">!{{ review.mrIid }}</Text>
+              <ReviewStatusChip :status="review.status" />
+              <Badge v-if="review.archived" status="neutral">Archived</Badge>
+            </div>
+            <Text muted size="sm" class="truncate">{{ review.repoName }}</Text>
+            <Text muted size="sm" class="truncate">{{ metaLine(review) }}</Text>
+            <div v-if="review.status === 'done'" class="mt-0.5 flex flex-wrap items-center gap-2">
+              <Badge status="neutral">{{ RECOMMENDATION_LABELS[review.recommendation] }}</Badge>
+              <Text muted size="sm">Score {{ review.score }}</Text>
+            </div>
           </div>
-          <Text muted size="sm" class="truncate">{{ review.repoName }}</Text>
-          <Text muted size="sm" class="truncate">{{ metaLine(review) }}</Text>
-          <div v-if="review.status === 'done'" class="mt-0.5 flex flex-wrap items-center gap-2">
-            <Badge status="neutral">{{ RECOMMENDATION_LABELS[review.recommendation] }}</Badge>
-            <Text muted size="sm">Score {{ review.score }}</Text>
-          </div>
-        </div>
 
-        <div class="flex shrink-0 items-center gap-1" @click.stop>
-          <DropdownMenuRoot>
-            <DropdownMenuTrigger as-child>
-              <Button
-                variant="ghost"
-                size="sm"
-                :aria-label="`More actions for review !${review.mrIid}`"
-              >
-                <Icon name="ellipsis" size="sm" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuPortal>
-              <DropdownMenuContent
-                align="end"
-                :side-offset="4"
-                class="z-30 min-w-44 rounded-md border border-line bg-bg-panel-raised p-1 shadow-token-lg"
-              >
-                <DropdownMenuItem
-                  v-if="review.status === 'error' || review.status === 'cancelled'"
-                  :disabled="pendingActionId === review.id"
-                  class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-text outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-bg-hover"
-                  @select="handleRetry(review)"
+          <div class="flex shrink-0 items-center gap-1" @click.stop>
+            <DropdownMenuRoot>
+              <DropdownMenuTrigger as-child>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  :aria-label="`More actions for review !${review.mrIid}`"
                 >
-                  Retry
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  :disabled="pendingActionId === review.id"
-                  class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-text outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-bg-hover"
-                  @select="handleToggleArchive(review)"
+                  <Icon name="ellipsis" size="sm" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuPortal>
+                <DropdownMenuContent
+                  align="end"
+                  :side-offset="4"
+                  class="z-30 min-w-44 rounded-md border border-line bg-bg-panel-raised p-1 shadow-token-lg"
                 >
-                  {{ review.archived ? 'Unarchive' : 'Archive' }}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator class="my-1 h-px bg-line-subtle" />
-                <DropdownMenuItem
-                  v-if="review.status === 'awaiting_approval'"
-                  :disabled="pendingActionId === review.id"
-                  class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-text outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-bg-hover"
-                  @select="handleApprove(review)"
-                >
-                  Approve
-                </DropdownMenuItem>
-                <DropdownMenuSeparator class="my-1 h-px bg-line-subtle" />
-                <ConfirmDialog
-                  :title='`Discard review !${review.mrIid}?`'
-                  description="This permanently removes the review. This cannot be undone."
-                  confirm-label="Discard"
-                  danger
-                  :pending="discardingId === review.id"
-                  @confirm="handleDiscard(review)"
-                >
-                  <template #trigger>
-                    <DropdownMenuItem
-                      class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-danger-text outline-none data-[highlighted]:bg-danger-bg"
-                      @select.prevent
-                    >
-                      Discard
-                    </DropdownMenuItem>
-                  </template>
-                </ConfirmDialog>
-              </DropdownMenuContent>
-            </DropdownMenuPortal>
-          </DropdownMenuRoot>
-        </div>
-      </li>
-    </ul>
+                  <DropdownMenuItem
+                    v-if="review.status === 'error' || review.status === 'cancelled'"
+                    :disabled="pendingActionId === review.id"
+                    class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-text outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-bg-hover"
+                    @select="handleRetry(review)"
+                  >
+                    Retry
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    :disabled="pendingActionId === review.id"
+                    class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-text outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-bg-hover"
+                    @select="handleToggleArchive(review)"
+                  >
+                    {{ review.archived ? 'Unarchive' : 'Archive' }}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator class="my-1 h-px bg-line-subtle" />
+                  <DropdownMenuItem
+                    v-if="review.status === 'awaiting_approval'"
+                    :disabled="pendingActionId === review.id"
+                    class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-text outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-bg-hover"
+                    @select="handleApprove(review)"
+                  >
+                    Approve
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator class="my-1 h-px bg-line-subtle" />
+                  <ConfirmDialog
+                    :title='`Discard review !${review.mrIid}?`'
+                    description="This permanently removes the review. This cannot be undone."
+                    confirm-label="Discard"
+                    danger
+                    :pending="discardingId === review.id"
+                    @confirm="handleDiscard(review)"
+                  >
+                    <template #trigger>
+                      <DropdownMenuItem
+                        class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-danger-text outline-none data-[highlighted]:bg-danger-bg"
+                        @select.prevent
+                      >
+                        Discard
+                      </DropdownMenuItem>
+                    </template>
+                  </ConfirmDialog>
+                </DropdownMenuContent>
+              </DropdownMenuPortal>
+            </DropdownMenuRoot>
+          </div>
+        </li>
+      </ul>
+
+      <div ref="sentinelRef" class="h-px w-full" aria-hidden="true" data-testid="reviews-load-more-sentinel" />
+
+      <div
+        v-if="store.isLoadingMore"
+        class="flex items-center justify-center gap-2 py-3 text-sm text-text-muted"
+        data-testid="reviews-loading-more"
+      >
+        <Spinner size="sm" />
+        Loading more…
+      </div>
+    </template>
   </section>
 </template>

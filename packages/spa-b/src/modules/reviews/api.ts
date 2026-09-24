@@ -1,14 +1,33 @@
-import { request } from '@shared/api/client'
-import type { FindingHumanized, Humanizations, Review, SummaryHumanized } from './types'
+import { request, requestPage, type Page } from '@shared/api/client'
+import type { FindingHumanized, Humanizations, Review, ReviewWithRepo, SummaryHumanized } from './types'
+
+const DEFAULT_LIMIT = 30
+
+/** Wire shape of one row off the global list endpoint — `repoName` is `omitempty` server-side, so it's optional here and normalized to a fallback below before it reaches `ReviewWithRepo` (which every other consumer, e.g. `filters.ts`, treats as always-present). */
+type RawReviewListItem = Review & { repoName?: string }
 
 /**
- * There is no global reviews endpoint — reviews are always scoped to a
- * repo. `archived` (default false) toggles between the live and archived
- * list for that repo.
+ * `GET /reviews?limit&cursor[&archived=1]` — one keyset-paginated page of
+ * the global review list (every repo, newest first, each row carrying
+ * `repoName`), backed by `requestPage` (body = the review array, next
+ * cursor in the `X-Next-Cursor` response header; absent/empty = no more
+ * pages). `cursor` is the opaque token from the previous page's
+ * `nextCursor`, or `null` for the first page. Mirrors
+ * `modules/runs/api.ts#listRecentRoutines`. Replaces the earlier per-repo
+ * `listRepoReviews` fan-out (removed — see `store.ts`'s module doc).
  */
-export function listRepoReviews(repoId: string, archived = false): Promise<Review[]> {
-  const query = archived ? '?archived=1' : ''
-  return request<Review[]>('GET', `/repos/${repoId}/reviews${query}`)
+export function listRecentReviews(
+  cursor: string | null,
+  archived = false,
+  limit = DEFAULT_LIMIT,
+): Promise<Page<ReviewWithRepo>> {
+  const params = new URLSearchParams({ limit: String(limit) })
+  if (cursor) params.set('cursor', cursor)
+  if (archived) params.set('archived', '1')
+  return requestPage<RawReviewListItem>('GET', `/reviews?${params.toString()}`).then((page) => ({
+    nextCursor: page.nextCursor,
+    items: page.items.map((review) => ({ ...review, repoName: review.repoName ?? 'Unknown repo' })),
+  }))
 }
 
 /** The full `Review` (with `findings`/`reasonings`) for the detail page. */
