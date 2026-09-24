@@ -1,10 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia } from 'pinia'
-import { PiniaColada } from '@pinia/colada'
 import { defineComponent } from 'vue'
 import * as runsApi from './api'
-import { runsQueryKey, shouldPoll, useRunsStore } from './store'
+import { shouldPoll, useRunsStore } from './store'
 import type { RoutineRun } from './types'
 
 vi.mock('./api')
@@ -67,8 +66,10 @@ function makeRun(overrides: Partial<RoutineRun> = {}): RoutineRun {
 
 /**
  * Mounts a throwaway component that just instantiates `useRunsStore()`
- * under a real Pinia + Pinia Colada app context — required because
- * `useQuery`/`useMutation`/`useQueryCache` need an active injection context.
+ * under a real Pinia app context — required for `defineStore`'s injection
+ * context. Unlike before, the store no longer uses `@pinia/colada` (the
+ * list is backed by `useInfiniteList` instead), so no `PiniaColada` plugin
+ * is needed here.
  */
 function mountStore() {
   let store!: ReturnType<typeof useRunsStore>
@@ -79,7 +80,7 @@ function mountStore() {
     },
   })
   const wrapper = mount(Harness, {
-    global: { plugins: [createPinia(), PiniaColada] },
+    global: { plugins: [createPinia()] },
   })
   return { wrapper, store }
 }
@@ -96,75 +97,116 @@ describe('shouldPoll (pure)', () => {
   })
 })
 
-describe('runsQueryKey (pure)', () => {
-  it('builds the ["routines", { archived }] key', () => {
-    expect(runsQueryKey(false)).toEqual(['routines', { archived: false }])
-    expect(runsQueryKey(true)).toEqual(['routines', { archived: true }])
-  })
-})
-
-describe('useRunsStore (@pinia/colada)', () => {
+describe('useRunsStore (useInfiniteList-backed)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('the routines query maps the mocked listRecentRoutines() result into store.runs', async () => {
+  it('loads the first page on mount and maps it into store.runs', async () => {
     const runs = [makeRun()]
-    mockedListRecentRoutines.mockResolvedValueOnce(runs)
+    mockedListRecentRoutines.mockResolvedValueOnce({ items: runs, nextCursor: null })
 
     const { store } = mountStore()
     await flushPromises()
 
-    expect(mockedListRecentRoutines).toHaveBeenCalledWith(30, false)
+    expect(mockedListRecentRoutines).toHaveBeenCalledWith(null, false)
     expect(store.runs).toEqual(runs)
     expect(store.isLoading).toBe(false)
-    expect(store.runsState.status).toBe('success')
+    expect(store.error).toBeNull()
+    expect(store.hasMore).toBe(false)
   })
 
-  it('toggling archived re-queries with archived=true', async () => {
-    mockedListRecentRoutines.mockResolvedValueOnce([])
+  it('hasMore reflects a non-null nextCursor, and loadMore appends the next page', async () => {
+    mockedListRecentRoutines.mockResolvedValueOnce({
+      items: [makeRun({ id: 'run1' })],
+      nextCursor: 'cursor-1',
+    })
+    const { store } = mountStore()
+    await flushPromises()
+    expect(store.hasMore).toBe(true)
+
+    mockedListRecentRoutines.mockResolvedValueOnce({
+      items: [makeRun({ id: 'run2' })],
+      nextCursor: null,
+    })
+    await store.loadMore()
+    await flushPromises()
+
+    expect(mockedListRecentRoutines).toHaveBeenLastCalledWith('cursor-1', false)
+    expect(store.runs.map((run) => run.id)).toEqual(['run1', 'run2'])
+    expect(store.hasMore).toBe(false)
+  })
+
+  it('toggling archived resets and re-queries with archived=true', async () => {
+    mockedListRecentRoutines.mockResolvedValueOnce({ items: [], nextCursor: null })
     const { store } = mountStore()
     await flushPromises()
 
-    mockedListRecentRoutines.mockResolvedValueOnce([makeRun({ archived: true })])
+    mockedListRecentRoutines.mockResolvedValueOnce({ items: [makeRun({ archived: true })], nextCursor: null })
     store.archived = true
     await flushPromises()
 
-    expect(mockedListRecentRoutines).toHaveBeenCalledWith(30, true)
+    expect(mockedListRecentRoutines).toHaveBeenCalledWith(null, true)
     expect(store.runs.every((run) => run.archived)).toBe(true)
   })
 
-  it('archiveRun invalidates the routines query on settle and toasts on success', async () => {
-    mockedListRecentRoutines.mockResolvedValueOnce([makeRun({ id: 'run1', archived: false })])
+  it('archiveRun removes the run from the accumulated list locally and toasts on success', async () => {
+    mockedListRecentRoutines.mockResolvedValueOnce({
+      items: [makeRun({ id: 'run1', archived: false })],
+      nextCursor: null,
+    })
     const { store } = mountStore()
     await flushPromises()
 
     mockedArchiveRoutine.mockResolvedValueOnce(undefined)
-    mockedListRecentRoutines.mockResolvedValueOnce([makeRun({ id: 'run1', archived: true })])
 
     await store.archiveRun('run1')
     await flushPromises()
 
     expect(mockedArchiveRoutine).toHaveBeenCalledWith('run1')
     expect(mockToastSuccess).toHaveBeenCalledWith('Run archived')
-    // Settle re-fetched the query, reflecting the now-archived run.
-    expect(mockedListRecentRoutines).toHaveBeenCalledTimes(2)
+    expect(store.runs).toEqual([])
+    // No colada invalidate/refetch anymore — membership change is applied locally.
+    expect(mockedListRecentRoutines).toHaveBeenCalledTimes(1)
   })
 
-  it('cancelRun invalidates the routines query on settle and toasts an error on failure', async () => {
-    mockedListRecentRoutines.mockResolvedValueOnce([makeRun({ id: 'run1', status: 'running' })])
+  it('cancelRun toasts an error on failure and does not refresh the list', async () => {
+    mockedListRecentRoutines.mockResolvedValueOnce({
+      items: [makeRun({ id: 'run1', status: 'running' })],
+      nextCursor: null,
+    })
     const { store } = mountStore()
     await flushPromises()
 
     mockedCancelRoutine.mockRejectedValueOnce(new Error('Cancel failed'))
-    mockedListRecentRoutines.mockResolvedValueOnce([makeRun({ id: 'run1', status: 'running' })])
 
     await store.cancelRun('run1').catch(() => undefined)
     await flushPromises()
 
     expect(mockedCancelRoutine).toHaveBeenCalledWith('run1')
     expect(mockToastError).toHaveBeenCalledWith('Cancel failed')
-    // Settle re-fetched the query even though the mutation failed.
+    expect(mockedListRecentRoutines).toHaveBeenCalledTimes(1)
+  })
+
+  it('cancelRun refreshes the first page (merging the updated status in place) on success', async () => {
+    mockedListRecentRoutines.mockResolvedValueOnce({
+      items: [makeRun({ id: 'run1', status: 'running' })],
+      nextCursor: null,
+    })
+    const { store } = mountStore()
+    await flushPromises()
+
+    mockedCancelRoutine.mockResolvedValueOnce(undefined)
+    mockedListRecentRoutines.mockResolvedValueOnce({
+      items: [makeRun({ id: 'run1', status: 'cancelled' })],
+      nextCursor: null,
+    })
+
+    await store.cancelRun('run1')
+    await flushPromises()
+
+    expect(mockToastSuccess).toHaveBeenCalledWith('Run cancelled')
+    expect(store.runs).toEqual([makeRun({ id: 'run1', status: 'cancelled' })])
     expect(mockedListRecentRoutines).toHaveBeenCalledTimes(2)
   })
 })

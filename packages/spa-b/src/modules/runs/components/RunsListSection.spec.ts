@@ -74,7 +74,7 @@ describe('RunsListSection', () => {
   })
 
   it('renders the MR title as the bold primary line and the repo name as the muted secondary line', async () => {
-    mockedListRecentRoutines.mockResolvedValueOnce([makeRun()])
+    mockedListRecentRoutines.mockResolvedValueOnce({ items: [makeRun()], nextCursor: null })
     const wrapper = await mountSection()
 
     const row = wrapper.find('[data-testid="run-row"]')
@@ -84,7 +84,7 @@ describe('RunsListSection', () => {
   })
 
   it('wraps the row body in a link to /runs/{id}', async () => {
-    mockedListRecentRoutines.mockResolvedValueOnce([makeRun({ id: 'run42' })])
+    mockedListRecentRoutines.mockResolvedValueOnce({ items: [makeRun({ id: 'run42' })], nextCursor: null })
     const wrapper = await mountSection()
 
     const link = wrapper.find('[data-testid="run-row"] a')
@@ -92,7 +92,7 @@ describe('RunsListSection', () => {
   })
 
   it('renders an "Archived" badge and dims the row for an archived run', async () => {
-    mockedListRecentRoutines.mockResolvedValueOnce([makeRun({ archived: true })])
+    mockedListRecentRoutines.mockResolvedValueOnce({ items: [makeRun({ archived: true })], nextCursor: null })
     const wrapper = await mountSection()
 
     const row = wrapper.find('[data-testid="run-row"]')
@@ -103,7 +103,7 @@ describe('RunsListSection', () => {
   })
 
   it('does not show the archived badge or dimming for a non-archived run', async () => {
-    mockedListRecentRoutines.mockResolvedValueOnce([makeRun({ archived: false })])
+    mockedListRecentRoutines.mockResolvedValueOnce({ items: [makeRun({ archived: false })], nextCursor: null })
     const wrapper = await mountSection()
 
     const row = wrapper.find('[data-testid="run-row"]')

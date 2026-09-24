@@ -1,16 +1,32 @@
 <script setup lang="ts">
 /**
  * Runs list — organism. Mirrors `RepositoriesSection`'s dense-list-rows-
- * with-a-`⋯`-`DropdownMenu` shape, backed by `useRunsStore` (query + live
- * polling + the 4 action mutations), plus a repo/status filter bar and
- * per-row navigation to the detail route (`/runs/{id}`, see
+ * with-a-`⋯`-`DropdownMenu` shape, backed by `useRunsStore` (cursor-paginated
+ * infinite list + live polling + the 4 action mutations), plus a repo/status
+ * filter bar and per-row navigation to the detail route (`/runs/{id}`, see
  * `src/pages/runs/[id].vue`).
  *
  * `useReposStore` is deep-imported read-only, purely to resolve repo id →
  * name for the repo filter's options (never for repo mutations) — mirrors
  * the task's "read-only" boundary between the runs and repos modules.
+ *
+ * Infinite scroll: a zero-height sentinel after the list is watched with
+ * `useIntersectionObserver` (root = viewport — this observes correctly
+ * regardless of which ancestor actually scrolls, since the sentinel still
+ * enters the viewport when its scrolling ancestor, `AppShell`'s `<main>`,
+ * scrolls); entering view triggers `store.loadMore()` while `store.hasMore`.
+ * Client-side filters (`filterRuns`) only see the pages loaded so far — a
+ * known v1 limitation, not a bug.
+ *
+ * Lazy row menus: each row's `DropdownMenuContent` is NOT manually gated
+ * behind `v-if` — Reka UI's `MenuContent` already wraps its content in a
+ * `Presence` that renders `null` (no content tree, no DOM) whenever the menu
+ * isn't open (`present: forceMount || open`, and this component never passes
+ * `force-mount`). So mounting 30+ rows mounts 30+ *triggers* but zero
+ * `DropdownMenuContent` trees until a row's `⋯` is actually clicked.
  */
 import { computed, nextTick, onUnmounted, ref } from 'vue'
+import { useIntersectionObserver } from '@vueuse/core'
 import {
   DropdownMenuContent,
   DropdownMenuItem,
@@ -19,7 +35,19 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from 'reka-ui'
-import { Alert, Badge, Button, ConfirmDialog, Icon, Select, Skeleton, Switch, Text } from '@shared/ui/design-system'
+import {
+  Alert,
+  Badge,
+  Button,
+  ConfirmDialog,
+  Icon,
+  Select,
+  Skeleton,
+  Spinner,
+  Switch,
+  Text,
+} from '@shared/ui/design-system'
+import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
 import { useReposStore } from '@modules/repos/store'
 import RunStatusChip from './RunStatusChip.vue'
 import { useRunsStore } from '../store'
@@ -70,6 +98,17 @@ const deletingId = ref<string | null>(null)
 const confirmDeleteId = ref<string | null>(null)
 const confirmDeleteRun = computed(() => store.runs.find((run) => run.id === confirmDeleteId.value) ?? null)
 const deleteConfirmTriggerRef = ref<HTMLButtonElement | null>(null)
+
+// Infinite-scroll sentinel — only rendered while the list has rows (see the
+// template's v-else branch), so this never fires against a detached/empty
+// element. Guarded on `hasMore`/`isLoadingMore` so a sentinel that's already
+// in view (e.g. a short filtered result) doesn't fire `loadMore()` in a loop.
+const sentinelRef = ref<HTMLElement | null>(null)
+useIntersectionObserver(sentinelRef, ([entry]) => {
+  if (entry?.isIntersecting && store.hasMore && !store.isLoadingMore) {
+    store.loadMore()
+  }
+})
 
 function openDeleteConfirm(run: RoutineRun) {
   confirmDeleteId.value = run.id
@@ -153,11 +192,7 @@ async function handleDelete(run: RoutineRun) {
       </div>
     </div>
 
-    <div
-      v-if="store.runsState.status === 'pending'"
-      class="flex flex-col gap-2"
-      data-testid="runs-loading-skeleton"
-    >
+    <div v-if="store.isLoading" class="flex flex-col gap-2" data-testid="runs-loading-skeleton">
       <div
         v-for="n in 3"
         :key="n"
@@ -171,8 +206,8 @@ async function handleDelete(run: RoutineRun) {
       </div>
     </div>
 
-    <Alert v-else-if="store.runsState.status === 'error'" status="danger">
-      <p>{{ store.error?.message ?? 'Failed to load runs' }}</p>
+    <Alert v-else-if="store.error" status="danger">
+      <p>{{ resolveErrorMessage(store.error, 'Failed to load runs') }}</p>
       <Button variant="outline" size="sm" class="mt-2" @click="store.refetch()">Retry</Button>
     </Alert>
 
@@ -185,104 +220,117 @@ async function handleDelete(run: RoutineRun) {
       <Text v-else muted>No runs match the selected filters.</Text>
     </div>
 
-    <ul v-else class="flex flex-col gap-2">
-      <li
-        v-for="run in filteredRuns"
-        :key="run.id"
-        class="flex items-center gap-3 rounded-lg border border-line-subtle bg-bg-panel px-3 py-2.5"
-        :class="{ 'opacity-60': run.archived }"
-        data-testid="run-row"
-      >
-        <RouterLink
-          :to="`/runs/${run.id}`"
-          :aria-label="`View run ${runTitle(run)}`"
-          class="flex min-w-0 flex-1 flex-col gap-1 rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+    <template v-else>
+      <ul class="flex flex-col gap-2">
+        <li
+          v-for="run in filteredRuns"
+          :key="run.id"
+          class="flex items-center gap-3 rounded-lg border border-line-subtle bg-bg-panel px-3 py-2.5"
+          :class="{ 'opacity-60': run.archived }"
+          data-testid="run-row"
         >
-          <div class="flex flex-wrap items-center gap-2">
-            <Text class="truncate font-semibold">{{ runTitle(run) }}</Text>
-            <Badge v-if="run.archived" status="neutral" data-testid="run-archived-badge">Archived</Badge>
-          </div>
-          <Text muted size="sm" class="truncate">{{ run.repoName ?? 'Unknown repo' }}</Text>
-          <div class="flex flex-wrap items-center gap-2">
-            <RunStatusChip :status="run.status" />
-            <Badge status="neutral">{{ routineKindLabel[run.kind] }}</Badge>
-            <Badge v-if="run.kind === 'release' && flowLabel(run.flow)" status="neutral">
-              {{ flowLabel(run.flow) }}
-              <template v-if="run.sourceBranch && run.targetBranch">
-                — {{ run.sourceBranch }}→{{ run.targetBranch }}
-              </template>
-            </Badge>
-            <Text muted size="xs">{{ formatDateTime(run.updatedAt) }}</Text>
-          </div>
-        </RouterLink>
-
-        <div class="flex shrink-0 items-center gap-1">
-          <DropdownMenuRoot>
-            <DropdownMenuTrigger as-child>
-              <Button variant="ghost" size="sm" :aria-label="`More actions for ${runTitle(run)}`" @click.stop>
-                <Icon name="ellipsis" size="sm" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuPortal>
-              <DropdownMenuContent
-                align="end"
-                :side-offset="4"
-                class="z-30 min-w-40 rounded-md border border-line bg-bg-panel-raised p-1 shadow-token-lg"
-              >
-                <DropdownMenuItem
-                  v-if="!run.archived && !isRunActive(run.status)"
-                  :disabled="store.isArchiving"
-                  class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-text outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-bg-hover"
-                  @select="handleArchive(run)"
-                >
-                  Archive
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  v-else-if="run.archived"
-                  :disabled="store.isUnarchiving"
-                  class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-text outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-bg-hover"
-                  @select="handleUnarchive(run)"
-                >
-                  Unarchive
-                </DropdownMenuItem>
-
-                <template v-if="isRunCancelable(run.status)">
-                  <DropdownMenuSeparator class="my-1 h-px bg-line-subtle" />
-                  <ConfirmDialog
-                    title="Cancel this run?"
-                    description="Stops the routine run in progress. This cannot be undone."
-                    confirm-label="Cancel run"
-                    :pending="cancellingId === run.id"
-                    @confirm="handleCancel(run)"
-                  >
-                    <template #trigger>
-                      <DropdownMenuItem
-                        :disabled="store.isCancelling"
-                        class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-danger-text outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-danger-bg"
-                        @select.prevent
-                      >
-                        Cancel
-                      </DropdownMenuItem>
-                    </template>
-                  </ConfirmDialog>
+          <RouterLink
+            :to="`/runs/${run.id}`"
+            :aria-label="`View run ${runTitle(run)}`"
+            class="flex min-w-0 flex-1 flex-col gap-1 rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+          >
+            <div class="flex flex-wrap items-center gap-2">
+              <Text class="truncate font-semibold">{{ runTitle(run) }}</Text>
+              <Badge v-if="run.archived" status="neutral" data-testid="run-archived-badge">Archived</Badge>
+            </div>
+            <Text muted size="sm" class="truncate">{{ run.repoName ?? 'Unknown repo' }}</Text>
+            <div class="flex flex-wrap items-center gap-2">
+              <RunStatusChip :status="run.status" />
+              <Badge status="neutral">{{ routineKindLabel[run.kind] }}</Badge>
+              <Badge v-if="run.kind === 'release' && flowLabel(run.flow)" status="neutral">
+                {{ flowLabel(run.flow) }}
+                <template v-if="run.sourceBranch && run.targetBranch">
+                  — {{ run.sourceBranch }}→{{ run.targetBranch }}
                 </template>
+              </Badge>
+              <Text muted size="xs">{{ formatDateTime(run.updatedAt) }}</Text>
+            </div>
+          </RouterLink>
 
-                <template v-else>
-                  <DropdownMenuSeparator class="my-1 h-px bg-line-subtle" />
+          <div class="flex shrink-0 items-center gap-1">
+            <DropdownMenuRoot>
+              <DropdownMenuTrigger as-child>
+                <Button variant="ghost" size="sm" :aria-label="`More actions for ${runTitle(run)}`" @click.stop>
+                  <Icon name="ellipsis" size="sm" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuPortal>
+                <DropdownMenuContent
+                  align="end"
+                  :side-offset="4"
+                  class="z-30 min-w-40 rounded-md border border-line bg-bg-panel-raised p-1 shadow-token-lg"
+                >
                   <DropdownMenuItem
-                    :disabled="store.isRemoving"
-                    class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-danger-text outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-danger-bg"
-                    @select="openDeleteConfirm(run)"
+                    v-if="!run.archived && !isRunActive(run.status)"
+                    :disabled="store.isArchiving"
+                    class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-text outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-bg-hover"
+                    @select="handleArchive(run)"
                   >
-                    Delete
+                    Archive
                   </DropdownMenuItem>
-                </template>
-              </DropdownMenuContent>
-            </DropdownMenuPortal>
-          </DropdownMenuRoot>
-        </div>
-      </li>
-    </ul>
+                  <DropdownMenuItem
+                    v-else-if="run.archived"
+                    :disabled="store.isUnarchiving"
+                    class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-text outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-bg-hover"
+                    @select="handleUnarchive(run)"
+                  >
+                    Unarchive
+                  </DropdownMenuItem>
+
+                  <template v-if="isRunCancelable(run.status)">
+                    <DropdownMenuSeparator class="my-1 h-px bg-line-subtle" />
+                    <ConfirmDialog
+                      title="Cancel this run?"
+                      description="Stops the routine run in progress. This cannot be undone."
+                      confirm-label="Cancel run"
+                      :pending="cancellingId === run.id"
+                      @confirm="handleCancel(run)"
+                    >
+                      <template #trigger>
+                        <DropdownMenuItem
+                          :disabled="store.isCancelling"
+                          class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-danger-text outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-danger-bg"
+                          @select.prevent
+                        >
+                          Cancel
+                        </DropdownMenuItem>
+                      </template>
+                    </ConfirmDialog>
+                  </template>
+
+                  <template v-else>
+                    <DropdownMenuSeparator class="my-1 h-px bg-line-subtle" />
+                    <DropdownMenuItem
+                      :disabled="store.isRemoving"
+                      class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-danger-text outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-danger-bg"
+                      @select="openDeleteConfirm(run)"
+                    >
+                      Delete
+                    </DropdownMenuItem>
+                  </template>
+                </DropdownMenuContent>
+              </DropdownMenuPortal>
+            </DropdownMenuRoot>
+          </div>
+        </li>
+      </ul>
+
+      <div ref="sentinelRef" class="h-px w-full" aria-hidden="true" data-testid="runs-load-more-sentinel" />
+
+      <div
+        v-if="store.isLoadingMore"
+        class="flex items-center justify-center gap-2 py-3 text-sm text-text-muted"
+        data-testid="runs-loading-more"
+      >
+        <Spinner size="sm" />
+        Loading more…
+      </div>
+    </template>
 
     <!-- One Delete ConfirmDialog per section, driven by confirmDeleteId —
          see the comment on confirmDeleteId above for why this is lifted out

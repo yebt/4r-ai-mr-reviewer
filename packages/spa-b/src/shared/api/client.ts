@@ -55,17 +55,11 @@ async function parseBody(response: Response): Promise<unknown> {
 }
 
 /**
- * Perform a same-origin JSON request against the API.
- * Throws `ApiError` on any non-2xx response.
+ * Shared response handling for both `request` and `requestPage`: parses the
+ * body, raises the global 401 hook, and throws `ApiError` on any non-2xx
+ * response or a non-JSON 2xx body. Returns the parsed body on success.
  */
-export async function request<T>(method: HttpMethod, path: string, body?: unknown): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    method,
-    credentials: 'same-origin',
-    headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  })
-
+async function handleResponseBody(response: Response, path: string): Promise<unknown> {
   const parsed = await parseBody(response)
 
   if (!response.ok) {
@@ -93,5 +87,47 @@ export async function request<T>(method: HttpMethod, path: string, body?: unknow
     )
   }
 
-  return parsed as T
+  return parsed
+}
+
+/**
+ * Perform a same-origin JSON request against the API.
+ * Throws `ApiError` on any non-2xx response.
+ */
+export async function request<T>(method: HttpMethod, path: string, body?: unknown): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method,
+    credentials: 'same-origin',
+    headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  })
+
+  return (await handleResponseBody(response, path)) as T
+}
+
+/** One page of a keyset-paginated list endpoint. */
+export interface Page<T> {
+  items: T[]
+  nextCursor: string | null
+}
+
+/**
+ * Perform a same-origin GET against a keyset-paginated list endpoint whose
+ * body is the JSON array of items, with the next page's opaque cursor
+ * carried in the `X-Next-Cursor` response header (absent/empty = no more
+ * pages). Shares `request`'s fetch/error/parse handling via
+ * `handleResponseBody`.
+ */
+export async function requestPage<T>(method: HttpMethod, path: string): Promise<Page<T>> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method,
+    credentials: 'same-origin',
+  })
+
+  const parsed = await handleResponseBody(response, path)
+
+  return {
+    items: parsed as T[],
+    nextCursor: response.headers.get('X-Next-Cursor') || null,
+  }
 }
