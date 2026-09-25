@@ -14,12 +14,22 @@
  * useSidebar() collapse state and exposes it as a CSS var on the desktop
  * wrapper; AppSidebar.vue only ever consumes `var(--sidebar-w)`, never
  * duplicates the width literals.
+ *
+ * AppShell is also the single source of truth for *which* element scrolls:
+ * it publishes whichever `<main>` is currently mounted via
+ * `provideScrollContainer` (see useScrollContainer.ts) so descendants that
+ * need the real scrolling ancestor — e.g. a `@tanstack/vue-virtual`
+ * virtualizer on the runs list — don't have to query the DOM or (wrongly)
+ * assume the window scrolls. Both `<main>`s share the same template ref:
+ * since only one branch is ever mounted at a time, at most one of them ever
+ * sets it.
  */
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useMediaQuery } from '@vueuse/core'
 import { useCommandPalette } from '@shared/composables/useCommandPalette'
 import { useColorScheme } from '@shared/composables/useColorScheme'
 import { useSidebar } from '@shared/composables/useSidebar'
+import { provideScrollContainer } from '@shared/composables/useScrollContainer'
 import AppSidebar from '../organisms/AppSidebar.vue'
 import AppBottomNav from '../organisms/AppBottomNav.vue'
 import Icon from '../atoms/Icon.vue'
@@ -27,6 +37,9 @@ import Icon from '../atoms/Icon.vue'
 const { open: openPalette } = useCommandPalette()
 const { colorMode } = useColorScheme()
 const { collapsed: sidebarCollapsed } = useSidebar()
+
+const mainEl = ref<HTMLElement | null>(null)
+provideScrollContainer(mainEl)
 
 const themeToggleIcon = computed(() => (colorMode.value === 'dark' ? 'sun' : 'moon'))
 const sidebarWidthStyle = computed(() => ({ '--sidebar-w': sidebarCollapsed.value ? '3.5rem' : '15rem' }))
@@ -46,14 +59,16 @@ const isDesktop = useMediaQuery('(min-width: 768px)')
     <div v-if="isDesktop" class="flex h-dvh overflow-hidden" :style="sidebarWidthStyle">
       <AppSidebar />
       <div class="flex min-w-0 flex-1 flex-col">
-        <main class="flex-1 overflow-y-auto px-6 py-6">
+        <main ref="mainEl" class="flex-1 overflow-y-auto px-6 py-6">
           <slot />
         </main>
       </div>
     </div>
 
     <!-- Mobile: top bar + scrollable content + bottom tab bar -->
-    <div v-else class="flex min-h-dvh flex-col">
+    <!-- Viewport-bounded like desktop so <main> is the scroll container (the
+         runs list virtualizer measures against it via provideScrollContainer). -->
+    <div v-else class="flex h-dvh flex-col overflow-hidden">
       <header
         class="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-line bg-bg-app/95 px-4 py-3 backdrop-blur-sm"
         style="padding-top: max(0.75rem, env(safe-area-inset-top))"
@@ -87,7 +102,7 @@ const isDesktop = useMediaQuery('(min-width: 768px)')
         </div>
       </header>
 
-      <main class="flex-1 overflow-y-auto px-4 py-4">
+      <main ref="mainEl" class="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         <slot />
       </main>
 

@@ -19,6 +19,7 @@
   "dependencies": {
     "@pinia/colada": "^1.4.5",
     "@tailwindcss/vite": "^4.3.3",
+    "@tanstack/vue-virtual": "^3.13.39",
     "@vueuse/core": "^15.0.0",
     "lucide-vue-next": "^1.0.0",
     "nprogress": "^0.2.0",

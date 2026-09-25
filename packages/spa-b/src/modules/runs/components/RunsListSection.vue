@@ -10,13 +10,28 @@
  * name for the repo filter's options (never for repo mutations) — mirrors
  * the task's "read-only" boundary between the runs and repos modules.
  *
- * Infinite scroll: a zero-height sentinel after the list is watched with
- * `useIntersectionObserver` (root = viewport — this observes correctly
- * regardless of which ancestor actually scrolls, since the sentinel still
- * enters the viewport when its scrolling ancestor, `AppShell`'s `<main>`,
- * scrolls); entering view triggers `store.loadMore()` while `store.hasMore`.
- * Client-side filters (`filterRuns`) only see the pages loaded so far — a
- * known v1 limitation, not a bug.
+ * Virtualized + infinite scroll: rows have variable height (titles/badges
+ * wrap), so the list is rendered with `@tanstack/vue-virtual`'s dynamic-size
+ * pattern — only `rowVirtualizer.getVirtualItems()` mount, each measured via
+ * `measureElement` on its wrapper `<li>`, absolutely positioned by
+ * `transform: translateY(item.start - scrollMargin)` inside a `<ul>` sized to
+ * `getTotalSize()`. `getScrollElement` reads the real scrolling ancestor
+ * (`AppShell`'s active `<main>`, injected via `useScrollContainer` — the
+ * window never scrolls, so `useWindowVirtualizer` would be wrong here).
+ * `scrollMargin` is the list's offset from the top of that scroll element's
+ * *content* (the page header/filter bar sit above it inside the same
+ * `<main>`); without it the virtualizer would think row 0 starts at the very
+ * top of `<main>` and mis-map every scroll position. It's computed as
+ * `listRect.top - scrollRect.top + scrollEl.scrollTop`, which stays correct
+ * at any scroll offset (the `+scrollTop` cancels out however far the list
+ * has already scrolled), and is re-measured on mount, whenever the scroll
+ * element changes, and via `useResizeObserver` on both the list and the
+ * scroll container (e.g. the filter bar wrapping on resize). Instead of the
+ * old sentinel/IntersectionObserver, a watcher on the last virtual item
+ * calls `store.loadMore()` once it's within `LOAD_MORE_THRESHOLD` rows of
+ * the end, guarded by `store.hasMore && !store.isLoadingMore`. Client-side
+ * filters (`filterRuns`) only see the pages loaded so far — a known v1
+ * limitation, not a bug.
  *
  * Lazy row menus: each row's `DropdownMenuContent` is NOT manually gated
  * behind `v-if` — Reka UI's `MenuContent` already wraps its content in a
@@ -25,8 +40,9 @@
  * `force-mount`). So mounting 30+ rows mounts 30+ *triggers* but zero
  * `DropdownMenuContent` trees until a row's `⋯` is actually clicked.
  */
-import { computed, nextTick, onUnmounted, ref } from 'vue'
-import { useIntersectionObserver } from '@vueuse/core'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useResizeObserver } from '@vueuse/core'
+import { useVirtualizer } from '@tanstack/vue-virtual'
 import {
   DropdownMenuContent,
   DropdownMenuItem,
@@ -48,6 +64,7 @@ import {
   Text,
 } from '@shared/ui/design-system'
 import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
+import { useScrollContainer } from '@shared/composables/useScrollContainer'
 import { useReposStore } from '@modules/repos/store'
 import RunStatusChip from './RunStatusChip.vue'
 import { useRunsStore } from '../store'
@@ -99,13 +116,93 @@ const confirmDeleteId = ref<string | null>(null)
 const confirmDeleteRun = computed(() => store.runs.find((run) => run.id === confirmDeleteId.value) ?? null)
 const deleteConfirmTriggerRef = ref<HTMLButtonElement | null>(null)
 
-// Infinite-scroll sentinel — only rendered while the list has rows (see the
-// template's v-else branch), so this never fires against a detached/empty
-// element. Guarded on `hasMore`/`isLoadingMore` so a sentinel that's already
-// in view (e.g. a short filtered result) doesn't fire `loadMore()` in a loop.
-const sentinelRef = ref<HTMLElement | null>(null)
-useIntersectionObserver(sentinelRef, ([entry]) => {
-  if (entry?.isIntersecting && store.hasMore && !store.isLoadingMore) {
+// --- Virtualized list -----------------------------------------------------
+// See the top-of-file comment for the overall approach.
+const scrollEl = useScrollContainer()
+const listContainerRef = ref<HTMLElement | null>(null)
+
+// Distance from the top of the scroll element's *content* to the top of the
+// list container, in px. Recomputed below; passed to the virtualizer as
+// `scrollMargin` and subtracted back out of each item's `translateY`.
+const scrollMargin = ref(0)
+
+function measureScrollMargin() {
+  const listNode = listContainerRef.value
+  const scrollNode = scrollEl.value
+  if (!listNode || !scrollNode) return
+  const listRect = listNode.getBoundingClientRect()
+  const scrollRect = scrollNode.getBoundingClientRect()
+  // `+ scrollTop` makes this scroll-position independent: as the user
+  // scrolls, `listRect.top - scrollRect.top` shrinks by exactly as much as
+  // `scrollTop` grows, so the sum stays constant (it only changes if the
+  // content *above* the list — header, filter bar — actually resizes).
+  scrollMargin.value = listRect.top - scrollRect.top + scrollNode.scrollTop
+}
+
+onMounted(measureScrollMargin)
+watch(scrollEl, measureScrollMargin, { immediate: true })
+useResizeObserver(listContainerRef, measureScrollMargin)
+useResizeObserver(scrollEl, measureScrollMargin)
+
+const ESTIMATED_ROW_HEIGHT = 96
+
+const rowVirtualizer = useVirtualizer<HTMLElement, HTMLElement>(
+  computed(() => ({
+    count: filteredRuns.value.length,
+    getScrollElement: () => scrollEl.value,
+    // Rough single-line row height: py-2.5 padding (20px) + title line
+    // (24px) + gap-1 (4px) + repo line (20px) + gap-1 (4px) + badges row
+    // (24px). Rows with wrapped titles/badges measure taller at runtime via
+    // `measureElement` below — this is only the initial estimate.
+    estimateSize: () => ESTIMATED_ROW_HEIGHT,
+    overscan: 8,
+    getItemKey: (index) => filteredRuns.value[index]?.id ?? index,
+    scrollMargin: scrollMargin.value,
+    // Without this, jsdom (0×0 layout in unit tests) would compute an empty
+    // visible range and render zero rows — this seeds a first range so the
+    // list (and its existing assertions) render without a real layout pass.
+    initialRect: { width: 1024, height: 800 },
+    // Vue can hand a row to the `measureElement` ref before inserting it into
+    // the document; reading layout from a detached node yields 0px, which
+    // collapsed rows to size 0 and made the later real measurements cascade
+    // into scroll adjustments (the list opened ~1000–1600px scrolled down).
+    // For a not-yet-connected row keep the cached size (or the estimate); the
+    // ResizeObserver TanStack attaches reports the real size once it's laid out.
+    measureElement: (el, entry, instance) => {
+      const box = entry?.borderBoxSize?.[0]
+      if (box) return Math.round(box.blockSize)
+      if (!el.isConnected) {
+        const index = Number(el.getAttribute('data-index'))
+        return instance.measurementsCache[index]?.size ?? ESTIMATED_ROW_HEIGHT
+      }
+      return el.offsetHeight
+    },
+  })),
+)
+
+// Pairs each rendered virtual slot with its run, skipping any index that
+// (in principle, given `count` === `filteredRuns.length`) has no backing
+// row — keeps the template free of `noUncheckedIndexedAccess` optional
+// chaining on every field.
+const virtualRows = computed(() =>
+  rowVirtualizer.value.getVirtualItems().flatMap((item) => {
+    const run = filteredRuns.value[item.index]
+    return run ? [{ item, run }] : []
+  }),
+)
+
+// Replaces the old sentinel/IntersectionObserver: once the last rendered
+// row is within LOAD_MORE_THRESHOLD of the end of the currently-loaded
+// (filtered) list, fetch the next page.
+const LOAD_MORE_THRESHOLD = 5
+watch(virtualRows, (rows) => {
+  const lastRow = rows[rows.length - 1]
+  if (!lastRow) return
+  if (
+    lastRow.item.index >= filteredRuns.value.length - 1 - LOAD_MORE_THRESHOLD &&
+    store.hasMore &&
+    !store.isLoadingMore
+  ) {
     store.loadMore()
   }
 })
@@ -221,106 +318,111 @@ async function handleDelete(run: RoutineRun) {
     </div>
 
     <template v-else>
-      <ul class="flex flex-col gap-2">
+      <ul ref="listContainerRef" class="relative" :style="{ height: `${rowVirtualizer.getTotalSize()}px` }">
         <li
-          v-for="run in filteredRuns"
+          v-for="{ item, run } in virtualRows"
           :key="run.id"
-          class="flex items-center gap-3 rounded-lg border border-line-subtle bg-bg-panel px-3 py-2.5"
-          :class="{ 'opacity-60': run.archived }"
-          data-testid="run-row"
+          :data-index="item.index"
+          :ref="(el) => rowVirtualizer.measureElement(el as HTMLElement)"
+          class="absolute inset-x-0 top-0 pb-2"
+          :style="{ transform: `translateY(${item.start - scrollMargin}px)` }"
         >
-          <RouterLink
-            :to="`/runs/${run.id}`"
-            :aria-label="`View run ${runTitle(run)}`"
-            class="flex min-w-0 flex-1 flex-col gap-1 rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+          <div
+            class="flex items-center gap-3 rounded-lg border border-line-subtle bg-bg-panel px-3 py-2.5"
+            :class="{ 'opacity-60': run.archived }"
+            data-testid="run-row"
           >
-            <div class="flex flex-wrap items-center gap-2">
-              <Text class="truncate font-semibold">{{ runTitle(run) }}</Text>
-              <Badge v-if="run.archived" status="neutral" data-testid="run-archived-badge">Archived</Badge>
-            </div>
-            <Text muted size="sm" class="truncate">{{ run.repoName ?? 'Unknown repo' }}</Text>
-            <div class="flex flex-wrap items-center gap-2">
-              <RunStatusChip :status="run.status" />
-              <Badge status="neutral">{{ routineKindLabel[run.kind] }}</Badge>
-              <Badge v-if="run.kind === 'release' && flowLabel(run.flow)" status="neutral">
-                {{ flowLabel(run.flow) }}
-                <template v-if="run.sourceBranch && run.targetBranch">
-                  — {{ run.sourceBranch }}→{{ run.targetBranch }}
-                </template>
-              </Badge>
-              <Text muted size="xs">{{ formatDateTime(run.updatedAt) }}</Text>
-            </div>
-          </RouterLink>
-
-          <div class="flex shrink-0 items-center gap-1">
-            <DropdownMenuRoot>
-              <DropdownMenuTrigger as-child>
-                <Button variant="ghost" size="sm" :aria-label="`More actions for ${runTitle(run)}`" @click.stop>
-                  <Icon name="ellipsis" size="sm" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuPortal>
-                <DropdownMenuContent
-                  align="end"
-                  :side-offset="4"
-                  class="z-30 min-w-40 rounded-md border border-line bg-bg-panel-raised p-1 shadow-token-lg"
-                >
-                  <DropdownMenuItem
-                    v-if="!run.archived && !isRunActive(run.status)"
-                    :disabled="store.isArchiving"
-                    class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-text outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-bg-hover"
-                    @select="handleArchive(run)"
-                  >
-                    Archive
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    v-else-if="run.archived"
-                    :disabled="store.isUnarchiving"
-                    class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-text outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-bg-hover"
-                    @select="handleUnarchive(run)"
-                  >
-                    Unarchive
-                  </DropdownMenuItem>
-
-                  <template v-if="isRunCancelable(run.status)">
-                    <DropdownMenuSeparator class="my-1 h-px bg-line-subtle" />
-                    <ConfirmDialog
-                      title="Cancel this run?"
-                      description="Stops the routine run in progress. This cannot be undone."
-                      confirm-label="Cancel run"
-                      :pending="cancellingId === run.id"
-                      @confirm="handleCancel(run)"
-                    >
-                      <template #trigger>
-                        <DropdownMenuItem
-                          :disabled="store.isCancelling"
-                          class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-danger-text outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-danger-bg"
-                          @select.prevent
-                        >
-                          Cancel
-                        </DropdownMenuItem>
-                      </template>
-                    </ConfirmDialog>
+            <RouterLink
+              :to="`/runs/${run.id}`"
+              :aria-label="`View run ${runTitle(run)}`"
+              class="flex min-w-0 flex-1 flex-col gap-1 rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+            >
+              <div class="flex flex-wrap items-center gap-2">
+                <Text class="truncate font-semibold">{{ runTitle(run) }}</Text>
+                <Badge v-if="run.archived" status="neutral" data-testid="run-archived-badge">Archived</Badge>
+              </div>
+              <Text muted size="sm" class="truncate">{{ run.repoName ?? 'Unknown repo' }}</Text>
+              <div class="flex flex-wrap items-center gap-2">
+                <RunStatusChip :status="run.status" />
+                <Badge status="neutral">{{ routineKindLabel[run.kind] }}</Badge>
+                <Badge v-if="run.kind === 'release' && flowLabel(run.flow)" status="neutral">
+                  {{ flowLabel(run.flow) }}
+                  <template v-if="run.sourceBranch && run.targetBranch">
+                    — {{ run.sourceBranch }}→{{ run.targetBranch }}
                   </template>
+                </Badge>
+                <Text muted size="xs">{{ formatDateTime(run.updatedAt) }}</Text>
+              </div>
+            </RouterLink>
 
-                  <template v-else>
-                    <DropdownMenuSeparator class="my-1 h-px bg-line-subtle" />
+            <div class="flex shrink-0 items-center gap-1">
+              <DropdownMenuRoot>
+                <DropdownMenuTrigger as-child>
+                  <Button variant="ghost" size="sm" :aria-label="`More actions for ${runTitle(run)}`" @click.stop>
+                    <Icon name="ellipsis" size="sm" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuPortal>
+                  <DropdownMenuContent
+                    align="end"
+                    :side-offset="4"
+                    class="z-30 min-w-40 rounded-md border border-line bg-bg-panel-raised p-1 shadow-token-lg"
+                  >
                     <DropdownMenuItem
-                      :disabled="store.isRemoving"
-                      class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-danger-text outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-danger-bg"
-                      @select="openDeleteConfirm(run)"
+                      v-if="!run.archived && !isRunActive(run.status)"
+                      :disabled="store.isArchiving"
+                      class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-text outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-bg-hover"
+                      @select="handleArchive(run)"
                     >
-                      Delete
+                      Archive
                     </DropdownMenuItem>
-                  </template>
-                </DropdownMenuContent>
-              </DropdownMenuPortal>
-            </DropdownMenuRoot>
+                    <DropdownMenuItem
+                      v-else-if="run.archived"
+                      :disabled="store.isUnarchiving"
+                      class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-text outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-bg-hover"
+                      @select="handleUnarchive(run)"
+                    >
+                      Unarchive
+                    </DropdownMenuItem>
+
+                    <template v-if="isRunCancelable(run.status)">
+                      <DropdownMenuSeparator class="my-1 h-px bg-line-subtle" />
+                      <ConfirmDialog
+                        title="Cancel this run?"
+                        description="Stops the routine run in progress. This cannot be undone."
+                        confirm-label="Cancel run"
+                        :pending="cancellingId === run.id"
+                        @confirm="handleCancel(run)"
+                      >
+                        <template #trigger>
+                          <DropdownMenuItem
+                            :disabled="store.isCancelling"
+                            class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-danger-text outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-danger-bg"
+                            @select.prevent
+                          >
+                            Cancel
+                          </DropdownMenuItem>
+                        </template>
+                      </ConfirmDialog>
+                    </template>
+
+                    <template v-else>
+                      <DropdownMenuSeparator class="my-1 h-px bg-line-subtle" />
+                      <DropdownMenuItem
+                        :disabled="store.isRemoving"
+                        class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-danger-text outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-danger-bg"
+                        @select="openDeleteConfirm(run)"
+                      >
+                        Delete
+                      </DropdownMenuItem>
+                    </template>
+                  </DropdownMenuContent>
+                </DropdownMenuPortal>
+              </DropdownMenuRoot>
+            </div>
           </div>
         </li>
       </ul>
-
-      <div ref="sentinelRef" class="h-px w-full" aria-hidden="true" data-testid="runs-load-more-sentinel" />
 
       <div
         v-if="store.isLoadingMore"
