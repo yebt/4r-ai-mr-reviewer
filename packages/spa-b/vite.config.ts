@@ -23,6 +23,8 @@ export default defineConfig({
     },
   },
   server: {
+    // Allow access through `tailscale serve` (https://<machine>.<tailnet>.ts.net).
+    allowedHosts: ['.ts.net'],
     // The client calls same-origin `/api/*`; this proxy forwards it to the Go
     // backend, stripping the `/api` prefix (the backend serves at root, e.g.
     // `/providers`). Override the target with VITE_API_TARGET.
