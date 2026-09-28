@@ -28,6 +28,7 @@ import {
 } from 'reka-ui'
 import { useColorScheme } from '@shared/composables/useColorScheme'
 import { useCommandPalette } from '@shared/composables/useCommandPalette'
+import { type CommandItem, filterCommandItems, useCommandSources } from '@shared/composables/useCommandSources'
 import { type NavItem, navItems } from '@core/nav'
 import Icon from '../atoms/Icon.vue'
 import Kbd from '../atoms/Kbd.vue'
@@ -69,7 +70,28 @@ const filteredActions = computed<PaletteAction[]>(() => {
   return term ? actions.value.filter((action) => contains(action.label, term)) : actions.value
 })
 
-const resultCount = computed(() => filteredNavItems.value.length + filteredActions.value.length)
+// Feature-contributed groups (e.g. Flow's "Repositories"), registered via
+// `registerCommandSource` — kept out of the design system's own imports so
+// this component never depends on `@modules/*` (see useCommandSources.ts).
+const commandSources = useCommandSources()
+
+const filteredSourceGroups = computed(() =>
+  Array.from(commandSources.values())
+    .map((source) => ({ source, items: filterCommandItems(source.items(), query.value) }))
+    .filter((group) => group.items.length > 0),
+)
+
+const resultCount = computed(
+  () =>
+    filteredNavItems.value.length +
+    filteredSourceGroups.value.reduce((total, group) => total + group.items.length, 0) +
+    filteredActions.value.length,
+)
+
+function goToCommandItem(item: CommandItem) {
+  router.push(item.to)
+  handleClose()
+}
 
 function handleClose() {
   query.value = ''
@@ -144,6 +166,27 @@ watch(isOpen, async (open) => {
                 >
                   <Icon :name="item.icon" size="sm" />
                   {{ item.label }}
+                </ComboboxItem>
+              </ComboboxGroup>
+
+              <ComboboxGroup
+                v-for="group in filteredSourceGroups"
+                :key="group.source.id"
+              >
+                <ComboboxLabel class="px-2 py-1 text-xs text-text-muted">{{ group.source.heading }}</ComboboxLabel>
+                <ComboboxItem
+                  v-for="item in group.items"
+                  :key="item.id"
+                  :value="item.id"
+                  :text-value="item.label"
+                  class="flex min-h-11 cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-sm text-text outline-none data-[highlighted]:bg-accent-subtle-bg data-[highlighted]:text-accent-text-strong"
+                  @select="goToCommandItem(item)"
+                >
+                  <Icon v-if="item.icon" :name="item.icon" size="sm" class="shrink-0" />
+                  <span class="min-w-0 flex-1 truncate">{{ item.label }}</span>
+                  <span v-if="item.hint" class="max-w-[40%] shrink-0 truncate text-xs text-text-muted">{{
+                    item.hint
+                  }}</span>
                 </ComboboxItem>
               </ComboboxGroup>
 

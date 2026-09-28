@@ -14,9 +14,18 @@ import { useRoute } from 'vue-router'
 import AppShell from '@shared/ui/design-system/templates/AppShell.vue'
 import CommandPalette from '@shared/ui/design-system/organisms/CommandPalette.vue'
 import ToastHost from '@shared/ui/design-system/organisms/ToastHost.vue'
+import { useRepoCommandSource } from '@modules/flow/commandSource'
 
 const route = useRoute()
 const isBare = computed(() => route.path === '/login')
+
+// Registers the ⌘K palette's "Repositories" group app-wide (not just while
+// a Flow page is mounted), so it works from any screen — see
+// modules/flow/commandSource.ts. Called unconditionally at the root, same
+// as any other top-level store usage: a stray `['repos']` fetch on /login
+// is harmless (the shared API client's global 401 handler already covers
+// unauthenticated requests — see shared/api/client.ts).
+useRepoCommandSource()
 </script>
 
 <template>
