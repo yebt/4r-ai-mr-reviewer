@@ -2,7 +2,10 @@ import { request } from '@shared/api/client'
 import type {
   AccountProject,
   AssignRepoPayload,
+  CreateMergeRequestPayload,
   CreateRepoPayload,
+  GenerateMergeRequestPayload,
+  GeneratedMergeRequest,
   MergeRequest,
   Repo,
   SetWebhookPayload,
@@ -59,8 +62,29 @@ export function deleteRepo(id: string): Promise<void> {
 /**
  * `GET /repos/{id}/branches` — the repo's branch names, live from GitLab
  * (`listRepoBranches`/`ListBranches` server-side). Backs the Flow
- * workspace's Release-to-main dialog source/target branch pickers.
+ * workspace's Release-to-main and New MR dialogs' branch pickers.
  */
 export function listRepoBranches(repoId: string): Promise<string[]> {
   return request<string[]>('GET', `/repos/${repoId}/branches`)
+}
+
+/**
+ * `POST /repos/{id}/merge-requests/generate` — drafts a title+description
+ * from the diff between two branches (read-only, no GitLab write; spends
+ * LLM tokens). Backs `NewMergeRequestDialog`'s "Generate with AI".
+ */
+export function generateMergeRequest(
+  repoId: string,
+  payload: GenerateMergeRequestPayload,
+): Promise<GeneratedMergeRequest> {
+  return request<GeneratedMergeRequest>('POST', `/repos/${repoId}/merge-requests/generate`, payload)
+}
+
+/**
+ * `POST /repos/{id}/merge-requests` — opens a REAL merge request on GitLab
+ * with the (possibly AI-drafted, possibly edited) title/description. Backs
+ * `NewMergeRequestDialog`'s "Create merge request".
+ */
+export function createMergeRequest(repoId: string, payload: CreateMergeRequestPayload): Promise<MergeRequest> {
+  return request<MergeRequest>('POST', `/repos/${repoId}/merge-requests`, payload)
 }

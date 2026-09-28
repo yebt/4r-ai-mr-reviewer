@@ -14,7 +14,8 @@
  * only supports a `development` target, see `routines/service.go#CreateRelease`)
  * — still a real scoped slot, so a call site can still override it. The
  * `#header-actions` slot stays a pass-through (the page uses it for the
- * "Release to main" button; New MR lands in a later slice).
+ * "New MR" and "Release to main" buttons, both wired at the page level
+ * since neither needs an existing MR and both must work with 0 open MRs).
  *
  * `repo` is looked up from `useReposStore().repos` — the exact same global
  * list the Flow page (`src/pages/flow/[repoId].vue`) already reads, so this
@@ -32,7 +33,7 @@ import { useReposStore } from '@modules/repos/store'
 import { listRepoReviews, repoReviewsQueryKey } from '@modules/reviews/api'
 import { isReviewActive } from '@modules/reviews'
 import { ReviewStatusChip } from '@modules/reviews'
-import { latestReviewByMr } from '../mergeRequests'
+import { latestReviewByMr, repoMergeRequestsQueryKey } from '../mergeRequests'
 import ReviewLaunchDialog from './ReviewLaunchDialog.vue'
 import ReleaseDialog from './ReleaseDialog.vue'
 
@@ -52,7 +53,7 @@ const {
   error,
   refetch,
 } = useQuery({
-  key: () => ['flow-merge-requests', props.repoId] as const,
+  key: () => repoMergeRequestsQueryKey(props.repoId),
   query: () => listMergeRequests(props.repoId),
 })
 const mergeRequests = computed(() => mrsData.value ?? [])

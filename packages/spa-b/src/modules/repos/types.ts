@@ -79,3 +79,37 @@ export interface MergeRequest {
   webUrl: string
   author: string
 }
+
+/**
+ * `POST /repos/{id}/merge-requests/generate` body — drafts a title+
+ * description from the diff between two EXISTING branches, without opening
+ * the merge request (read-only: diff + LLM only, no GitLab write — see
+ * `handlers_mergerequests.go#generateMergeRequest`). `profileId`/
+ * `providerId`/`model` are optional per-request overrides.
+ */
+export interface GenerateMergeRequestPayload {
+  sourceBranch: string
+  targetBranch: string
+  profileId?: string
+  providerId?: string
+  model?: string
+}
+
+/** `POST /repos/{id}/merge-requests/generate` response. */
+export interface GeneratedMergeRequest {
+  title: string
+  description: string
+}
+
+/**
+ * `POST /repos/{id}/merge-requests` body — opens a REAL merge request on
+ * GitLab with the (possibly edited) title/description the user reviewed
+ * after `generateMergeRequest` (see
+ * `handlers_mergerequests.go#createMergeRequest`).
+ */
+export interface CreateMergeRequestPayload {
+  sourceBranch: string
+  targetBranch: string
+  title: string
+  description: string
+}
