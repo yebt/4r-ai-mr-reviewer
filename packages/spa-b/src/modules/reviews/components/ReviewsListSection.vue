@@ -6,15 +6,16 @@
  *
  * The list is backed by the global `GET /reviews` endpoint, cursor-paginated
  * via `useReviewsStore` (`useInfiniteList`-backed — see that module's doc).
- * Infinite scroll mirrors `RunsListSection.vue` exactly: a zero-height
- * sentinel after the list is watched with `useIntersectionObserver` (root =
- * viewport, so it fires regardless of which ancestor actually scrolls);
- * entering view triggers `store.loadMore()` while `store.hasMore`, guarded
- * on `!store.isLoadingMore` so an already-in-view sentinel (e.g. a short
- * filtered result) doesn't loop. Client-side filters (`filterReviews`) only
- * see the pages loaded so far — a known v1 limitation, not a bug. There's no
- * per-repo fan-out anymore, so there's no `failedRepoNames`/warning concept
- * to surface here either — a failed request is a single `store.error`.
+ * Infinite scroll mirrors `RunsListSection.vue`'s pre-virtualization
+ * approach: a zero-height sentinel after the list is watched with
+ * `useIntersectionObserver` (root = viewport, so it fires regardless of which
+ * ancestor actually scrolls); entering view triggers `store.loadMore()` while
+ * `store.hasMore`, guarded on `!store.isLoadingMore` so an already-in-view
+ * sentinel (e.g. a short filtered result) doesn't loop. Client-side filters
+ * (`filterReviews`) only see the pages loaded so far — a known v1 limitation,
+ * not a bug. There's no per-repo fan-out anymore, so there's no
+ * `failedRepoNames`/warning concept to surface here either — a failed request
+ * is a single `store.error`.
  *
  * Each row navigates to `/reviews/{id}` (the detail page) on click; the
  * archived toggle returns archived rows (`review.archived`), rendered
@@ -23,18 +24,44 @@
  * click propagation so opening the menu (or any action inside it) never
  * also navigates the row.
  *
- * Row actions collapse into a single `⋯` `DropdownMenu`, same as
- * ProvidersSection's row actions: the safe ones (Retry, Archive/Unarchive)
- * listed first/undecorated, Approve below a separator, and Discard last,
- * danger-styled and behind a `ConfirmDialog` (mirrors ProvidersSection's
- * Delete).
+ * Lazy row menus: mounting a Reka `DropdownMenuRoot` + `DropdownMenuTrigger`
+ * (context providers, popper/portal wiring, `Button` + `Icon`) for every
+ * *rendered* row — even though almost nobody opens one — measurably costs
+ * main-thread time on a warm navigation with many rows, exactly as found in
+ * `RunsListSection.vue`. Only the row whose menu is open (`activeMenuId`)
+ * mounts the real Reka `DropdownMenuRoot`; every other row renders a
+ * lightweight plain `<button>` that's visually identical
+ * (`ROW_MENU_TRIGGER_CLASS` mirrors `<Button variant="ghost" size="sm">`) and
+ * carries the same a11y attributes (`aria-label`, `aria-haspopup="menu"`,
+ * `aria-expanded="false"`). Clicking it sets `activeMenuId`, swapping that
+ * row's plain button for the real trigger, rendered already-open
+ * (`:open="true"`) so Reka moves focus into the menu the same way it would
+ * for a normal click/keyboard-activated trigger. Closing (`@update:open`
+ * firing `false` — Escape, outside click, or a plain item `@select`) clears
+ * `activeMenuId`, unmounting the Reka subtree and swapping back to the plain
+ * button, whose ref map (`rowMenuTriggerRefs`) is used to return focus to it.
+ *
+ * Row actions collapse into a single `⋯` menu, same as ProvidersSection's row
+ * actions: the safe ones (Retry, Archive/Unarchive) listed first/undecorated,
+ * Approve below a separator, and Discard last, danger-styled.
+ *
+ * Discard's confirmation is lifted to section level (`confirmDiscardId`),
+ * mirroring `RunsListSection.vue`'s `confirmDeleteId`/`confirmCancelId`
+ * pattern, instead of nesting a `ConfirmDialog` inside the row's
+ * `DropdownMenuContent` as before: since the whole per-row `DropdownMenuRoot`
+ * now unmounts on close (rather than always staying mounted with only its
+ * `Presence`-gated content toggling), nesting the Discard confirmation there
+ * would risk it being torn down mid-flow by the same close that unmounts its
+ * row. Lifting it removes that risk entirely and reuses one well-tested flow,
+ * driven by a hidden programmatic trigger, exactly like Delete/Cancel do.
  *
  * The repo + status filter bar mirrors `RunsListSection`'s exactly: two
  * `Select`s driven by local refs, filtered client-side via `../filters.ts`'s
  * pure `filterReviews`/`repoFilterOptions` (replaces the earlier 5-tab
  * status-only filter, which had no repo axis).
  */
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
+import type { ComponentPublicInstance } from 'vue'
 import { useRouter } from 'vue-router'
 import { useIntersectionObserver } from '@vueuse/core'
 import {
@@ -112,6 +139,67 @@ function metaLine(review: ReviewWithRepo): string {
 
 const pendingActionId = ref<string | null>(null)
 
+// --- Lazy row action menu --------------------------------------------------
+// See the "Lazy row menus" comment at the top of the file for the mounting
+// strategy this implements.
+const activeMenuId = ref<string | null>(null)
+
+// Mirrors `<Button variant="ghost" size="sm">` (see Button.vue's
+// `variantClassMap`/`sizeClassMap`) so the plain button is visually
+// indistinguishable from the real Reka trigger it stands in for.
+const ROW_MENU_TRIGGER_CLASS =
+  'inline-flex shrink-0 items-center justify-center whitespace-nowrap font-medium transition-colors ' +
+  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring ' +
+  'disabled:cursor-not-allowed disabled:opacity-50 bg-transparent text-text hover:bg-bg-hover ' +
+  'h-7 gap-1.5 rounded-md px-2.5 text-xs'
+
+// Per-row plain trigger buttons, keyed by review id. Used only to return
+// focus to a row's `⋯` button once its Reka menu unmounts — the plain button
+// and the real Reka trigger are different DOM nodes, so Reka's own
+// focus-return (which targets its own trigger) can't do this across the swap.
+const rowMenuTriggerRefs = new Map<string, HTMLButtonElement>()
+
+function registerRowMenuTriggerRef(reviewId: string, el: Element | ComponentPublicInstance | null) {
+  if (el instanceof HTMLButtonElement) {
+    rowMenuTriggerRefs.set(reviewId, el)
+  } else {
+    rowMenuTriggerRefs.delete(reviewId)
+  }
+}
+
+function openRowMenu(reviewId: string) {
+  activeMenuId.value = reviewId
+}
+
+// Reka's `v-model:open` callback for the active row's (controlled)
+// DropdownMenuRoot. This branch only renders while `open` is `true`, so this
+// only ever fires `false` — Escape, an outside click, or a plain item
+// `@select` (Discard no longer lives inside the menu, so it doesn't need
+// `.prevent` here). Unmount back to the plain button and return focus to it.
+function handleRowMenuOpenChange(reviewId: string, open: boolean) {
+  if (open) return
+  activeMenuId.value = null
+  nextTick(() => {
+    rowMenuTriggerRefs.get(reviewId)?.focus()
+  })
+}
+
+// Discard's ConfirmDialog, lifted for the reason explained in the "Lazy row
+// menus" file comment: driving a single dialog from this id + a hidden,
+// programmatically-clicked trigger keeps the menu's normal close-on-select
+// behavior intact and opens the dialog only after the menu has started
+// closing, instead of nesting it inside the (now-unmounting) menu content.
+const confirmDiscardId = ref<string | null>(null)
+const confirmDiscardReview = computed(() => store.reviews.find((review) => review.id === confirmDiscardId.value) ?? null)
+const discardConfirmTriggerRef = ref<HTMLButtonElement | null>(null)
+
+function openDiscardConfirm(review: ReviewWithRepo) {
+  confirmDiscardId.value = review.id
+  nextTick(() => {
+    discardConfirmTriggerRef.value?.click()
+  })
+}
+
 async function handleRetry(review: ReviewWithRepo) {
   pendingActionId.value = review.id
   try {
@@ -154,6 +242,7 @@ async function handleDiscard(review: ReviewWithRepo) {
   discardingId.value = review.id
   try {
     await store.discard(review.id)
+    confirmDiscardId.value = null
   } catch {
     // no-op — store already toasted the error
   } finally {
@@ -251,13 +340,31 @@ async function handleDiscard(review: ReviewWithRepo) {
             </div>
           </div>
 
-          <div class="flex shrink-0 items-center gap-1" @click.stop>
-            <DropdownMenuRoot>
+          <div class="flex shrink-0 items-center gap-1" @click.stop @keydown.stop>
+            <!-- Closed state: a lightweight plain button, visually identical to
+                 the real trigger below (see the "Lazy row menus" file comment). -->
+            <button
+              v-if="activeMenuId !== review.id"
+              :ref="(el) => registerRowMenuTriggerRef(review.id, el)"
+              type="button"
+              :class="ROW_MENU_TRIGGER_CLASS"
+              :aria-label="`More actions for review !${review.mrIid}`"
+              aria-haspopup="menu"
+              aria-expanded="false"
+              @click.stop="openRowMenu(review.id)"
+            >
+              <Icon name="ellipsis" size="sm" />
+            </button>
+
+            <!-- Open state: the real Reka menu, mounted only for this one row,
+                 rendered already-open so Reka moves focus in immediately. -->
+            <DropdownMenuRoot v-else :open="true" @update:open="(open) => handleRowMenuOpenChange(review.id, open)">
               <DropdownMenuTrigger as-child>
                 <Button
                   variant="ghost"
                   size="sm"
                   :aria-label="`More actions for review !${review.mrIid}`"
+                  @click.stop
                 >
                   <Icon name="ellipsis" size="sm" />
                 </Button>
@@ -293,23 +400,13 @@ async function handleDiscard(review: ReviewWithRepo) {
                     Approve
                   </DropdownMenuItem>
                   <DropdownMenuSeparator class="my-1 h-px bg-line-subtle" />
-                  <ConfirmDialog
-                    :title='`Discard review !${review.mrIid}?`'
-                    description="This permanently removes the review. This cannot be undone."
-                    confirm-label="Discard"
-                    danger
-                    :pending="discardingId === review.id"
-                    @confirm="handleDiscard(review)"
+                  <DropdownMenuItem
+                    :disabled="discardingId === review.id"
+                    class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-danger-text outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-danger-bg"
+                    @select="openDiscardConfirm(review)"
                   >
-                    <template #trigger>
-                      <DropdownMenuItem
-                        class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-danger-text outline-none data-[highlighted]:bg-danger-bg"
-                        @select.prevent
-                      >
-                        Discard
-                      </DropdownMenuItem>
-                    </template>
-                  </ConfirmDialog>
+                    Discard
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenuPortal>
             </DropdownMenuRoot>
@@ -328,5 +425,20 @@ async function handleDiscard(review: ReviewWithRepo) {
         Loading more…
       </div>
     </template>
+
+    <!-- Discard's ConfirmDialog, lifted to section level — see the "Lazy row
+         menus" file comment for why. -->
+    <ConfirmDialog
+      :title="confirmDiscardReview ? `Discard review !${confirmDiscardReview.mrIid}?` : 'Discard this review?'"
+      description="This permanently removes the review. This cannot be undone."
+      confirm-label="Discard"
+      danger
+      :pending="!!confirmDiscardReview && discardingId === confirmDiscardReview.id"
+      @confirm="confirmDiscardReview && handleDiscard(confirmDiscardReview)"
+    >
+      <template #trigger>
+        <button ref="discardConfirmTriggerRef" type="button" class="hidden" tabindex="-1" aria-hidden="true" />
+      </template>
+    </ConfirmDialog>
   </section>
 </template>
