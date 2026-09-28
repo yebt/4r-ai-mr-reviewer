@@ -33,14 +33,33 @@
  * filters (`filterRuns`) only see the pages loaded so far — a known v1
  * limitation, not a bug.
  *
- * Lazy row menus: each row's `DropdownMenuContent` is NOT manually gated
- * behind `v-if` — Reka UI's `MenuContent` already wraps its content in a
- * `Presence` that renders `null` (no content tree, no DOM) whenever the menu
- * isn't open (`present: forceMount || open`, and this component never passes
- * `force-mount`). So mounting 30+ rows mounts 30+ *triggers* but zero
- * `DropdownMenuContent` trees until a row's `⋯` is actually clicked.
+ * Lazy row menus: mounting a Reka `DropdownMenuRoot` + `DropdownMenuTrigger`
+ * (context providers, popper/portal wiring, `Button` + `Icon`) for every
+ * *visible* row — even though almost nobody opens one — measurably costs
+ * main-thread time on a warm navigation with 30+ rows. Only the row whose
+ * menu is open (`activeMenuId`) mounts the real Reka `DropdownMenuRoot`; every
+ * other row renders a lightweight plain `<button>` that's visually identical
+ * (`ROW_MENU_TRIGGER_CLASS` mirrors `<Button variant="ghost" size="sm">`) and
+ * carries the same a11y attributes (`aria-label`, `aria-haspopup="menu"`,
+ * `aria-expanded="false"`). Clicking it sets `activeMenuId`, swapping that
+ * row's plain button for the real trigger, rendered already-open
+ * (`:open="true"`) so Reka moves focus into the menu the same way it would
+ * for a normal click/keyboard-activated trigger. Closing (`@update:open`
+ * firing `false` — Escape, outside click, or a plain item `@select`) clears
+ * `activeMenuId`, unmounting the Reka subtree and swapping back to the plain
+ * button, whose ref map (`rowMenuTriggerRefs`) is used to return focus to it.
+ *
+ * Cancel's confirmation is lifted to section level (`confirmCancelId`),
+ * mirroring Delete's already-solved `confirmDeleteId` pattern below, instead
+ * of nesting a `ConfirmDialog` inside the row's `DropdownMenuContent` as
+ * before: since the whole per-row `DropdownMenuRoot` now unmounts on close
+ * (rather than always staying mounted with only its `Presence`-gated content
+ * toggling), nesting the Cancel confirmation there would risk it being torn
+ * down mid-flow by the same close that unmounts its row. Lifting it removes
+ * that risk entirely and reuses one well-tested flow for both actions.
  */
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import type { ComponentPublicInstance } from 'vue'
 import { useResizeObserver } from '@vueuse/core'
 import { useVirtualizer } from '@tanstack/vue-virtual'
 import {
@@ -115,6 +134,65 @@ const deletingId = ref<string | null>(null)
 const confirmDeleteId = ref<string | null>(null)
 const confirmDeleteRun = computed(() => store.runs.find((run) => run.id === confirmDeleteId.value) ?? null)
 const deleteConfirmTriggerRef = ref<HTMLButtonElement | null>(null)
+
+// Cancel's ConfirmDialog, lifted for the same reason as Delete's above — see
+// the "Lazy row menus" comment at the top of the file for why this became
+// necessary once the row's DropdownMenuRoot itself unmounts on close.
+const confirmCancelId = ref<string | null>(null)
+const confirmCancelRun = computed(() => store.runs.find((run) => run.id === confirmCancelId.value) ?? null)
+const cancelConfirmTriggerRef = ref<HTMLButtonElement | null>(null)
+
+function openCancelConfirm(run: RoutineRun) {
+  confirmCancelId.value = run.id
+  nextTick(() => {
+    cancelConfirmTriggerRef.value?.click()
+  })
+}
+
+// --- Lazy row action menu --------------------------------------------------
+// See the "Lazy row menus" comment at the top of the file for the mounting
+// strategy this implements.
+const activeMenuId = ref<string | null>(null)
+
+// Mirrors `<Button variant="ghost" size="sm">` (see Button.vue's
+// `variantClassMap`/`sizeClassMap`) so the plain button is visually
+// indistinguishable from the real Reka trigger it stands in for.
+const ROW_MENU_TRIGGER_CLASS =
+  'inline-flex shrink-0 items-center justify-center whitespace-nowrap font-medium transition-colors ' +
+  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring ' +
+  'disabled:cursor-not-allowed disabled:opacity-50 bg-transparent text-text hover:bg-bg-hover ' +
+  'h-7 gap-1.5 rounded-md px-2.5 text-xs'
+
+// Per-row plain trigger buttons, keyed by run id. Used only to return focus
+// to a row's `⋯` button once its Reka menu unmounts — the plain button and
+// the real Reka trigger are different DOM nodes, so Reka's own focus-return
+// (which targets its own trigger) can't do this across the swap.
+const rowMenuTriggerRefs = new Map<string, HTMLButtonElement>()
+
+function registerRowMenuTriggerRef(runId: string, el: Element | ComponentPublicInstance | null) {
+  if (el instanceof HTMLButtonElement) {
+    rowMenuTriggerRefs.set(runId, el)
+  } else {
+    rowMenuTriggerRefs.delete(runId)
+  }
+}
+
+function openRowMenu(runId: string) {
+  activeMenuId.value = runId
+}
+
+// Reka's `v-model:open` callback for the active row's (controlled)
+// DropdownMenuRoot. This branch only renders while `open` is `true`, so this
+// only ever fires `false` — Escape, an outside click, or a plain item
+// `@select` (Cancel/Delete no longer live inside the menu, so neither needs
+// `.prevent` here). Unmount back to the plain button and return focus to it.
+function handleRowMenuOpenChange(runId: string, open: boolean) {
+  if (open) return
+  activeMenuId.value = null
+  nextTick(() => {
+    rowMenuTriggerRefs.get(runId)?.focus()
+  })
+}
 
 // --- Virtualized list -----------------------------------------------------
 // See the top-of-file comment for the overall approach.
@@ -234,6 +312,7 @@ async function handleCancel(run: RoutineRun) {
   cancellingId.value = run.id
   try {
     await store.cancelRun(run.id)
+    confirmCancelId.value = null
   } catch {
     // no-op — store already toasted the error
   } finally {
@@ -356,7 +435,24 @@ async function handleDelete(run: RoutineRun) {
             </RouterLink>
 
             <div class="flex shrink-0 items-center gap-1">
-              <DropdownMenuRoot>
+              <!-- Closed state: a lightweight plain button, visually identical to
+                   the real trigger below (see the "Lazy row menus" file comment). -->
+              <button
+                v-if="activeMenuId !== run.id"
+                :ref="(el) => registerRowMenuTriggerRef(run.id, el)"
+                type="button"
+                :class="ROW_MENU_TRIGGER_CLASS"
+                :aria-label="`More actions for ${runTitle(run)}`"
+                aria-haspopup="menu"
+                aria-expanded="false"
+                @click.stop="openRowMenu(run.id)"
+              >
+                <Icon name="ellipsis" size="sm" />
+              </button>
+
+              <!-- Open state: the real Reka menu, mounted only for this one row,
+                   rendered already-open so Reka moves focus in immediately. -->
+              <DropdownMenuRoot v-else :open="true" @update:open="(open) => handleRowMenuOpenChange(run.id, open)">
                 <DropdownMenuTrigger as-child>
                   <Button variant="ghost" size="sm" :aria-label="`More actions for ${runTitle(run)}`" @click.stop>
                     <Icon name="ellipsis" size="sm" />
@@ -387,23 +483,13 @@ async function handleDelete(run: RoutineRun) {
 
                     <template v-if="isRunCancelable(run.status)">
                       <DropdownMenuSeparator class="my-1 h-px bg-line-subtle" />
-                      <ConfirmDialog
-                        title="Cancel this run?"
-                        description="Stops the routine run in progress. This cannot be undone."
-                        confirm-label="Cancel run"
-                        :pending="cancellingId === run.id"
-                        @confirm="handleCancel(run)"
+                      <DropdownMenuItem
+                        :disabled="store.isCancelling"
+                        class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-danger-text outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-danger-bg"
+                        @select="openCancelConfirm(run)"
                       >
-                        <template #trigger>
-                          <DropdownMenuItem
-                            :disabled="store.isCancelling"
-                            class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-danger-text outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-danger-bg"
-                            @select.prevent
-                          >
-                            Cancel
-                          </DropdownMenuItem>
-                        </template>
-                      </ConfirmDialog>
+                        Cancel
+                      </DropdownMenuItem>
                     </template>
 
                     <template v-else>
@@ -434,9 +520,9 @@ async function handleDelete(run: RoutineRun) {
       </div>
     </template>
 
-    <!-- One Delete ConfirmDialog per section, driven by confirmDeleteId —
-         see the comment on confirmDeleteId above for why this is lifted out
-         of the per-row DropdownMenu instead of nested like Cancel's. -->
+    <!-- One Delete and one Cancel ConfirmDialog per section, driven by
+         confirmDeleteId/confirmCancelId — see the "Lazy row menus" file
+         comment for why both are lifted out of the per-row DropdownMenu. -->
     <ConfirmDialog
       title="Delete this run?"
       description="Permanently removes this run's history. This cannot be undone."
@@ -446,6 +532,18 @@ async function handleDelete(run: RoutineRun) {
     >
       <template #trigger>
         <button ref="deleteConfirmTriggerRef" type="button" class="hidden" tabindex="-1" aria-hidden="true" />
+      </template>
+    </ConfirmDialog>
+
+    <ConfirmDialog
+      title="Cancel this run?"
+      description="Stops the routine run in progress. This cannot be undone."
+      confirm-label="Cancel run"
+      :pending="!!confirmCancelRun && cancellingId === confirmCancelRun.id"
+      @confirm="confirmCancelRun && handleCancel(confirmCancelRun)"
+    >
+      <template #trigger>
+        <button ref="cancelConfirmTriggerRef" type="button" class="hidden" tabindex="-1" aria-hidden="true" />
       </template>
     </ConfirmDialog>
   </section>

@@ -5,6 +5,7 @@ import { onUnauthorized } from '@shared/api/client'
 import { useAuthStore } from '@modules/auth/store'
 import LoginPage from '@modules/auth/pages/LoginPage.vue'
 import { formatDocumentTitle } from './documentTitle'
+import { prefetchRouteComponents } from './prefetch'
 
 NProgress.configure({ showSpinner: false })
 
@@ -81,6 +82,11 @@ onUnauthorized(() => {
   const current = router.currentRoute.value.fullPath
   router.push({ path: '/login', query: { redirect: current } })
 })
+
+// Warm the other top-level pages' lazy chunks once this one has actually
+// settled — see prefetch.ts for why this waits and runs on idle rather than
+// eagerly at import time.
+router.isReady().then(() => prefetchRouteComponents(router))
 
 export default router
 

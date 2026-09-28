@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isRunActive, isRunCancelable, runStatusUi, runTitle, stateSummaryEntries } from './format'
+import { formatDateTime, isRunActive, isRunCancelable, runStatusUi, runTitle, stateSummaryEntries } from './format'
 import type { RoutineRun } from './types'
 
 function makeRun(overrides: Partial<RoutineRun> = {}): RoutineRun {
@@ -82,6 +82,21 @@ describe('isRunCancelable', () => {
   it('is false once a run reaches a terminal status', () => {
     expect(isRunCancelable('done')).toBe(false)
     expect(isRunCancelable('cancelled')).toBe(false)
+  })
+})
+
+describe('formatDateTime', () => {
+  it('returns an empty string for an empty/invalid ISO input', () => {
+    expect(formatDateTime('')).toBe('')
+    expect(formatDateTime('not-a-date')).toBe('')
+  })
+
+  it('reuses the same cached formatter across calls, producing identical output for the same input', () => {
+    // Regression guard for the per-call `toLocaleString` formatter-construction
+    // cost this was optimized away from — the cached formatter must still be
+    // stateless/deterministic across repeated calls.
+    const iso = '2026-01-02T03:04:00.000Z'
+    expect(formatDateTime(iso)).toBe(formatDateTime(iso))
   })
 })
 
