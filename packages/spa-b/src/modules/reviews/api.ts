@@ -1,5 +1,12 @@
 import { request, requestPage, type Page } from '@shared/api/client'
-import type { FindingHumanized, Humanizations, Review, ReviewWithRepo, SummaryHumanized } from './types'
+import type {
+  CreateReviewInput,
+  FindingHumanized,
+  Humanizations,
+  Review,
+  ReviewWithRepo,
+  SummaryHumanized,
+} from './types'
 
 const DEFAULT_LIMIT = 30
 
@@ -33,6 +40,17 @@ export function listRecentReviews(
 /** The full `Review` (with `findings`/`reasonings`) for the detail page. */
 export function getReview(id: string): Promise<Review> {
   return request<Review>('GET', `/reviews/${id}`)
+}
+
+/**
+ * `POST /reviews` — launches a review for one MR (read-only LLM analysis,
+ * not a GitLab write). Returns the created review (201), already enqueued to
+ * run. Unlike `TriggerFromWebhook` server-side, this has no duplicate-active-
+ * review guard — launching twice for the same MR creates two reviews (see
+ * `Service.Create` in `packages/server/internal/app/reviews/service.go`).
+ */
+export function createReview(input: CreateReviewInput): Promise<Review> {
+  return request<Review>('POST', '/reviews', input)
 }
 
 /**

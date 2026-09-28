@@ -8,20 +8,29 @@
  * uses, so visiting/switching both tabs for the same repo only ever
  * fetches reviews once (colada's cache dedupes by key).
  *
- * No action buttons yet (Review/Release/New MR land in slices 2-4) — the
- * `#header-actions` slot and each row's `#actions` slot (scoped to `mr`)
- * are left empty on purpose so those slices can plug in without touching
- * this component.
+ * Each row's `#actions` slot defaults to a "Review" button that opens
+ * `ReviewLaunchDialog` for that MR (slice 2) — still a real scoped slot, so
+ * a future slice (Release/New MR) can still override it per call site. The
+ * `#header-actions` slot stays empty (New MR lands in a later slice).
+ *
+ * `repo` is looked up from `useReposStore().repos` — the exact same global
+ * list the Flow page (`src/pages/flow/[repoId].vue`) already reads, so this
+ * causes no extra fetch. It's only needed for the dialog (repo's own
+ * provider/model defaults); `undefined` while the list hasn't settled yet
+ * just means "Review" briefly has nothing to open against.
  */
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useQuery } from '@pinia/colada'
 import { Alert, Button, Icon, Skeleton, Text } from '@shared/ui/design-system'
 import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
 import { listMergeRequests } from '@modules/repos/api'
 import type { MergeRequest } from '@modules/repos/types'
+import { useReposStore } from '@modules/repos/store'
 import { listRepoReviews, repoReviewsQueryKey } from '@modules/reviews/api'
+import { isReviewActive } from '@modules/reviews'
 import { ReviewStatusChip } from '@modules/reviews'
 import { latestReviewByMr } from '../mergeRequests'
+import ReviewLaunchDialog from './ReviewLaunchDialog.vue'
 
 const props = defineProps<{ repoId: string }>()
 
@@ -29,6 +38,9 @@ defineSlots<{
   'header-actions'?: () => unknown
   actions?: (props: { mr: MergeRequest }) => unknown
 }>()
+
+const reposStore = useReposStore()
+const repo = computed(() => reposStore.repos.find((r) => r.id === props.repoId))
 
 const {
   data: mrsData,
@@ -49,6 +61,21 @@ const { data: reviewsData } = useQuery({
   query: () => listRepoReviews(props.repoId),
 })
 const reviewStatusByMr = computed(() => latestReviewByMr(reviewsData.value ?? []))
+
+// The latest review of the MR the dialog is open for, when it's still pending/running.
+const activeReviewForDialog = computed(() => {
+  if (!reviewDialogMr.value) return null
+  const latest = reviewStatusByMr.value.get(reviewDialogMr.value.iid)
+  return latest && isReviewActive(latest.status) ? { id: latest.id, status: latest.status } : null
+})
+
+const reviewDialogOpen = ref(false)
+const reviewDialogMr = ref<MergeRequest | null>(null)
+
+function openReviewDialog(mr: MergeRequest) {
+  reviewDialogMr.value = mr
+  reviewDialogOpen.value = true
+}
 </script>
 
 <template>
@@ -110,9 +137,21 @@ const reviewStatusByMr = computed(() => latestReviewByMr(reviewsData.value ?? []
           <Text muted size="xs">{{ mr.author }}</Text>
         </div>
         <div class="flex shrink-0 items-center gap-1">
-          <slot name="actions" :mr="mr" />
+          <slot name="actions" :mr="mr">
+            <Button type="button" variant="outline" size="sm" @click.stop="openReviewDialog(mr)">
+              Review
+            </Button>
+          </slot>
         </div>
       </li>
     </ul>
+
+    <ReviewLaunchDialog
+      v-if="repo"
+      v-model:open="reviewDialogOpen"
+      :repo="repo"
+      :merge-request="reviewDialogMr"
+      :active-review="activeReviewForDialog"
+    />
   </section>
 </template>

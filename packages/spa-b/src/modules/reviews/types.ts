@@ -65,6 +65,20 @@ export interface Review {
 export type ReviewWithRepo = Review & { repoName: string }
 
 /**
+ * `POST /reviews` body — launches a review for one MR. `providerId`/`model`
+ * are optional: an empty/omitted `providerId` resolves to the repo's own
+ * provider server-side (see `Service.Create` in
+ * `packages/server/internal/app/reviews/service.go`), same for `model`.
+ */
+export interface CreateReviewInput {
+  repoId: string
+  mrIid: number
+  mode: ReviewContextMode
+  providerId?: string
+  model?: string
+}
+
+/**
  * Humanize (slice 2) — a single profile-voiced rewrite of a finding's
  * issue/why/fix, per `POST /reviews/{id}/humanize` with `target:"finding"`.
  */
