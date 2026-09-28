@@ -8,10 +8,13 @@
  * uses, so visiting/switching both tabs for the same repo only ever
  * fetches reviews once (colada's cache dedupes by key).
  *
- * Each row's `#actions` slot defaults to a "Review" button that opens
- * `ReviewLaunchDialog` for that MR (slice 2) — still a real scoped slot, so
- * a future slice (Release/New MR) can still override it per call site. The
- * `#header-actions` slot stays empty (New MR lands in a later slice).
+ * Each row's `#actions` slot defaults to "Review" (opens `ReviewLaunchDialog`,
+ * slice 2) plus, for an MR targeting `development`, "Release" (opens
+ * `ReleaseDialog` with `flow="dev"`, slice 3 — the backend's dev-flow release
+ * only supports a `development` target, see `routines/service.go#CreateRelease`)
+ * — still a real scoped slot, so a call site can still override it. The
+ * `#header-actions` slot stays a pass-through (the page uses it for the
+ * "Release to main" button; New MR lands in a later slice).
  *
  * `repo` is looked up from `useReposStore().repos` — the exact same global
  * list the Flow page (`src/pages/flow/[repoId].vue`) already reads, so this
@@ -31,6 +34,7 @@ import { isReviewActive } from '@modules/reviews'
 import { ReviewStatusChip } from '@modules/reviews'
 import { latestReviewByMr } from '../mergeRequests'
 import ReviewLaunchDialog from './ReviewLaunchDialog.vue'
+import ReleaseDialog from './ReleaseDialog.vue'
 
 const props = defineProps<{ repoId: string }>()
 
@@ -75,6 +79,14 @@ const reviewDialogMr = ref<MergeRequest | null>(null)
 function openReviewDialog(mr: MergeRequest) {
   reviewDialogMr.value = mr
   reviewDialogOpen.value = true
+}
+
+const releaseDialogOpen = ref(false)
+const releaseDialogMr = ref<MergeRequest | null>(null)
+
+function openReleaseDialog(mr: MergeRequest) {
+  releaseDialogMr.value = mr
+  releaseDialogOpen.value = true
 }
 </script>
 
@@ -141,6 +153,15 @@ function openReviewDialog(mr: MergeRequest) {
             <Button type="button" variant="outline" size="sm" @click.stop="openReviewDialog(mr)">
               Review
             </Button>
+            <Button
+              v-if="mr.targetBranch === 'development'"
+              type="button"
+              variant="outline"
+              size="sm"
+              @click.stop="openReleaseDialog(mr)"
+            >
+              Release
+            </Button>
           </slot>
         </div>
       </li>
@@ -152,6 +173,13 @@ function openReviewDialog(mr: MergeRequest) {
       :repo="repo"
       :merge-request="reviewDialogMr"
       :active-review="activeReviewForDialog"
+    />
+    <ReleaseDialog
+      v-if="repo"
+      v-model:open="releaseDialogOpen"
+      flow="dev"
+      :repo="repo"
+      :merge-request="releaseDialogMr"
     />
   </section>
 </template>

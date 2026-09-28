@@ -1,4 +1,5 @@
 export { default as MergeRequestListSection } from './components/MergeRequestListSection.vue'
+export { default as ReleaseDialog } from './components/ReleaseDialog.vue'
 export { default as RepoActionsSection } from './components/RepoActionsSection.vue'
 export { default as RepoReviewsSection } from './components/RepoReviewsSection.vue'
 

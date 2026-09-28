@@ -1,5 +1,12 @@
 import { request, requestPage, type Page } from '@shared/api/client'
-import type { RoutineConfirmDecision, RoutineRun } from './types'
+import type {
+  CreateMainReleaseInput,
+  CreateReleaseInput,
+  PreviewTagQuery,
+  PreviewTagResult,
+  RoutineConfirmDecision,
+  RoutineRun,
+} from './types'
 
 const DEFAULT_LIMIT = 30
 
@@ -81,4 +88,40 @@ export function cancelRoutine(id: string): Promise<void> {
 /** 409 if the run is still running — surfaced to the caller as an `ApiError`. */
 export function deleteRoutine(id: string): Promise<void> {
   return request<void>('DELETE', `/routines/${id}`)
+}
+
+/**
+ * `POST /repos/{id}/routines/release` — dev-flow release for an existing MR
+ * (`ReleaseDialog.vue` with `flow="dev"`). 400 for an invalid bump/MR id or a
+ * non-`development` target; 409 (`ErrDuplicateRun`) when the MR already has
+ * an active release run.
+ */
+export function createRelease(repoId: string, input: CreateReleaseInput): Promise<RoutineRun> {
+  return request<RoutineRun>('POST', `/repos/${repoId}/routines/release`, input)
+}
+
+/**
+ * `POST /repos/{id}/routines/release-main` — main-flow release
+ * (`ReleaseDialog.vue` with `flow="main"`); creates the source→target MR
+ * itself, so no MR needs to exist yet. 400 for an invalid bump or
+ * same-branch source/target; 409 (`ErrDuplicateRun`) when the repo already
+ * has an active main run targeting that branch.
+ */
+export function createMainRelease(repoId: string, input: CreateMainReleaseInput): Promise<RoutineRun> {
+  return request<RoutineRun>('POST', `/repos/${repoId}/routines/release-main`, input)
+}
+
+/**
+ * `GET /repos/{id}/routines/preview-tag` — a dry-run of the exact next
+ * release tag (mirrors the `compute_tag` step), so `ReleaseDialog.vue` can
+ * show it before launch. Omits optional query params rather than sending
+ * empty values, matching `previewRoutineTag`'s server-side parsing.
+ */
+export function previewRoutineTag(repoId: string, query: PreviewTagQuery): Promise<PreviewTagResult> {
+  const params = new URLSearchParams({ flow: query.flow, bump: query.bump })
+  if (query.mrIid != null) params.set('mrIid', String(query.mrIid))
+  if (query.source) params.set('source', query.source)
+  if (query.target) params.set('target', query.target)
+  if (query.includeDev) params.set('includeDev', '1')
+  return request<PreviewTagResult>('GET', `/repos/${repoId}/routines/preview-tag?${params.toString()}`)
 }

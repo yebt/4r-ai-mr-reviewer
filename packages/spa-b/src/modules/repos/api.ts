@@ -55,3 +55,12 @@ export function rotateRepoWebhookSecret(id: string): Promise<Repo> {
 export function deleteRepo(id: string): Promise<void> {
   return request<void>('DELETE', `/repos/${id}`)
 }
+
+/**
+ * `GET /repos/{id}/branches` — the repo's branch names, live from GitLab
+ * (`listRepoBranches`/`ListBranches` server-side). Backs the Flow
+ * workspace's Release-to-main dialog source/target branch pickers.
+ */
+export function listRepoBranches(repoId: string): Promise<string[]> {
+  return request<string[]>('GET', `/repos/${repoId}/branches`)
+}

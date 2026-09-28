@@ -13,15 +13,19 @@
  * that list having settled at least once, so a genuinely unknown repo id
  * shows "not found" instead of flashing it while repos are still loading.
  *
- * No action buttons/dialogs yet (Review/Release/New MR land in slices 2-4).
+ * Review (slice 2) and Release/Release-to-main (slice 3) dialogs are wired;
+ * New MR still lands in a later slice. The header's "Release to main" button
+ * lives in the MRs tab's `#header-actions` slot and its `ReleaseDialog`
+ * (`flow="main"`) lives here rather than inside `MergeRequestListSection`,
+ * since it needs no MR and must work with zero open MRs.
  */
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui'
-import { Heading, Icon, Select, Skeleton, Text } from '@shared/ui/design-system'
+import { Button, Heading, Icon, Select, Skeleton, Text } from '@shared/ui/design-system'
 import type { SelectItemOption } from '@shared/ui/design-system'
 import { useReposStore } from '@modules/repos/store'
-import { MergeRequestListSection, RepoActionsSection, RepoReviewsSection } from '@modules/flow'
+import { MergeRequestListSection, ReleaseDialog, RepoActionsSection, RepoReviewsSection } from '@modules/flow'
 
 const route = useRoute('/flow/[repoId]')
 const router = useRouter()
@@ -46,6 +50,8 @@ const FLOW_TABS: { id: FlowTab; label: string; icon: string }[] = [
   { id: 'reviews', label: 'Reviews', icon: 'list' },
   { id: 'actions', label: 'Actions', icon: 'activity' },
 ]
+const mainReleaseDialogOpen = ref(false)
+
 function isFlowTab(value: unknown): value is FlowTab {
   return value === 'mrs' || value === 'reviews' || value === 'actions'
 }
@@ -120,7 +126,13 @@ const tab = computed<FlowTab>({
         </TabsList>
 
         <TabsContent value="mrs">
-          <MergeRequestListSection :repo-id="repoId" />
+          <MergeRequestListSection :repo-id="repoId">
+            <template #header-actions>
+              <Button type="button" variant="outline" size="sm" @click="mainReleaseDialogOpen = true">
+                Release to main
+              </Button>
+            </template>
+          </MergeRequestListSection>
         </TabsContent>
         <TabsContent value="reviews">
           <RepoReviewsSection :repo-id="repoId" />
@@ -129,6 +141,8 @@ const tab = computed<FlowTab>({
           <RepoActionsSection :repo-id="repoId" />
         </TabsContent>
       </TabsRoot>
+
+      <ReleaseDialog v-model:open="mainReleaseDialogOpen" flow="main" :repo="repo" />
     </template>
   </div>
 </template>
