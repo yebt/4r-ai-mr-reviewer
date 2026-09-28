@@ -30,6 +30,13 @@ export const EMOJI_CHOICES: { name: string; glyph: string }[] = [
  * `CreateMainRelease` apply this exact pair when `emojis` is omitted/empty). */
 export const DEFAULT_EMOJIS = ['thumbsup', 'seedling']
 
+/** Matches the backend's `maxEmojis` bound in `packages/server/internal/app/
+ * routines/service.go` (`CreateRelease`/`CreateMainRelease`/`ApproveAndReact`
+ * all reject `len(in.Emojis) > maxEmojis` with a 400) — kept in sync here so
+ * the dialog refuses a selection the backend would reject anyway, instead of
+ * only surfacing it as a submit error. */
+export const MAX_RELEASE_EMOJIS = 10
+
 /** GitLab award-emoji names are lowercase snake/kebab tokens — reject
  * anything else before it ever reaches the API. */
 const EMOJI_NAME_PATTERN = /^[a-z0-9_+-]+$/
@@ -45,15 +52,24 @@ export function normalizeCustomEmojiName(raw: string): string {
 }
 
 /** Toggles one emoji name in/out of a selection (chip click) — returns a new
- * array; never mutates `selected`. */
+ * array; never mutates `selected`. Deselecting always works, even at the
+ * cap; selecting a new (not-yet-selected) name past `MAX_RELEASE_EMOJIS`
+ * returns `selected` unchanged instead of growing past what the backend
+ * would accept. */
 export function toggleEmoji(selected: string[], name: string): string[] {
-  return selected.includes(name) ? selected.filter((n) => n !== name) : [...selected, name]
+  if (selected.includes(name)) return selected.filter((n) => n !== name)
+  if (selected.length >= MAX_RELEASE_EMOJIS) return selected
+  return [...selected, name]
 }
 
 /** Adds one emoji name to a selection if not already present (custom-name
- * input's "Add" action — never removes, unlike `toggleEmoji`). */
+ * input's "Add" action — never removes, unlike `toggleEmoji`). Refuses to
+ * grow the selection past `MAX_RELEASE_EMOJIS`, returning `selected`
+ * unchanged instead. */
 export function addEmoji(selected: string[], name: string): string[] {
-  return selected.includes(name) ? selected : [...selected, name]
+  if (selected.includes(name)) return selected
+  if (selected.length >= MAX_RELEASE_EMOJIS) return selected
+  return [...selected, name]
 }
 
 /** The selected names that aren't one of the curated `EMOJI_CHOICES` — these

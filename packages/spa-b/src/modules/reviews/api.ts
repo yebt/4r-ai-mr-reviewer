@@ -59,19 +59,38 @@ export function createReview(input: CreateReviewInput): Promise<Review> {
  * Exported so `modules/flow`'s MRs tab (best-effort latest-review-status
  * lookup) and Reviews tab share the exact same @pinia/colada cache entry
  * instead of fetching this list twice per repo visit.
+ *
+ * `archived` splits the active and archived lists into two distinct cache
+ * entries (mirrors `listRepoReviews`'s own `?archived=1` split). Passed, it's
+ * the key for one of those two entries; omitted, it's a shared prefix of
+ * both, so `queryCache.invalidateQueries({ key: repoReviewsQueryKey(id) })`
+ * (see `ReviewLaunchDialog.vue`) invalidates both variants at once rather
+ * than only whichever one happens to be showing.
  */
-export function repoReviewsQueryKey(repoId: string): readonly [string, string] {
-  return ['repo-reviews', repoId]
+export function repoReviewsQueryKey(repoId: string): readonly [string, string]
+export function repoReviewsQueryKey(
+  repoId: string,
+  archived: boolean,
+): readonly [string, string, { archived: boolean }]
+export function repoReviewsQueryKey(
+  repoId: string,
+  archived?: boolean,
+): readonly [string, string] | readonly [string, string, { archived: boolean }] {
+  return archived === undefined ? ['repo-reviews', repoId] : ['repo-reviews', repoId, { archived }]
 }
 
 /**
- * `GET /repos/{id}/reviews` — a single repo's reviews, newest first. Unlike
- * `listRecentReviews`, this is a plain, non-paginated array with no
- * `repoName` (the caller already knows the repo — see `reviewResp`'s doc
- * server-side). Backs the Flow workspace's Reviews tab (`modules/flow`).
+ * `GET /repos/{id}/reviews[?archived=1]` — a single repo's reviews, newest
+ * first. Unlike `listRecentReviews`, this is a plain, non-paginated array
+ * with no `repoName` (the caller already knows the repo — see `reviewResp`'s
+ * doc server-side). Backs the Flow workspace's Reviews tab (`modules/flow`).
+ * `archived` (default `false`) switches to the archived-only set, mirroring
+ * `listReviews`'s server-side branch in `packages/server/internal/http/
+ * handlers.go`.
  */
-export function listRepoReviews(repoId: string): Promise<Review[]> {
-  return request<Review[]>('GET', `/repos/${repoId}/reviews`)
+export function listRepoReviews(repoId: string, archived = false): Promise<Review[]> {
+  const params = archived ? '?archived=1' : ''
+  return request<Review[]>('GET', `/repos/${repoId}/reviews${params}`)
 }
 
 /** Returns the newly created retry `Review` (201). */

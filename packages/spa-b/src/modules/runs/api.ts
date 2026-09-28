@@ -42,20 +42,36 @@ export function getRoutine(id: string): Promise<RoutineRun> {
  * Query key for a repo's own routine-run list (`GET /repos/{id}/routines`)
  * — NOT the global cursor-paginated `GET /routines` list
  * `listRecentRoutines` backs. Mirrors
- * `modules/reviews/api.ts#repoReviewsQueryKey`'s shape convention.
+ * `modules/reviews/api.ts#repoReviewsQueryKey`'s shape convention,
+ * including the `archived` overload: passed, it's the key for one of the
+ * two disjoint (active/archived) cache entries; omitted, it's a shared
+ * prefix of both, so `queryCache.invalidateQueries({ key:
+ * repoRoutinesQueryKey(id) })` (see `ReleaseDialog.vue`) invalidates both
+ * variants at once rather than only whichever one happens to be showing.
  */
-export function repoRoutinesQueryKey(repoId: string): readonly [string, string] {
-  return ['repo-routines', repoId]
+export function repoRoutinesQueryKey(repoId: string): readonly [string, string]
+export function repoRoutinesQueryKey(
+  repoId: string,
+  archived: boolean,
+): readonly [string, string, { archived: boolean }]
+export function repoRoutinesQueryKey(
+  repoId: string,
+  archived?: boolean,
+): readonly [string, string] | readonly [string, string, { archived: boolean }] {
+  return archived === undefined ? ['repo-routines', repoId] : ['repo-routines', repoId, { archived }]
 }
 
 /**
- * `GET /repos/{id}/routines` — a single repo's routine runs, newest first.
- * Unlike `listRecentRoutines`, this is a plain, non-paginated array with no
- * `repoName` (the caller already knows the repo). Backs the Flow
- * workspace's Actions tab (`modules/flow`).
+ * `GET /repos/{id}/routines[?archived=1]` — a single repo's routine runs,
+ * newest first. Unlike `listRecentRoutines`, this is a plain, non-paginated
+ * array with no `repoName` (the caller already knows the repo). Backs the
+ * Flow workspace's Actions tab (`modules/flow`). `archived` (default
+ * `false`) switches to the archived-only set, mirroring `listRoutines`'s
+ * server-side branch in `packages/server/internal/http/handlers_routines.go`.
  */
-export function listRepoRoutines(repoId: string): Promise<RoutineRun[]> {
-  return request<RoutineRun[]>('GET', `/repos/${repoId}/routines`)
+export function listRepoRoutines(repoId: string, archived = false): Promise<RoutineRun[]> {
+  const params = archived ? '?archived=1' : ''
+  return request<RoutineRun[]>('GET', `/repos/${repoId}/routines${params}`)
 }
 
 /** Unblocks a `blocked` run so it keeps progressing. */

@@ -38,6 +38,7 @@ import { useRunsStore } from '@modules/runs/store'
 import type { PreviewTagResult } from '@modules/runs/types'
 import {
   EMOJI_CHOICES,
+  MAX_RELEASE_EMOJIS,
   addEmoji,
   buildDevReleasePayload,
   buildMainReleasePayload,
@@ -123,6 +124,11 @@ const missingBranches = computed(() =>
 
 const customEmojiInput = ref('')
 const customEmojiError = ref<string | null>(null)
+
+// `toggleEmoji`/`addEmoji` already refuse to grow the selection past this,
+// but disabling the unselected chips + the custom-name input/button at the
+// cap makes that limit visible instead of a click silently doing nothing.
+const atEmojiCap = computed(() => form.emojis.length >= MAX_RELEASE_EMOJIS)
 
 function handleAddCustomEmoji() {
   const name = normalizeCustomEmojiName(customEmojiInput.value)
@@ -369,13 +375,14 @@ async function handleSubmit() {
                 v-for="choice in EMOJI_CHOICES"
                 :key="choice.name"
                 type="button"
-                class="inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors"
+                class="inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                 :class="
                   form.emojis.includes(choice.name)
                     ? 'border-accent bg-accent-subtle-bg text-accent-text-strong'
                     : 'border-line text-text-muted hover:text-text'
                 "
                 :aria-pressed="form.emojis.includes(choice.name)"
+                :disabled="atEmojiCap && !form.emojis.includes(choice.name)"
                 @click="form.emojis = toggleEmoji(form.emojis, choice.name)"
               >
                 <span aria-hidden="true">{{ choice.glyph }}</span>
@@ -392,15 +399,19 @@ async function handleSubmit() {
                 {{ name }}
               </button>
             </div>
+            <p class="text-xs text-text-muted">Up to {{ MAX_RELEASE_EMOJIS }} reactions</p>
             <div class="flex items-center gap-2">
               <Input
                 v-model="customEmojiInput"
                 placeholder="add another emoji name…"
                 autocomplete="off"
                 aria-label="Custom emoji name"
+                :disabled="atEmojiCap"
                 @keydown.enter.prevent="handleAddCustomEmoji"
               />
-              <Button type="button" variant="outline" size="sm" @click="handleAddCustomEmoji">Add</Button>
+              <Button type="button" variant="outline" size="sm" :disabled="atEmojiCap" @click="handleAddCustomEmoji">
+                Add
+              </Button>
             </div>
             <p v-if="customEmojiError" class="text-xs text-danger-text">{{ customEmojiError }}</p>
           </div>

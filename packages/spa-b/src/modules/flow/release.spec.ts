@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  MAX_RELEASE_EMOJIS,
   addEmoji,
   buildDevReleasePayload,
   buildMainReleasePayload,
@@ -75,6 +76,18 @@ describe('toggleEmoji', () => {
     toggleEmoji(selected, 'rocket')
     expect(selected).toEqual(['thumbsup'])
   })
+
+  it('refuses to select a new name past MAX_RELEASE_EMOJIS, returning the selection unchanged', () => {
+    const atCap = Array.from({ length: MAX_RELEASE_EMOJIS }, (_, i) => `emoji_${i}`)
+    const result = toggleEmoji(atCap, 'one_too_many')
+    expect(result).toEqual(atCap)
+    expect(result).toBe(atCap)
+  })
+
+  it('still deselects an already-selected name at the cap', () => {
+    const atCap = Array.from({ length: MAX_RELEASE_EMOJIS }, (_, i) => `emoji_${i}`)
+    expect(toggleEmoji(atCap, 'emoji_0')).toEqual(atCap.slice(1))
+  })
 })
 
 describe('addEmoji', () => {
@@ -84,6 +97,13 @@ describe('addEmoji', () => {
 
   it('is idempotent for a name already present', () => {
     expect(addEmoji(['thumbsup', 'rocket'], 'rocket')).toEqual(['thumbsup', 'rocket'])
+  })
+
+  it('refuses to grow the selection past MAX_RELEASE_EMOJIS, returning the selection unchanged', () => {
+    const atCap = Array.from({ length: MAX_RELEASE_EMOJIS }, (_, i) => `emoji_${i}`)
+    const result = addEmoji(atCap, 'one_too_many')
+    expect(result).toEqual(atCap)
+    expect(result).toBe(atCap)
   })
 })
 

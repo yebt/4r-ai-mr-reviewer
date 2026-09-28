@@ -8,11 +8,17 @@
  * `useRunsStore`/`useRunDetail`'s exact leak-safe pattern (an
  * `{ immediate: true }` watch drives `resume`/`pause`, and `onUnmounted`
  * stops the interval since navigating away is otherwise invisible to it).
+ *
+ * A "Show archived" `Switch` (mirrors `RunsListSection.vue`'s) swaps this
+ * tab to a second, disjoint cache entry (`repoRoutinesQueryKey(repoId,
+ * true)`, backed by `listRepoRoutines`'s `?archived=1`) — archived runs are
+ * always terminal, so polling only ever runs for the active (non-archived)
+ * view (`canPoll` below also requires `!archived.value`).
  */
-import { computed, onUnmounted, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { useQuery } from '@pinia/colada'
 import { useDocumentVisibility, useIntervalFn } from '@vueuse/core'
-import { Alert, Button, Icon, Skeleton, Text } from '@shared/ui/design-system'
+import { Alert, Badge, Button, Icon, Skeleton, Switch, Text } from '@shared/ui/design-system'
 import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
 import { listRepoRoutines, repoRoutinesQueryKey } from '@modules/runs/api'
 import { flowLabel, formatDateTime, isRunActive, routineKindLabel, runTitle, RunStatusChip } from '@modules/runs'
@@ -21,16 +27,18 @@ const props = defineProps<{ repoId: string }>()
 
 const POLL_INTERVAL_MS = 2500
 
+const archived = ref(false)
+
 const { data, isLoading, error, refetch } = useQuery({
-  key: () => repoRoutinesQueryKey(props.repoId),
-  query: () => listRepoRoutines(props.repoId),
+  key: () => repoRoutinesQueryKey(props.repoId, archived.value),
+  query: () => listRepoRoutines(props.repoId, archived.value),
 })
 
 const runs = computed(() => data.value ?? [])
 const hasActiveRun = computed(() => runs.value.some((run) => isRunActive(run.status)))
 
 const documentVisibility = useDocumentVisibility()
-const canPoll = computed(() => hasActiveRun.value && documentVisibility.value === 'visible')
+const canPoll = computed(() => !archived.value && hasActiveRun.value && documentVisibility.value === 'visible')
 
 const { pause, resume } = useIntervalFn(() => refetch(), POLL_INTERVAL_MS, { immediate: false })
 watch(canPoll, (active) => (active ? resume() : pause()), { immediate: true })
@@ -43,6 +51,13 @@ onUnmounted(pause)
 
 <template>
   <section class="flex flex-col gap-3">
+    <div class="flex items-center justify-end">
+      <label class="flex shrink-0 items-center gap-2 text-sm text-text-muted">
+        Show archived
+        <Switch v-model="archived" aria-label="Show archived runs" />
+      </label>
+    </div>
+
     <div v-if="isLoading" class="flex flex-col gap-2" data-testid="flow-actions-loading-skeleton">
       <div
         v-for="n in 3"
@@ -63,7 +78,7 @@ onUnmounted(pause)
       class="flex flex-col items-center gap-2 rounded-lg border border-dashed border-line p-8 text-center"
     >
       <Icon name="activity" size="lg" class="text-text-muted" />
-      <Text muted>No runs for this repository yet.</Text>
+      <Text muted>{{ archived ? 'No archived runs for this repository.' : 'No runs for this repository yet.' }}</Text>
     </div>
 
     <ul v-else class="flex flex-col gap-2">
@@ -71,9 +86,13 @@ onUnmounted(pause)
         <RouterLink
           :to="`/runs/${run.id}`"
           class="flex items-center gap-3 rounded-lg border border-line-subtle bg-bg-panel px-3 py-2.5 transition-colors hover:bg-bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+          :class="run.archived ? 'opacity-60' : ''"
         >
           <div class="flex min-w-0 flex-1 flex-col gap-1">
-            <Text class="truncate font-semibold">{{ runTitle(run) }}</Text>
+            <div class="flex flex-wrap items-center gap-2">
+              <Text class="truncate font-semibold">{{ runTitle(run) }}</Text>
+              <Badge v-if="run.archived" status="neutral">Archived</Badge>
+            </div>
             <div class="flex flex-wrap items-center gap-2">
               <RunStatusChip :status="run.status" />
               <Text muted size="xs">{{ routineKindLabel[run.kind] }}</Text>

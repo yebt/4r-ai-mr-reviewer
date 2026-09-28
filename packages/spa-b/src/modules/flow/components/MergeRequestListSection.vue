@@ -58,12 +58,15 @@ const {
 })
 const mergeRequests = computed(() => mrsData.value ?? [])
 
-// Best-effort/optional — see the file doc. Shares its query key with
-// `RepoReviewsSection`, so this never causes a second network round trip
-// once either tab has already warmed the cache for this repo.
+// Best-effort/optional — see the file doc. Only ever reads the active
+// (non-archived) set — an MR's latest review status only needs to consider
+// non-archived reviews — and passes `false` explicitly (rather than
+// omitting the arg) so this shares its query key with `RepoReviewsSection`'s
+// own default (non-archived) view, never causing a second network round
+// trip once either tab has already warmed the cache for this repo.
 const { data: reviewsData } = useQuery({
-  key: () => repoReviewsQueryKey(props.repoId),
-  query: () => listRepoReviews(props.repoId),
+  key: () => repoReviewsQueryKey(props.repoId, false),
+  query: () => listRepoReviews(props.repoId, false),
 })
 const reviewStatusByMr = computed(() => latestReviewByMr(reviewsData.value ?? []))
 
