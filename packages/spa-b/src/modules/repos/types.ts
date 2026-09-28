@@ -4,7 +4,6 @@
  * `defaultProfileId` of `''` mean "use default"; `webhookSecret` is `''`
  * until the webhook is enabled.
  *
- * Preflight/branches belong to a future milestone — out of scope here.
  * Reviews and Runs now live in their own `modules/reviews` and
  * `modules/runs` — this file stays repo-only.
  */
@@ -112,4 +111,34 @@ export interface CreateMergeRequestPayload {
   targetBranch: string
   title: string
   description: string
+}
+
+/**
+ * One probed routine capability from `GET /repos/{id}/preflight` (mirrors
+ * `preflightCheckResp` in `server/internal/http/handlers_routines.go`).
+ * `detail` is `''` when the check has nothing extra to say.
+ */
+export interface PreflightCheck {
+  capability: string
+  label: string
+  status: 'ok' | 'fail' | 'unknown'
+  detail: string
+}
+
+/**
+ * `GET /repos/{id}/preflight` response (`preflightResp` server-side) —
+ * reports which merge-request routine actions the repo's token and access
+ * level permit, from live GitLab reads (project, membership, protected
+ * branches/tags). `scopesKnown` is `false` when the token type (e.g. a
+ * GitLab OAuth token) doesn't expose its scopes, in which case `tokenScopes`
+ * is `[]` and the UI should say "scopes could not be read" rather than
+ * implying an empty scope list.
+ */
+export interface Preflight {
+  tokenScopes: string[]
+  scopesKnown: boolean
+  accessLevel: number
+  accessLevelName: string
+  defaultBranch: string
+  checks: PreflightCheck[]
 }

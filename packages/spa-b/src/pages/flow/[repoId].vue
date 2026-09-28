@@ -19,12 +19,41 @@
  * (`ReleaseDialog` `flow="main"`, `NewMergeRequestDialog`) here rather than
  * inside `MergeRequestListSection`, since neither needs an existing MR and
  * both must work with zero open MRs.
+ *
+ * Slice 5: a "Repository settings" gear next to the switcher opens a Reka
+ * `DropdownMenu` with three items, reusing `modules/repos`' existing
+ * pieces rather than duplicating their logic — "Provider & model…" opens
+ * `RepoForm` (reassign mode) inside a Dialog, exactly like
+ * `RepositoriesSection` does on Settings → Repos; "Webhook…" and "Check
+ * permissions…" open `WebhookDialog`/`PreflightDialog`, which both own
+ * their own `DialogRoot` already. All three are imported by file path
+ * (not the module barrel, which only re-exports `RepositoriesSection` +
+ * types — see that module's own `index.ts`).
  */
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui'
+import {
+  DialogContent,
+  DialogDescription,
+  DialogOverlay,
+  DialogPortal,
+  DialogRoot,
+  DialogTitle,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuPortal,
+  DropdownMenuRoot,
+  DropdownMenuTrigger,
+  TabsContent,
+  TabsList,
+  TabsRoot,
+  TabsTrigger,
+} from 'reka-ui'
 import { Button, Heading, Icon, Select, Skeleton, Text } from '@shared/ui/design-system'
 import type { SelectItemOption } from '@shared/ui/design-system'
+import PreflightDialog from '@modules/repos/components/PreflightDialog.vue'
+import RepoForm from '@modules/repos/components/RepoForm.vue'
+import WebhookDialog from '@modules/repos/components/WebhookDialog.vue'
 import { useReposStore } from '@modules/repos/store'
 import {
   MergeRequestListSection,
@@ -59,6 +88,16 @@ const FLOW_TABS: { id: FlowTab; label: string; icon: string }[] = [
 ]
 const mainReleaseDialogOpen = ref(false)
 const newMergeRequestDialogOpen = ref(false)
+
+// Repository settings — see the top-of-file note. All three reuse
+// `modules/repos`' existing form/dialog pieces for the current `repo`.
+const providerFormDialogOpen = ref(false)
+const webhookDialogOpen = ref(false)
+const preflightDialogOpen = ref(false)
+
+function handleProviderFormSaved() {
+  providerFormDialogOpen.value = false
+}
 
 function isFlowTab(value: unknown): value is FlowTab {
   return value === 'mrs' || value === 'reviews' || value === 'actions'
@@ -110,13 +149,49 @@ const tab = computed<FlowTab>({
             {{ repo.url }}
           </a>
         </div>
-        <div class="w-full shrink-0 sm:w-64">
-          <Select
-            :model-value="repoId"
-            :items="switcherOptions"
-            aria-label="Switch repository"
-            @update:model-value="switchRepo"
-          />
+        <div class="flex w-full shrink-0 items-center gap-2 sm:w-auto">
+          <div class="min-w-0 flex-1 sm:w-64 sm:flex-none">
+            <Select
+              :model-value="repoId"
+              :items="switcherOptions"
+              aria-label="Switch repository"
+              @update:model-value="switchRepo"
+            />
+          </div>
+
+          <DropdownMenuRoot>
+            <DropdownMenuTrigger as-child>
+              <Button variant="outline" size="sm" aria-label="Repository settings">
+                <Icon name="settings" size="sm" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuPortal>
+              <DropdownMenuContent
+                align="end"
+                :side-offset="4"
+                class="z-30 min-w-48 rounded-md border border-line bg-bg-panel-raised p-1 shadow-token-lg"
+              >
+                <DropdownMenuItem
+                  class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-text outline-none data-[highlighted]:bg-bg-hover"
+                  @select="providerFormDialogOpen = true"
+                >
+                  Provider & model…
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-text outline-none data-[highlighted]:bg-bg-hover"
+                  @select="webhookDialogOpen = true"
+                >
+                  Webhook…
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  class="flex min-h-8 cursor-pointer items-center rounded-sm px-2 text-sm text-text outline-none data-[highlighted]:bg-bg-hover"
+                  @select="preflightDialogOpen = true"
+                >
+                  Check permissions…
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenuPortal>
+          </DropdownMenuRoot>
         </div>
       </div>
 
@@ -155,6 +230,34 @@ const tab = computed<FlowTab>({
 
       <ReleaseDialog v-model:open="mainReleaseDialogOpen" flow="main" :repo="repo" />
       <NewMergeRequestDialog v-model:open="newMergeRequestDialogOpen" :repo="repo" />
+
+      <DialogRoot v-model:open="providerFormDialogOpen">
+        <DialogPortal>
+          <DialogOverlay class="overlay z-20" />
+          <DialogContent
+            class="fixed left-1/2 top-1/2 z-30 max-h-[85vh] w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-line bg-bg-panel-raised p-5 shadow-token-lg focus:outline-none"
+          >
+            <DialogTitle class="text-md font-semibold">Reassign repository</DialogTitle>
+            <DialogDescription class="mt-1 text-sm text-text-muted">
+              Update this repository's account, provider, model, or default voice profile.
+            </DialogDescription>
+            <RepoForm
+              :key="repo.id"
+              class="mt-4"
+              :repo="repo"
+              @saved="handleProviderFormSaved"
+              @cancel="providerFormDialogOpen = false"
+            />
+          </DialogContent>
+        </DialogPortal>
+      </DialogRoot>
+
+      <WebhookDialog :open="webhookDialogOpen" :repo="repo" @update:open="(value) => (webhookDialogOpen = value)" />
+      <PreflightDialog
+        :open="preflightDialogOpen"
+        :repo="repo"
+        @update:open="(value) => (preflightDialogOpen = value)"
+      />
     </template>
   </div>
 </template>

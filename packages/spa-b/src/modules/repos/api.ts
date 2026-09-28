@@ -7,6 +7,7 @@ import type {
   GenerateMergeRequestPayload,
   GeneratedMergeRequest,
   MergeRequest,
+  Preflight,
   Repo,
   SetWebhookPayload,
 } from './types'
@@ -57,6 +58,17 @@ export function rotateRepoWebhookSecret(id: string): Promise<Repo> {
 
 export function deleteRepo(id: string): Promise<void> {
   return request<void>('DELETE', `/repos/${id}`)
+}
+
+/**
+ * `GET /repos/{id}/preflight` — reports which merge-request routine actions
+ * the repo's token and access level permit, from live GitLab reads (spends
+ * a GitLab API call, no writes). Unknown repo → 404 `ApiError`; upstream
+ * GitLab failure → 502 `ApiError` (see `repoPreflight`/`isNotFound` in
+ * `server/internal/http/handlers_routines.go` and `server.go`).
+ */
+export function preflightRepo(repoId: string): Promise<Preflight> {
+  return request<Preflight>('GET', `/repos/${repoId}/preflight`)
 }
 
 /**
