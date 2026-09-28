@@ -22,6 +22,7 @@ import {
   CircleX,
   Copy,
   Ellipsis,
+  ExternalLink,
   Eye,
   EyeOff,
   GitBranch,
@@ -48,6 +49,7 @@ import {
   TriangleAlert,
   User,
   Users,
+  Workflow,
   X,
 } from 'lucide-vue-next'
 
@@ -66,6 +68,7 @@ const icons: Record<string, Component> = {
   'circle-x': CircleX,
   copy: Copy,
   ellipsis: Ellipsis,
+  'external-link': ExternalLink,
   eye: Eye,
   'eye-off': EyeOff,
   'git-branch': GitBranch,
@@ -92,6 +95,7 @@ const icons: Record<string, Component> = {
   'triangle-alert': TriangleAlert,
   user: User,
   users: Users,
+  workflow: Workflow,
   x: X,
 }
 

@@ -31,6 +31,26 @@ export function getRoutine(id: string): Promise<RoutineRun> {
   return request<RoutineRun>('GET', `/routines/${id}`)
 }
 
+/**
+ * Query key for a repo's own routine-run list (`GET /repos/{id}/routines`)
+ * — NOT the global cursor-paginated `GET /routines` list
+ * `listRecentRoutines` backs. Mirrors
+ * `modules/reviews/api.ts#repoReviewsQueryKey`'s shape convention.
+ */
+export function repoRoutinesQueryKey(repoId: string): readonly [string, string] {
+  return ['repo-routines', repoId]
+}
+
+/**
+ * `GET /repos/{id}/routines` — a single repo's routine runs, newest first.
+ * Unlike `listRecentRoutines`, this is a plain, non-paginated array with no
+ * `repoName` (the caller already knows the repo). Backs the Flow
+ * workspace's Actions tab (`modules/flow`).
+ */
+export function listRepoRoutines(repoId: string): Promise<RoutineRun[]> {
+  return request<RoutineRun[]>('GET', `/repos/${repoId}/routines`)
+}
+
 /** Unblocks a `blocked` run so it keeps progressing. */
 export function resumeRoutine(id: string): Promise<void> {
   return request<void>('POST', `/routines/${id}/resume`)

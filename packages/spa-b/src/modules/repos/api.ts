@@ -1,8 +1,25 @@
 import { request } from '@shared/api/client'
-import type { AccountProject, AssignRepoPayload, CreateRepoPayload, Repo, SetWebhookPayload } from './types'
+import type {
+  AccountProject,
+  AssignRepoPayload,
+  CreateRepoPayload,
+  MergeRequest,
+  Repo,
+  SetWebhookPayload,
+} from './types'
 
 export function listRepos(): Promise<Repo[]> {
   return request<Repo[]>('GET', '/repos')
+}
+
+/**
+ * `GET /repos/{id}/merge-requests` — the repo's open merge requests, fetched
+ * live from GitLab (not persisted server-side — see
+ * `handlers.go#listMergeRequests`). Backs the Flow workspace's MRs tab
+ * (`modules/flow`).
+ */
+export function listMergeRequests(repoId: string): Promise<MergeRequest[]> {
+  return request<MergeRequest[]>('GET', `/repos/${repoId}/merge-requests`)
 }
 
 /**

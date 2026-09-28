@@ -35,6 +35,27 @@ export function getReview(id: string): Promise<Review> {
   return request<Review>('GET', `/reviews/${id}`)
 }
 
+/**
+ * Query key for a repo's own review list (`GET /repos/{id}/reviews`) — NOT
+ * the global cursor-paginated `GET /reviews` list `listRecentReviews` backs.
+ * Exported so `modules/flow`'s MRs tab (best-effort latest-review-status
+ * lookup) and Reviews tab share the exact same @pinia/colada cache entry
+ * instead of fetching this list twice per repo visit.
+ */
+export function repoReviewsQueryKey(repoId: string): readonly [string, string] {
+  return ['repo-reviews', repoId]
+}
+
+/**
+ * `GET /repos/{id}/reviews` — a single repo's reviews, newest first. Unlike
+ * `listRecentReviews`, this is a plain, non-paginated array with no
+ * `repoName` (the caller already knows the repo — see `reviewResp`'s doc
+ * server-side). Backs the Flow workspace's Reviews tab (`modules/flow`).
+ */
+export function listRepoReviews(repoId: string): Promise<Review[]> {
+  return request<Review[]>('GET', `/repos/${repoId}/reviews`)
+}
+
 /** Returns the newly created retry `Review` (201). */
 export function retryReview(id: string): Promise<Review> {
   return request<Review>('POST', `/reviews/${id}/retry`)

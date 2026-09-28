@@ -41,6 +41,7 @@ export interface NavItem {
 
 export const navItems: NavItem[] = [
   { label: 'Home', icon: 'house', to: '/', section: 'primary' },
+  { label: 'Flow', icon: 'workflow', to: '/flow', section: 'primary' },
   { label: 'Reviews', icon: 'git-pull-request', to: '/reviews', section: 'primary' },
   { label: 'Runs', icon: 'activity', to: '/runs', section: 'primary' },
   { label: 'Settings', icon: 'settings', to: '/settings', section: 'secondary' },

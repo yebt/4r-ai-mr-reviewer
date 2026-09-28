@@ -62,3 +62,20 @@ export interface SetWebhookPayload {
   enabled: boolean
   requireConfirmation: boolean
 }
+
+/**
+ * A repo's open merge request, from `GET /repos/{id}/merge-requests`
+ * (`mrResp`/`toMR` server-side — see `server/internal/http/handlers.go`).
+ * Live GitLab data, not persisted — backs the Flow workspace's MRs tab
+ * (`modules/flow`).
+ */
+export interface MergeRequest {
+  iid: number
+  title: string
+  description?: string
+  state: string
+  sourceBranch: string
+  targetBranch: string
+  webUrl: string
+  author: string
+}
