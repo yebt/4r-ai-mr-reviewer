@@ -281,7 +281,7 @@ async function handleSubmit() {
           </Field>
 
           <!-- Live tag preview — the exact tag this release will create. -->
-          <div class="rounded-md border-l-2 border-line bg-bg-hover px-3 py-2.5" aria-live="polite">
+          <div class="rounded-md border border-line-subtle bg-bg-hover px-3 py-2.5" aria-live="polite">
             <div class="mb-1 flex items-center gap-1.5 font-mono text-xs text-text-muted">
               Next tag
               <span
