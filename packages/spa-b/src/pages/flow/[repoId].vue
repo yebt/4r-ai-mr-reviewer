@@ -69,7 +69,9 @@ const reposStore = useReposStore()
 
 const repoId = computed(() => String(route.params.repoId))
 const repo = computed(() => reposStore.repos.find((r) => r.id === repoId.value) ?? null)
-const ready = computed(() => !reposStore.isLoading)
+// First load only: `isLoading` is also true during background refetches (window
+// focus after staleTime), which would swap the whole workspace for a skeleton.
+const ready = computed(() => reposStore.reposState.status !== 'pending')
 
 const switcherOptions = computed<SelectItemOption[]>(() =>
   reposStore.repos.map((r) => ({ label: r.name, value: r.id })),
