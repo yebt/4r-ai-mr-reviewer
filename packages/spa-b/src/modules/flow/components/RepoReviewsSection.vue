@@ -23,7 +23,7 @@ const props = defineProps<{ repoId: string }>()
 
 const archived = ref(false)
 
-const { data, isLoading, error, refetch } = useQuery({
+const { data, state, error, refetch } = useQuery({
   key: () => repoReviewsQueryKey(props.repoId, archived.value),
   query: () => listRepoReviews(props.repoId, archived.value),
 })
@@ -56,7 +56,7 @@ function formatDate(iso: string): string {
       </label>
     </div>
 
-    <div v-if="isLoading" class="flex flex-col gap-2" data-testid="flow-reviews-loading-skeleton">
+    <div v-if="state.status === 'pending'" class="flex flex-col gap-2" data-testid="flow-reviews-loading-skeleton">
       <div
         v-for="n in 3"
         :key="n"

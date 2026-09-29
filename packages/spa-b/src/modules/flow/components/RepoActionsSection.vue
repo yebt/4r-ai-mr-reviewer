@@ -29,7 +29,7 @@ const POLL_INTERVAL_MS = 2500
 
 const archived = ref(false)
 
-const { data, isLoading, error, refetch } = useQuery({
+const { data, state, error, refetch } = useQuery({
   key: () => repoRoutinesQueryKey(props.repoId, archived.value),
   query: () => listRepoRoutines(props.repoId, archived.value),
 })
@@ -58,7 +58,7 @@ onUnmounted(pause)
       </label>
     </div>
 
-    <div v-if="isLoading" class="flex flex-col gap-2" data-testid="flow-actions-loading-skeleton">
+    <div v-if="state.status === 'pending'" class="flex flex-col gap-2" data-testid="flow-actions-loading-skeleton">
       <div
         v-for="n in 3"
         :key="n"

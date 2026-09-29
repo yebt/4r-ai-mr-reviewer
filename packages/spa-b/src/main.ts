@@ -16,8 +16,10 @@ const app = createApp(App)
 app.use(createPinia())
 app.use(PiniaColada, {
   queryOptions: {
-    // change the stale time for all queries to 0ms
-    staleTime: 0,
+    // Data younger than 30s is reused as-is: switching back to a tab (window
+    // focus) or remounting a view no longer refetches everything. Mutations
+    // still invalidate their queries explicitly and active runs keep polling.
+    staleTime: 30_000,
   },
   mutationOptions: {
     // add global mutation options here

@@ -49,7 +49,7 @@ const repo = computed(() => reposStore.repos.find((r) => r.id === props.repoId))
 
 const {
   data: mrsData,
-  isLoading,
+  state,
   error,
   refetch,
 } = useQuery({
@@ -100,7 +100,7 @@ function openReleaseDialog(mr: MergeRequest) {
       <slot name="header-actions" />
     </div>
 
-    <div v-if="isLoading" class="flex flex-col gap-2" data-testid="flow-mrs-loading-skeleton">
+    <div v-if="state.status === 'pending'" class="flex flex-col gap-2" data-testid="flow-mrs-loading-skeleton">
       <div
         v-for="n in 3"
         :key="n"

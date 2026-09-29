@@ -50,7 +50,7 @@ const filteredRepos = computed(() => {
       <Text muted>Pick a repository to review its merge requests, releases, and runs.</Text>
     </div>
 
-    <div v-if="reposStore.isLoading" class="flex flex-col gap-2" data-testid="flow-repos-loading-skeleton">
+    <div v-if="reposStore.reposState.status === 'pending'" class="flex flex-col gap-2" data-testid="flow-repos-loading-skeleton">
       <div
         v-for="n in 4"
         :key="n"

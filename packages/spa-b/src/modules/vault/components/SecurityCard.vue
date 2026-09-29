@@ -105,7 +105,7 @@ async function handleSubmit() {
       <Text muted size="sm">Manage this workspace's master key / vault protection.</Text>
     </div>
 
-    <div v-if="store.isLoading" class="flex flex-col gap-2" data-testid="vault-loading-skeleton">
+    <div v-if="store.statusState.status === 'pending'" class="flex flex-col gap-2" data-testid="vault-loading-skeleton">
       <Skeleton class="h-4 w-48" />
       <Skeleton class="h-24 w-full" />
     </div>
