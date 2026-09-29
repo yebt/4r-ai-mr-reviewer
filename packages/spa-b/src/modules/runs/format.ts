@@ -147,3 +147,38 @@ export function formatDateTime(iso: string): string {
   if (Number.isNaN(d.getTime())) return ''
   return runDateTimeFormatter.format(d)
 }
+
+const runTimeFormatter = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' })
+
+/** Time-of-day only (e.g. step completion times inside one run). */
+export function formatTime(iso: string): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  return runTimeFormatter.format(d)
+}
+
+// Readable names for the backend's routine step keys (see the step ledgers in
+// packages/server/internal/app/routines/service.go). Unknown keys fall back to
+// sentence case so a new backend step still renders sensibly.
+const STEP_LABELS: Record<string, string> = {
+  verify: 'Verify merge request',
+  react: 'Add reactions',
+  comment: 'Comment',
+  approve: 'Approve merge request',
+  compute_tag: 'Compute tag',
+  create_mr: 'Open merge request',
+  wait_pipeline: 'Wait for pipeline',
+  confirm: 'Confirmation',
+  merge: 'Merge',
+  tag: 'Push tag',
+  notify: 'Notify',
+}
+
+export function stepLabel(name: string): string {
+  if (!name) return ''
+  const known = STEP_LABELS[name]
+  if (known) return known
+  const words = name.replace(/[_-]+/g, ' ').trim()
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}

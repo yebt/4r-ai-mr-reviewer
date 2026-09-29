@@ -97,6 +97,32 @@ const mergeConfirmDescription = computed(() => {
   const tag = typeof nextTag === 'string' && nextTag ? nextTag : 'the next tag'
   return `This merges ${source} into ${target} on your real GitLab project and pushes tag ${tag}. This cannot be undone.`
 })
+
+// The step the run is paused on waiting for the user: the confirm gate while
+// awaiting confirmation, or the step a blocked run stopped at. The timeline
+// renders the decision (Merge/Wait, Resume/Skip) right under that step.
+const attentionStep = computed(() => {
+  const r = run.value
+  if (!r) return undefined
+  if (r.status === 'awaiting_confirmation') {
+    return (r.steps.find((s) => s.name === 'confirm') ?? r.steps.find((s) => s.status === 'running'))?.name
+  }
+  if (r.status === 'blocked') {
+    return (r.steps.find((s) => s.status === 'failed') ?? r.steps.find((s) => s.status === 'running'))?.name
+  }
+  return undefined
+})
+
+const mergeSummary = computed(() => {
+  if (!run.value) return ''
+  const nextTag = run.value.state.nextTag
+  const tag = typeof nextTag === 'string' && nextTag ? nextTag : 'the next tag'
+  const branches =
+    run.value.sourceBranch && run.value.targetBranch
+      ? `${run.value.sourceBranch} into ${run.value.targetBranch}`
+      : 'the merge request'
+  return `Ready to merge ${branches} and tag ${tag}. Choose Wait if you'll merge it yourself on GitLab.`
+})
 </script>
 
 <template>
@@ -168,20 +194,49 @@ const mergeConfirmDescription = computed(() => {
 
       <section class="flex flex-col gap-2 rounded-lg border border-line-subtle bg-bg-panel p-3">
         <Text size="sm" class="font-medium">Steps</Text>
-        <StepTimeline :steps="run.steps" />
+        <StepTimeline :steps="run.steps" :attention-step="attentionStep">
+          <template #attention>
+            <div
+              v-if="run.status === 'awaiting_confirmation'"
+              class="flex flex-col gap-2 rounded-md border border-line-subtle bg-bg-app p-3"
+            >
+              <Text size="sm">{{ mergeSummary }}</Text>
+              <div class="flex flex-wrap items-center gap-2">
+                <ConfirmDialog
+                  title="Merge and tag now?"
+                  :description="mergeConfirmDescription"
+                  confirm-label="Merge now"
+                  :pending="isConfirming"
+                  @confirm="handleConfirm('merge')"
+                >
+                  <template #trigger>
+                    <Button variant="accent" size="sm" :loading="isConfirming">Merge</Button>
+                  </template>
+                </ConfirmDialog>
+                <Button variant="outline" size="sm" :loading="isConfirming" @click="handleConfirm('wait')">
+                  Wait
+                </Button>
+              </div>
+            </div>
+            <div v-else-if="run.status === 'blocked'" class="flex flex-wrap items-center gap-2">
+              <Button variant="accent" size="sm" :loading="isResuming" @click="handleResume">Resume</Button>
+              <Button variant="outline" size="sm" :loading="isSkipping" @click="handleSkip">Skip</Button>
+            </div>
+          </template>
+        </StepTimeline>
       </section>
 
       <section
-        v-if="run.status === 'blocked' || run.status === 'awaiting_confirmation' || isRunCancelable(run.status)"
+        v-if="(!attentionStep && (run.status === 'blocked' || run.status === 'awaiting_confirmation')) || isRunCancelable(run.status)"
         class="flex flex-wrap items-center gap-2"
       >
-        <Button v-if="run.status === 'blocked'" variant="accent" size="sm" :loading="isResuming" @click="handleResume">
+        <Button v-if="!attentionStep && run.status === 'blocked'" variant="accent" size="sm" :loading="isResuming" @click="handleResume">
           Resume
         </Button>
-        <Button v-if="run.status === 'blocked'" variant="outline" size="sm" :loading="isSkipping" @click="handleSkip">
+        <Button v-if="!attentionStep && run.status === 'blocked'" variant="outline" size="sm" :loading="isSkipping" @click="handleSkip">
           Skip
         </Button>
-        <template v-if="run.status === 'awaiting_confirmation'">
+        <template v-if="!attentionStep && run.status === 'awaiting_confirmation'">
           <ConfirmDialog
             title="Merge and tag now?"
             :description="mergeConfirmDescription"

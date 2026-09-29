@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { formatDateTime, isRunActive, isRunCancelable, runStatusUi, runTitle, stateSummaryEntries } from './format'
+import {
+  formatDateTime,
+  formatTime,
+  isRunActive,
+  isRunCancelable,
+  runStatusUi,
+  runTitle,
+  stateSummaryEntries,
+  stepLabel,
+} from './format'
 import type { RoutineRun } from './types'
 
 function makeRun(overrides: Partial<RoutineRun> = {}): RoutineRun {
@@ -123,5 +132,32 @@ describe('stateSummaryEntries', () => {
 
   it('returns an empty array when state has none of the notable keys', () => {
     expect(stateSummaryEntries(makeRun({ state: { headSHA: 'abc123' } }))).toEqual([])
+  })
+})
+
+describe('stepLabel', () => {
+  it('maps known routine step keys to readable labels', () => {
+    expect(stepLabel('compute_tag')).toBe('Compute tag')
+    expect(stepLabel('react')).toBe('Add reactions')
+    expect(stepLabel('wait_pipeline')).toBe('Wait for pipeline')
+    expect(stepLabel('create_mr')).toBe('Open merge request')
+  })
+
+  it('falls back to sentence case for unknown snake_case keys', () => {
+    expect(stepLabel('sync_release_notes')).toBe('Sync release notes')
+    expect(stepLabel('')).toBe('')
+  })
+})
+
+describe('formatTime', () => {
+  it('returns an empty string for empty or invalid input', () => {
+    expect(formatTime('')).toBe('')
+    expect(formatTime('not-a-date')).toBe('')
+  })
+
+  it('formats a valid timestamp without the date part', () => {
+    const out = formatTime('2026-09-25T15:27:00Z')
+    expect(out).not.toBe('')
+    expect(out).not.toMatch(/Sep|2026/)
   })
 })
