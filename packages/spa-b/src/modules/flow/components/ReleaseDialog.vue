@@ -208,8 +208,11 @@ watchDebounced(
 const submitting = ref(false)
 const submitError = ref<string | null>(null)
 
+// Watch each value as its own source: a getter returning a fresh array would
+// re-fire whenever the repo/MR list refetches (e.g. on window focus) and hands
+// down a new object with the same id, wiping the dialog's in-progress state.
 watch(
-  () => [props.open, props.flow, props.repo.id, props.mergeRequest?.iid] as const,
+  [() => props.open, () => props.flow, () => props.repo.id, () => props.mergeRequest?.iid],
   ([open]) => {
     if (!open) return
     submitError.value = null

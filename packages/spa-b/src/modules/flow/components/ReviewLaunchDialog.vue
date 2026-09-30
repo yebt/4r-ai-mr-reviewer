@@ -126,8 +126,11 @@ const submitError = ref<string | null>(null)
 // Resets local, dialog-scoped state whenever the dialog opens (or targets a
 // different repo/MR), so reopening never leaks a previous launch's edits or
 // error into the next one — mirrors WebhookDialog's reset watcher.
+// Watch each value as its own source: a getter returning a fresh array would
+// re-fire whenever the repo/MR list refetches (e.g. on window focus) and hands
+// down a new object with the same id, wiping the dialog's in-progress state.
 watch(
-  () => [props.open, props.repo.id, props.mergeRequest?.iid] as const,
+  [() => props.open, () => props.repo.id, () => props.mergeRequest?.iid],
   ([open]) => {
     if (!open) return
     submitError.value = null

@@ -40,8 +40,11 @@ const actionError = ref<string | null>(null)
 // Reset local, dialog-scoped UI state whenever the dialog closes or targets
 // a different repo, so reopening never leaks a previous repo's "revealed"
 // secret or stale error into the next one.
+// Watch each value as its own source: a getter returning a fresh array would
+// re-fire whenever the repo/MR list refetches (e.g. on window focus) and hands
+// down a new object with the same id, wiping the dialog's in-progress state.
 watch(
-  () => [props.open, props.repo?.id],
+  [() => props.open, () => props.repo?.id],
   () => {
     secretVisible.value = false
     copiedField.value = null

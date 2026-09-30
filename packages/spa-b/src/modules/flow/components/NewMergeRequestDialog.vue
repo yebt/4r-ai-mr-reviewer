@@ -271,8 +271,11 @@ function onDialogOpenUpdate(value: boolean) {
 // The setup choices (branches, voice profile, provider/model) are the
 // exception: they come back from the per-repo remembered setup, validated
 // against what still exists; the draft title/description always start empty.
+// Watch each value as its own source: a getter returning a fresh array would
+// re-fire whenever the repo/MR list refetches (e.g. on window focus) and hands
+// down a new object with the same id, wiping the dialog's in-progress state.
 watch(
-  () => [props.open, props.repo.id] as const,
+  [() => props.open, () => props.repo.id],
   ([open]) => {
     if (!open) return
     submitError.value = null

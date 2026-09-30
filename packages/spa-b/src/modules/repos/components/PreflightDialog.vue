@@ -55,8 +55,11 @@ async function runPreflight() {
 // so "Retry" isn't the only way back after a transient GitLab failure) or
 // targets a different repo. Closing clears the previous result so a
 // reopen never flashes stale data before the new fetch resolves.
+// Watch each value as its own source: a getter returning a fresh array would
+// re-fire whenever the repo/MR list refetches (e.g. on window focus) and hands
+// down a new object with the same id, wiping the dialog's in-progress state.
 watch(
-  () => [props.open, props.repo?.id] as const,
+  [() => props.open, () => props.repo?.id],
   ([open]) => {
     preflight.value = null
     error.value = null
