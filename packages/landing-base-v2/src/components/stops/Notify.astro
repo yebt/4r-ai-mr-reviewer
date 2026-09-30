@@ -1,0 +1,19 @@
+---
+import Stop from "../Stop.astro";
+---
+
+<Stop id="notify" title="A Telegram message when it is done" log="!142 notified">
+  <div class="prose">
+    <p>
+      Add a Telegram target with a bot token and a chat, and a topic thread if the chat uses
+      them. 4R sends it a message when a review finishes and when a release routine reaches
+      its notify step. Pick the chat from the bot's recent updates instead of copying IDs, and
+      send a test message before you rely on it.
+    </p>
+    <p>
+      Notification rules are global or per repository; a repository's own rules replace the
+      global ones for that repository. A message that fails to send is logged and never holds
+      up the review.
+    </p>
+  </div>
+</Stop>

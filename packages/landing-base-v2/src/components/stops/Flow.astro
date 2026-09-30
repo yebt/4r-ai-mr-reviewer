@@ -1,0 +1,46 @@
+---
+import Stop from "../Stop.astro";
+import Shot from "../Shot.astro";
+---
+
+<Stop id="flow" title="One workspace per repository" log="acme/payments-api">
+  <div class="flow">
+    <div class="prose">
+      <p>
+        Flow keeps one tracked repository's work in one place: its open MRs, the reviews
+        you have run on them, and its releases.
+      </p>
+      <p>
+        Launch a review from the MR list and choose the provider and model for that run, or
+        keep the repository's default. Draft a new MR with the AI from a branch, then edit it
+        before it is opened.
+      </p>
+    </div>
+    <Shot
+      name="flow"
+      alt="The Flow workspace for acme/payments-api: a list of open merge requests including !142, each with its latest review status, and actions to review, draft an MR, or start a release."
+      caption="The Flow workspace for one repository."
+    />
+  </div>
+</Stop>
+
+<style>
+  .flow {
+    display: grid;
+    gap: 2rem;
+  }
+  .flow .prose {
+    display: grid;
+    gap: 1rem;
+    max-width: none;
+  }
+  .flow .prose > * + * {
+    margin-top: 0;
+  }
+  @media (min-width: 60rem) {
+    .flow .prose {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 3rem;
+    }
+  }
+</style>

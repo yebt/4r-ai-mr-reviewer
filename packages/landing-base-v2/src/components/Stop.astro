@@ -1,0 +1,21 @@
+---
+// One stop on MR !142's path. The heading carries the section; `log` is the
+// path log shown on the boundary rail (desktop) or under the heading (mobile).
+interface Props {
+  id: string;
+  title: string;
+  log: string;
+}
+const { id, title, log } = Astro.props;
+const headingId = `${id}-title`;
+---
+
+<section class="stop" id={id} aria-labelledby={headingId} data-stop>
+  <div class="stop-body">
+    <div class="stop-head">
+      <h2 id={headingId}>{title}</h2>
+      <p class="stop-log"><span class="node" aria-hidden="true"></span><span>{log}</span></p>
+    </div>
+    <slot />
+  </div>
+</section>

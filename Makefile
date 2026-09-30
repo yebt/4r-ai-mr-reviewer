@@ -5,6 +5,7 @@ SERVER  := packages/server
 WEB     := packages/spa-b
 WEB_OLD := packages/spa
 LANDING := packages/landing-base
+LANDING_V2 := packages/landing-base-v2
 DOCS    := packages/documentation
 
 # The SPA dev server proxies /api to the backend. Derive its target from the
@@ -15,13 +16,13 @@ API_TARGET := http://$(patsubst :%,localhost:%,$(API_ADDR))
 BIN    := $(CURDIR)/bin
 BINARY := $(BIN)/air-server
 
-.PHONY: help run run-server run-spa run-spa-host run-spa-old run-landing build-landing run-docs dev build test vet fmt tidy clean
+.PHONY: help run run-server run-spa run-spa-host run-spa-old run-landing build-landing run-landing-v2 build-landing-v2 run-docs dev build test vet fmt tidy clean
 
 help: ## Show this help
 	@echo "ai-reviewer — make targets:"
 	@echo ""
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
-		| awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
+		| awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Config via env: AIR_HTTP_ADDR (default 127.0.0.1:8080), AIR_DB_PATH,"
 	@echo "                AIR_PASSWORD (empty = key-file mode), AIR_SKILLS_DIR"
@@ -47,6 +48,12 @@ run-landing: ## Start the landing site dev server (Astro)
 
 build-landing: ## Build the landing site (set SITE_URL / PUBLIC_DOCS_URL)
 	cd $(LANDING) && bun run build
+
+run-landing-v2: ## Start the v2 landing site dev server (Astro)
+	cd $(LANDING_V2) && bun run dev
+
+build-landing-v2: ## Build the v2 landing site (set SITE_URL / PUBLIC_DOCS_URL)
+	cd $(LANDING_V2) && bun run build
 
 run-docs: ## Start the documentation site dev server (Astro)
 	cd $(DOCS) && bun run dev

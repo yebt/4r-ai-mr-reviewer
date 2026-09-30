@@ -1,0 +1,45 @@
+---
+import Stop from "../Stop.astro";
+import Shot from "../Shot.astro";
+---
+
+<Stop id="publish" title="You choose what reaches the merge request" log="!142 4 of 6 posted">
+  <Shot
+    name="publish"
+    height={1521}
+    view={900}
+    focus={0.72}
+    alt="Findings for MR !142, each with its own Publish button: the ones already posted to the merge request are marked Published, the rest still wait for a decision."
+    caption="Each finding is published on its own, or all at once."
+  />
+  <div class="cols">
+    <div class="prose">
+      <p>
+        Nothing is posted on its own. You tick the findings worth a reviewer's time, and each
+        one becomes an inline discussion on its file and line in the MR. Findings that are
+        already published are never posted twice, so you can come back later and publish more.
+      </p>
+    </div>
+    <div class="prose">
+      <p>
+        If you want the comments to sound like you, save samples of your writing as a voice
+        profile. 4R rewrites the summary and each finding in that voice, and you publish the
+        rewritten card or the original, card by card.
+      </p>
+    </div>
+  </div>
+</Stop>
+
+<style>
+  .cols {
+    display: grid;
+    gap: 1rem;
+    margin-top: 2rem;
+  }
+  @media (min-width: 60rem) {
+    .cols {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 3rem;
+    }
+  }
+</style>

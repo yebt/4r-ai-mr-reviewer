@@ -1,0 +1,87 @@
+---
+import Stop from "../Stop.astro";
+import Shot from "../Shot.astro";
+
+// The four lenses and the question each pass asks (from README "Why 4R").
+const lenses = [
+  { id: "R1", name: "Risk", q: "Can this harm security, data, or production stability?" },
+  { id: "R2", name: "Readability", q: "Will the next engineer understand it without an hour of digging?" },
+  { id: "R3", name: "Reliability", q: "Does it behave correctly across the realistic range of inputs?" },
+  { id: "R4", name: "Resilience", q: "Does it degrade gracefully when dependencies fail or slow down?" },
+];
+---
+
+<Stop id="passes" title="Four passes, each asking one question" log="!142 in review">
+  <div class="passes">
+    <div class="prose">
+      <p>
+        4R does not send the diff once with a request to review everything. Each lens is its own
+        pass with its own rule set, and the review page shows every pass's progress while it
+        runs, so findings arrive pass by pass instead of all at the end.
+      </p>
+      <p>
+        A fast review reads the diff through the GitLab API. A deep review shallow-clones the
+        repository first, so the passes can see the code around the change.
+      </p>
+    </div>
+    <dl class="lenses">
+      {
+        lenses.map((lens) => (
+          <div class="lens">
+            <dt>
+              <span class="lens-id">{lens.id}</span> {lens.name}
+            </dt>
+            <dd>{lens.q}</dd>
+          </div>
+        ))
+      }
+    </dl>
+  </div>
+  <Shot
+    name="review"
+    eager
+    height={1866}
+    view={1100}
+    alt="4R review detail for payments-api MR !142: score 62 of 100 with the recommendation Request changes, a written summary, and findings grouped by lens, each with a severity, a file and line, why it matters and a suggested fix."
+    caption="Review detail in the 4R web UI."
+  />
+</Stop>
+
+<style>
+  .passes {
+    display: grid;
+    gap: 2rem;
+    margin-bottom: 2.5rem;
+  }
+  @media (min-width: 60rem) {
+    .passes {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 3rem;
+    }
+  }
+  .lenses {
+    margin: 0;
+    border-top: 1px solid var(--line-subtle);
+  }
+  .lens {
+    display: grid;
+    gap: 0.25rem;
+    padding: 0.875rem 0;
+    border-bottom: 1px solid var(--line-subtle);
+  }
+  dt {
+    font-weight: 600;
+  }
+  .lens-id {
+    display: inline-block;
+    min-width: 2.25em;
+    font-family: var(--font-mono);
+    font-size: var(--fs-small);
+    font-weight: 500;
+    color: var(--text-muted);
+  }
+  dd {
+    margin: 0;
+    color: var(--text-muted);
+  }
+</style>

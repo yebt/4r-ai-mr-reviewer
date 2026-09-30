@@ -1,0 +1,25 @@
+---
+// The 4R mark: four lenses, one lit (the active pass). Same geometry as
+// public/favicon.svg, drawn with tokens so it follows the theme.
+interface Props {
+  size?: number;
+}
+const { size = 20 } = Astro.props;
+---
+
+<svg class="mark" width={size} height={size} viewBox="0 0 20 20" aria-hidden="true">
+  <rect x="1" y="1" width="8" height="8" rx="1" class="lit"></rect>
+  <rect x="11" y="1" width="8" height="8" rx="1"></rect>
+  <rect x="1" y="11" width="8" height="8" rx="1"></rect>
+  <rect x="11" y="11" width="8" height="8" rx="1"></rect>
+</svg>
+
+<style>
+  .mark {
+    flex: none;
+    fill: var(--gray-7);
+  }
+  .mark .lit {
+    fill: var(--accent);
+  }
+</style>

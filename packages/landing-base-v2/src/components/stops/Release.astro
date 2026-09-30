@@ -1,0 +1,118 @@
+---
+import Stop from "../Stop.astro";
+import Shot from "../Shot.astro";
+
+// The release routine's step ledger (packages/server app/routines), with the
+// state of the example run for !142.
+const steps = [
+  { name: "verify", state: "done", note: "no conflicts, latest pipeline green" },
+  { name: "approve", state: "done", note: "approved on GitLab" },
+  { name: "compute version", state: "done", note: "v1.8.0 from conventional commits" },
+  { name: "confirm", state: "waiting", note: "merge now, or wait" },
+  { name: "merge", state: "pending", note: "" },
+  { name: "tag", state: "pending", note: "" },
+  { name: "notify", state: "pending", note: "" },
+];
+const label: Record<string, string> = { done: "done", waiting: "waiting for you", pending: "not started" };
+---
+
+<Stop id="release" title="The release waits for you before it merges" log="!142 awaiting confirm">
+  <div class="release">
+    <div class="prose">
+      <p>
+        A release routine walks a fixed list of steps and records each one as it finishes.
+        If a step fails, the run stops there; once you fix the cause and resume, it skips
+        the steps already done instead of starting over.
+      </p>
+      <p>
+        Before the merge, the run pauses and asks you to <strong>merge</strong> or <strong>wait</strong>. Nothing is merged or tagged until you answer.
+      </p>
+    </div>
+    <ol class="ledger" aria-label="Release steps for !142 (example)">
+      {
+        steps.map((s) => (
+          <li class:list={["step", s.state]}>
+            <span class="dot" aria-hidden="true" />
+            <span class="name">{s.name}</span>
+            <span class="state">{label[s.state]}</span>
+            {s.note && <span class="note">{s.note}</span>}
+          </li>
+        ))
+      }
+    </ol>
+  </div>
+  <Shot
+    name="run"
+    height={996}
+    alt="A release run for MR !142 paused at the confirm step, with the finished steps listed above it and buttons to merge or wait."
+    caption="A release run paused at the confirm step."
+  />
+</Stop>
+
+<style>
+  .release {
+    display: grid;
+    gap: 2rem;
+    margin-bottom: 2.5rem;
+  }
+  @media (min-width: 60rem) {
+    .release {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 3rem;
+    }
+  }
+  .ledger {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border-top: 1px solid var(--line-subtle);
+  }
+  .step {
+    display: grid;
+    grid-template-columns: 0.75rem minmax(0, 1fr) auto;
+    column-gap: 0.75rem;
+    align-items: baseline;
+    padding: 0.625rem 0;
+    border-bottom: 1px solid var(--line-subtle);
+  }
+  .dot {
+    width: 9px;
+    height: 9px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--line-strong);
+    align-self: center;
+  }
+  .done .dot {
+    background: var(--success-solid);
+    border-color: var(--success-solid);
+  }
+  .waiting .dot {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  .name {
+    font-family: var(--font-mono);
+    font-size: var(--fs-small);
+    color: var(--text);
+  }
+  .pending .name {
+    color: var(--text-muted);
+  }
+  .state {
+    font-size: var(--fs-small);
+    color: var(--text-muted);
+    text-align: right;
+  }
+  .done .state {
+    color: var(--success-text);
+  }
+  .waiting .state {
+    color: var(--accent-text);
+    font-weight: 600;
+  }
+  .note {
+    grid-column: 2 / -1;
+    font-size: var(--fs-small);
+    color: var(--text-muted);
+  }
+</style>
