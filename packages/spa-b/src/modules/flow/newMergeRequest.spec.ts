@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import {
   hasDraftText,
   isDraftDirty,
@@ -7,8 +7,14 @@ import {
   readyVoiceProfiles,
   resolveDefaultProfileId,
   resolveDefaultTargetBranch,
+  loadMergeRequestSetup,
+  restoreBranch,
+  restoreSetupChoices,
+  saveMergeRequestSetup,
 } from './newMergeRequest'
+import type { MergeRequestSetup } from './newMergeRequest'
 import type { Profile } from '@modules/profiles/types'
+import type { Provider } from '@modules/providers/types'
 import type { Repo } from '@modules/repos/types'
 
 function makeRepo(overrides: Partial<Repo> = {}): Repo {
@@ -167,6 +173,115 @@ describe('isDraftDirty', () => {
 
   it('is true once a description is typed', () => {
     expect(isDraftDirty({ sourceBranch: '', title: '', description: 'Adds x.' })).toBe(true)
+  })
+
+  it('is false when the source branch is just the remembered one', () => {
+    expect(isDraftDirty({ sourceBranch: 'feature/x', title: '', description: '' }, 'feature/x')).toBe(false)
+  })
+
+  it('is true when the source branch differs from the remembered one', () => {
+    expect(isDraftDirty({ sourceBranch: 'feature/y', title: '', description: '' }, 'feature/x')).toBe(true)
+  })
+})
+
+function makeProvider(overrides: Partial<Provider> = {}): Provider {
+  return {
+    id: 'prov1',
+    name: 'OpenAI',
+    kind: 'openai',
+    baseUrl: '',
+    model: 'gpt-a',
+    isDefault: true,
+    temperature: null,
+    models: ['gpt-a', 'gpt-b'],
+    ...overrides,
+  } as Provider
+}
+
+const SETUP: MergeRequestSetup = {
+  sourceBranch: 'feature/x',
+  targetBranch: 'development',
+  profileId: 'p1',
+  providerId: 'prov1',
+  model: 'gpt-b',
+}
+
+describe('restoreBranch', () => {
+  it('keeps a remembered branch that still exists', () => {
+    expect(restoreBranch('feature/x', ['development', 'feature/x'])).toBe('feature/x')
+  })
+
+  it('drops a remembered branch that no longer exists', () => {
+    expect(restoreBranch('feature/gone', ['development'])).toBe('')
+  })
+})
+
+describe('restoreSetupChoices', () => {
+  const profiles = [makeProfile({ id: 'p1' })]
+  const providers = [makeProvider()]
+
+  it('restores a still-valid profile, provider and model', () => {
+    expect(restoreSetupChoices(SETUP, profiles, providers)).toEqual({
+      profileId: 'p1',
+      providerId: 'prov1',
+      model: 'gpt-b',
+    })
+  })
+
+  it('keeps an explicit "No voice profile" choice', () => {
+    expect(restoreSetupChoices({ ...SETUP, profileId: '' }, profiles, providers)?.profileId).toBe('')
+  })
+
+  it('drops a profile that is gone or no longer ready', () => {
+    const pending = [makeProfile({ id: 'p1', styleGuideStatus: 'pending' })]
+    expect(restoreSetupChoices(SETUP, pending, providers)?.profileId).toBe('')
+  })
+
+  it('returns null for the provider pair when the provider is gone', () => {
+    expect(restoreSetupChoices(SETUP, profiles, [])).toEqual({ profileId: 'p1', providerId: null, model: null })
+  })
+
+  it('falls back to the provider default when the model is gone', () => {
+    const narrowed = [makeProvider({ models: ['gpt-a'] })]
+    expect(restoreSetupChoices(SETUP, profiles, narrowed)?.model).toBe('')
+  })
+})
+
+// This sandbox's Node/jsdom combo leaves `window.localStorage` undefined
+// (same workaround as useSidebar.spec.ts): give it an in-memory store.
+function installStorage(storage: Partial<Storage>) {
+  Object.defineProperty(window, 'localStorage', { value: storage, configurable: true })
+}
+
+function memoryStorage(): Partial<Storage> {
+  const data = new Map<string, string>()
+  return {
+    getItem: (key) => data.get(key) ?? null,
+    setItem: (key, value) => void data.set(key, String(value)),
+  }
+}
+
+describe('loadMergeRequestSetup / saveMergeRequestSetup', () => {
+  beforeEach(() => installStorage(memoryStorage()))
+
+  it('round-trips a setup per repo', () => {
+    saveMergeRequestSetup('repo-rt', SETUP)
+    expect(loadMergeRequestSetup('repo-rt')).toEqual(SETUP)
+    expect(loadMergeRequestSetup('repo-other')).toBeNull()
+  })
+
+  it('returns null for corrupt stored data', () => {
+    localStorage.setItem('4r:new-mr-setup:repo-bad', '{not json')
+    expect(loadMergeRequestSetup('repo-bad')).toBeNull()
+  })
+
+  it('never throws when storage is unavailable', () => {
+    const blocked = () => {
+      throw new Error('blocked')
+    }
+    installStorage({ getItem: blocked, setItem: blocked })
+    expect(loadMergeRequestSetup('repo-x')).toBeNull()
+    expect(() => saveMergeRequestSetup('repo-x', SETUP)).not.toThrow()
   })
 })
 

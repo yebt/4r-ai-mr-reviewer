@@ -52,6 +52,10 @@ import { resolveDefaultModel, resolveDefaultProviderId } from '../reviewLaunch'
 import {
   hasDraftText,
   isDraftDirty,
+  loadMergeRequestSetup,
+  restoreBranch,
+  restoreSetupChoices,
+  saveMergeRequestSetup,
   isMergeRequestFormValid,
   isSameBranch,
   readyVoiceProfiles,
@@ -92,6 +96,13 @@ const form = reactive({
 const branches = ref<string[]>([])
 const branchesLoaded = ref(false)
 const branchesError = ref<string | null>(null)
+// The source branch the dialog opened with (restored from the remembered
+// setup) — not the user's doing, so it doesn't count toward `isDirty`.
+const restoredSource = ref('')
+// Remembered branches wait here until the repo's branches load: the Combobox
+// resolves its label from `items` only when its value changes, so a value set
+// before the items arrive would render blank.
+let pendingBranches = { sourceBranch: '', targetBranch: '' }
 
 async function loadBranches() {
   branchesLoaded.value = false
@@ -99,8 +110,16 @@ async function loadBranches() {
   try {
     branches.value = await listRepoBranches(props.repo.id)
     branchesLoaded.value = true
-    if (!form.targetBranch) form.targetBranch = resolveDefaultTargetBranch(branches.value)
+    // Remembered branches only survive while they still exist on the repo.
+    form.sourceBranch = restoreBranch(pendingBranches.sourceBranch, branches.value)
+    form.targetBranch =
+      restoreBranch(pendingBranches.targetBranch, branches.value) || resolveDefaultTargetBranch(branches.value)
+    restoredSource.value = form.sourceBranch
   } catch (err) {
+    // Free-text fallback inputs: nothing to validate against, so restore as-is.
+    form.sourceBranch = pendingBranches.sourceBranch
+    form.targetBranch = pendingBranches.targetBranch
+    restoredSource.value = form.sourceBranch
     branchesError.value = resolveErrorMessage(err, 'Failed to load branches')
   }
 }
@@ -222,7 +241,7 @@ async function handleSubmit() {
 
 // --- dirty-close guard ---
 
-const isDirty = computed(() => generating.value || submitting.value || isDraftDirty(form))
+const isDirty = computed(() => generating.value || submitting.value || isDraftDirty(form, restoredSource.value))
 const discardConfirmOpen = ref(false)
 
 function requestClose() {
@@ -249,6 +268,9 @@ function onDialogOpenUpdate(value: boolean) {
 // Resets local, dialog-scoped state whenever the dialog opens (or targets a
 // different repo), so reopening never leaks a previous draft or error into
 // the next one — mirrors ReleaseDialog/ReviewLaunchDialog's reset watcher.
+// The setup choices (branches, voice profile, provider/model) are the
+// exception: they come back from the per-repo remembered setup, validated
+// against what still exists; the draft title/description always start empty.
 watch(
   () => [props.open, props.repo.id] as const,
   ([open]) => {
@@ -257,11 +279,15 @@ watch(
     generateError.value = null
     discardConfirmOpen.value = false
     overwriteConfirmOpen.value = false
+    const saved = loadMergeRequestSetup(props.repo.id)
+    const choices = saved ? restoreSetupChoices(saved, profilesStore.profiles, providersStore.providers) : null
+    pendingBranches = { sourceBranch: saved?.sourceBranch ?? '', targetBranch: saved?.targetBranch ?? '' }
     form.sourceBranch = ''
     form.targetBranch = ''
-    form.profileId = resolveDefaultProfileId(props.repo, profilesStore.profiles)
-    form.providerId = resolveDefaultProviderId(props.repo, providersStore.providers)
-    form.model = resolveDefaultModel(props.repo, form.providerId, providersStore.providers)
+    restoredSource.value = ''
+    form.profileId = choices ? choices.profileId : resolveDefaultProfileId(props.repo, profilesStore.profiles)
+    form.providerId = choices?.providerId ?? resolveDefaultProviderId(props.repo, providersStore.providers)
+    form.model = choices?.model ?? resolveDefaultModel(props.repo, form.providerId, providersStore.providers)
     form.title = ''
     form.description = ''
     branches.value = []
@@ -270,6 +296,16 @@ watch(
     void loadBranches()
   },
   { immediate: true },
+)
+
+// Remember the setup choices as the user makes them — only once the branches
+// have loaded, so the not-yet-validated restore above is never written back.
+watch(
+  () => [form.sourceBranch, form.targetBranch, form.profileId, form.providerId, form.model] as const,
+  ([sourceBranch, targetBranch, profileId, providerId, model]) => {
+    if (!props.open || !branchesLoaded.value) return
+    saveMergeRequestSetup(props.repo.id, { sourceBranch, targetBranch, profileId, providerId, model })
+  },
 )
 </script>
 
