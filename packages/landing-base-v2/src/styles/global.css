@@ -19,14 +19,14 @@
   --gutter: 16px;
   --page-max: 76rem;
   /* Width of the rail column that carries the boundary line + path log. */
-  --rail: 1.25rem;
+  --rail: 2.25rem;
   --section-gap: clamp(4.5rem, 3rem + 6vw, 8rem);
 }
 
 @media (min-width: 60rem) {
   :root {
     --gutter: 32px;
-    --rail: 11rem;
+    --rail: 12rem;
   }
 }
 
@@ -211,11 +211,18 @@ img {
 /* ---- The path: boundary rail + stops ------------------------------------ */
 
 /*
- * #path wraps every stop after the hero. Its ::before is the boundary line
- * ("your infrastructure"); it sits at the right edge of the rail column on
- * desktop and collapses to a thin left rail on mobile.
+ * #path wraps every stop after the hero. Its ::before is the boundary line:
+ * everything right of it is the operator's infrastructure. The line sits at
+ * the right edge of the rail column at every width (a wide log column on
+ * desktop, a thin left rail on mobile).
+ *
+ * A stop that stays inside puts its node ON the line. A stop whose action
+ * leaves the infrastructure (to the provider, GitLab, Telegram) puts its node
+ * OUTSIDE the line, joined to it by a hairline crossing tick.
  */
 .path {
+  --line-x: calc(var(--gutter) + var(--rail));
+  --out: 28px; /* how far outside the line a crossing node sits */
   position: relative;
   padding-bottom: var(--section-gap);
 }
@@ -225,17 +232,9 @@ img {
   position: absolute;
   top: 0;
   bottom: 0;
-  /* Desktop: the right edge of the rail column. */
-  left: calc(var(--gutter) + var(--rail));
+  left: var(--line-x);
   width: 1px;
   background: var(--line);
-}
-
-@media (max-width: 59.99rem) {
-  .path::before {
-    /* Mobile: through the centre of the 11px rail nodes. */
-    left: calc(var(--gutter) + 5px);
-  }
 }
 
 .boundary-label {
@@ -245,6 +244,8 @@ img {
   gap: 0.625rem;
   margin: 0;
   padding-top: 0.25rem;
+  /* Put the 11px square on the line: its centre at --line-x + 0.5px. */
+  padding-left: calc(var(--rail) - 5px);
   font-size: var(--fs-small);
   color: var(--accent-text);
   font-weight: 500;
@@ -260,19 +261,27 @@ img {
 }
 
 @media (min-width: 60rem) {
-  /* Same geometry as .stop-log: the square straddles the line. */
+  /* Desktop: the label reads leftwards into the log column. */
   .boundary-label {
     width: calc(var(--rail) + 6px);
+    padding-left: 0;
     flex-direction: row-reverse;
     text-align: right;
   }
 }
 
 .stop {
+  --rail-gap: 0.75rem;
   display: grid;
   grid-template-columns: var(--rail) minmax(0, 1fr);
-  column-gap: clamp(1rem, 3vw, 3rem);
+  column-gap: var(--rail-gap);
   padding-top: var(--section-gap);
+}
+
+@media (min-width: 60rem) {
+  .stop {
+    --rail-gap: clamp(1rem, 3vw, 3rem);
+  }
 }
 
 .boundary-label + .stop {
@@ -283,28 +292,21 @@ img {
   grid-column: 2;
   position: relative;
   min-width: 0;
+  /* Vertical centre of the heading's first line, for the node and tick. */
+  --head-mid: calc(var(--fs-h2) * 0.59);
 }
 
 .stop-head {
   display: grid;
-  gap: 0.75rem;
+  gap: 0.625rem;
   margin-bottom: 1.5rem;
 }
 
-/* The path log: where !142 is at this stop. Data, so monospace. On desktop
-   it sits in the rail beside the heading; on mobile it follows the heading. */
-.stop-log {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-family: var(--font-mono);
-  font-size: var(--fs-xs);
-  line-height: 1.4;
-  color: var(--text-muted);
-}
-
-.stop-log .node {
-  flex: none;
+/* Rail node: 11px square centred on the line (inside stops). */
+.rail-node {
+  position: absolute;
+  top: calc(var(--head-mid) - 5.5px);
+  left: calc(-1 * var(--rail-gap) - 5px);
   width: 11px;
   height: 11px;
   border: 1px solid var(--line-strong);
@@ -315,39 +317,119 @@ img {
     border-color var(--duration-base) var(--ease-standard);
 }
 
-.stop.is-current .stop-log .node {
+/* Crossing stops: the node moves outside the line... */
+.stop.crosses .rail-node {
+  left: calc(-1 * var(--rail-gap) - 5px - var(--out));
+  background: var(--bg-panel);
+}
+
+/* ...and a hairline tick joins it to the line. */
+.rail-tick {
+  position: absolute;
+  top: calc(var(--head-mid) - 0.5px);
+  left: calc(-1 * var(--rail-gap) - var(--out) + 6px);
+  width: calc(var(--out) - 6px);
+  height: 1px;
+  background: var(--line-strong);
+}
+
+.stop.is-current .rail-node {
   background: var(--accent);
   border-color: var(--accent);
 }
 
-@media (max-width: 59.99rem) {
-  .stop-log .node {
-    position: absolute;
-    left: calc(-1 * (var(--rail) + clamp(1rem, 3vw, 3rem)));
-  }
-  .stop-log {
-    position: relative;
-  }
+/* The path log: where !142 is at this stop. Data, so monospace. On desktop
+   it sits in the rail beside the heading; on mobile it follows the heading. */
+.stop-log {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem 0.625rem;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+  color: var(--text-muted);
 }
 
 @media (min-width: 60rem) {
   .stop-log {
     position: absolute;
-    top: 0.75rem;
-    right: calc(100% + clamp(1rem, 3vw, 3rem) - 6px);
-    width: calc(var(--rail) + 6px);
-    flex-direction: row-reverse;
-    justify-content: flex-start;
+    top: calc(var(--head-mid) - 0.55rem);
+    right: calc(100% + var(--rail-gap) + 14px);
+    width: calc(var(--rail) - 14px);
+    flex-direction: column;
+    align-items: flex-end;
     text-align: right;
+  }
+  .stop.crosses .stop-log {
+    right: calc(100% + var(--rail-gap) + var(--out) + 10px);
+    width: calc(var(--rail) - var(--out) - 10px);
   }
 }
 
-/* ---- Screenshots --------------------------------------------------------- */
+/* Log parts ("a · b"): stacked lines in the desktop rail, one line with
+   middle-dot separators under the heading on mobile. */
+.log-parts {
+  display: inline;
+}
+.log-part + .log-part::before {
+  content: " · ";
+}
+
+@media (min-width: 60rem) {
+  .log-parts {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+  }
+  .log-part + .log-part::before {
+    content: none;
+  }
+}
+
+/* Status badge in the log: spa-b's status vocabulary and tokens. */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.0625rem 0.4375rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+.badge-success {
+  background: var(--success-bg);
+  color: var(--success-text);
+}
+.badge-warning {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+}
+.badge-danger {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+}
+.badge-info {
+  background: var(--info-bg);
+  color: var(--info-text);
+}
+.badge-neutral {
+  border-color: var(--line-subtle);
+  color: var(--text-muted);
+}
+
+/* ---- Screenshots: 1:1 focal crops --------------------------------------- */
 .shot {
   margin: 0;
+  min-width: 0;
 }
 
 .shot-frame {
+  max-width: 100%;
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   overflow: hidden;
@@ -355,14 +437,10 @@ img {
   box-shadow: var(--shadow-sm);
 }
 
-/* The frame owns the aspect ratio (per shot); the capture fills it and is
-   cropped around --shot-focus when the frame shows only part of it. */
 .shot-frame img {
   display: block;
   width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: 0 var(--shot-focus, 0%);
+  height: auto;
 }
 
 html.dark .shot .is-light,
@@ -373,6 +451,7 @@ html:not(.dark) .shot .is-dark {
 .shot figcaption {
   display: flex;
   flex-wrap: wrap;
+  align-items: baseline;
   gap: 0.25rem 0.75rem;
   margin-top: 0.625rem;
   font-size: var(--fs-small);
@@ -384,4 +463,11 @@ html:not(.dark) .shot .is-dark {
   padding: 0 0.375rem;
   border: 1px solid var(--line-subtle);
   border-radius: var(--radius-sm);
+}
+
+/* "View full screen" only makes sense where the full capture is legible. */
+@media (max-width: 47.99rem) {
+  .shot .full-link {
+    display: none;
+  }
 }

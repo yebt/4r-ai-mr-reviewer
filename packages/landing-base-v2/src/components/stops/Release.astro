@@ -2,33 +2,47 @@
 import Stop from "../Stop.astro";
 import Shot from "../Shot.astro";
 
-// The release routine's step ledger (packages/server app/routines), with the
-// state of the example run for !142.
-const steps = [
-  { name: "verify", state: "done", note: "no conflicts, latest pipeline green" },
-  { name: "approve", state: "done", note: "approved on GitLab" },
-  { name: "compute version", state: "done", note: "v1.8.0 from conventional commits" },
-  { name: "confirm", state: "waiting", note: "merge now, or wait" },
-  { name: "merge", state: "pending", note: "" },
-  { name: "tag", state: "pending", note: "" },
-  { name: "notify", state: "pending", note: "" },
+// The dev-flow release routine's step ledger, in server order
+// (packages/server/internal/app/routines/service.go, release run Steps). Notes
+// are the step outputs the server records (done steps) or what the step will
+// do (pending), filled with the !142 example.
+// Dev-flow tags are the computed version plus the "-dev" suffix (tagSuffix).
+const version = "v1.8.0";
+const tag = `${version}-dev`;
+type State = "done" | "awaiting" | "pending";
+const steps: { name: string; state: State; note?: string }[] = [
+  { name: "verify", state: "done", note: "verified" },
+  { name: "react", state: "done", note: "2 reactions added" },
+  { name: "approve", state: "done", note: "Merge request approved" },
+  { name: "compute_tag", state: "done", note: `Next version ${version} — 2 features, 1 fix` },
+  { name: "confirm", state: "awaiting", note: "merge now, or wait?" },
+  { name: "merge", state: "pending" },
+  { name: "tag", state: "pending", note: `creates ${tag}` },
+  { name: "notify", state: "pending" },
 ];
-const label: Record<string, string> = { done: "done", waiting: "waiting for you", pending: "not started" };
+// spa-b's run/step status labels (modules/runs/format.ts).
+const label: Record<State, string> = { done: "Done", awaiting: "Awaiting confirmation", pending: "Pending" };
 ---
 
-<Stop id="release" title="The release waits for you before it merges" log="!142 awaiting confirm">
+<Stop
+  id="release"
+  title="The release waits for you before it merges"
+  log="!142 release run"
+  status={{ label: "Awaiting confirmation", variant: "warning" }}
+>
+  <div class="prose intro">
+    <p>
+      A release routine walks a fixed list of steps and records each one as it finishes. If a
+      step fails, the run stops there; once you fix the cause and resume, it skips the steps
+      already done instead of starting over. The development flow merges the MR into
+      <code>development</code> and tags it <code>{tag}</code>.
+    </p>
+    <p>
+      Before the merge, the run pauses and asks you to <strong>merge</strong> or <strong>wait</strong>. Nothing is merged or tagged until you answer.
+    </p>
+  </div>
   <div class="release">
-    <div class="prose">
-      <p>
-        A release routine walks a fixed list of steps and records each one as it finishes.
-        If a step fails, the run stops there; once you fix the cause and resume, it skips
-        the steps already done instead of starting over.
-      </p>
-      <p>
-        Before the merge, the run pauses and asks you to <strong>merge</strong> or <strong>wait</strong>. Nothing is merged or tagged until you answer.
-      </p>
-    </div>
-    <ol class="ledger" aria-label="Release steps for !142 (example)">
+    <ol class="ledger" aria-label="Release steps for !142 (example data)">
       {
         steps.map((s) => (
           <li class:list={["step", s.state]}>
@@ -40,25 +54,30 @@ const label: Record<string, string> = { done: "done", waiting: "waiting for you"
         ))
       }
     </ol>
+    <Shot
+      name="run"
+      full
+      width={998}
+      height={358}
+      alt={`The release run for MR !142 paused at the confirm step: the run is awaiting confirmation, with buttons to merge now or wait.`}
+      caption="The confirm step in the run view."
+    />
   </div>
-  <Shot
-    name="run"
-    height={996}
-    alt="A release run for MR !142 paused at the confirm step, with the finished steps listed above it and buttons to merge or wait."
-    caption="A release run paused at the confirm step."
-  />
 </Stop>
 
 <style>
+  .intro {
+    margin-bottom: 2rem;
+  }
   .release {
     display: grid;
     gap: 2rem;
-    margin-bottom: 2.5rem;
   }
   @media (min-width: 60rem) {
     .release {
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      gap: 3rem;
+      grid-template-columns: minmax(17rem, 0.8fr) minmax(0, 1.4fr);
+      gap: 2.5rem;
+      align-items: start;
     }
   }
   .ledger {
@@ -86,9 +105,9 @@ const label: Record<string, string> = { done: "done", waiting: "waiting for you"
     background: var(--success-solid);
     border-color: var(--success-solid);
   }
-  .waiting .dot {
-    background: var(--accent);
-    border-color: var(--accent);
+  .awaiting .dot {
+    background: var(--warning-solid);
+    border-color: var(--warning-solid);
   }
   .name {
     font-family: var(--font-mono);
@@ -106,8 +125,8 @@ const label: Record<string, string> = { done: "done", waiting: "waiting for you"
   .done .state {
     color: var(--success-text);
   }
-  .waiting .state {
-    color: var(--accent-text);
+  .awaiting .state {
+    color: var(--warning-text);
     font-weight: 600;
   }
   .note {

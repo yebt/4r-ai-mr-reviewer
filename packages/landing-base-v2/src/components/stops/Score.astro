@@ -28,7 +28,9 @@ const total = findings.reduce((sum, f) => sum + cost(f), 0);
 const score = Math.max(0, 100 - total);
 ---
 
-<Stop id="score" title="The score is computed from the findings, not asked of the model" log={`!142 scored ${score}`}>
+<Stop id="score" title="The score is computed from the findings, not asked of the model" log={`!142 scored ${score}`}
+  status={{ label: "Request changes", variant: "danger" }}
+>
   <div class="prose intro">
     <p>
       The model's job ends at the findings. 4R turns them into a 0 to 100 score with fixed

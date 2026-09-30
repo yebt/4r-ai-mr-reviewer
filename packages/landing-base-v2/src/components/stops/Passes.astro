@@ -11,7 +11,13 @@ const lenses = [
 ];
 ---
 
-<Stop id="passes" title="Four passes, each asking one question" log="!142 in review">
+<Stop
+  id="passes"
+  title="Four passes, each asking one question"
+  log="!142 → your provider · 4 passes"
+  crosses
+  status={{ label: "Done", variant: "success" }}
+>
   <div class="passes">
     <div class="prose">
       <p>
@@ -39,10 +45,10 @@ const lenses = [
   </div>
   <Shot
     name="review"
-    eager
-    height={1866}
-    view={1100}
-    alt="4R review detail for payments-api MR !142: score 62 of 100 with the recommendation Request changes, a written summary, and findings grouped by lens, each with a severity, a file and line, why it matters and a suggested fix."
+    full
+    width={1024}
+    height={356}
+    alt="The top of 4R's review for payments-api MR !142: status Done, score 62 of 100 with the recommendation Request changes, and the written summary of the review."
     caption="Review detail in the 4R web UI."
   />
 </Stop>

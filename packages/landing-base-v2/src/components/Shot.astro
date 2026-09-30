@@ -1,45 +1,41 @@
 ---
-// A real spa-b screenshot, light + dark, switched by the html theme class.
-// Hidden variants with loading="lazy" are never fetched, so each visitor
-// downloads only the theme they see.
+// A 1:1 focal crop of a real spa-b screen, light + dark, switched by the html
+// theme class. Hidden variants with loading="lazy" are never fetched, so each
+// visitor downloads only the theme they see.
+//
+// Crops live at /shots/${name}-focus-{light,dark}.webp and are shown at their
+// true CSS size (never upscaled). When `full` is set, a "View full screen"
+// link opens the whole capture at /shots/${name}-{light,dark}.webp.
 interface Props {
-  name: string; // file stem in /public/shots: `${name}-light.webp`, `${name}-dark.webp`
+  name: string;
   alt: string;
   caption: string;
-  eager?: boolean;
-  /** Source height in CSS px (captures are 1280 wide at 2x). */
+  /** Crop size in CSS px (sources are 2x). */
+  width?: number;
   height?: number;
-  /** Visible height of the frame in CSS px; defaults to the whole capture. */
-  view?: number;
-  /** Vertical focus 0..1 when `view` crops the capture (0 = top). */
-  focus?: number;
+  full?: boolean;
+  eager?: boolean;
 }
-const { name, alt, caption, eager = false, height = 800, view = height, focus = 0 } = Astro.props;
+const { name, alt, caption, width = 900, height = 560, full = false, eager = false } = Astro.props;
 const loading = eager ? "eager" : "lazy";
-const width = 1280;
-const frameStyle = `aspect-ratio: ${width} / ${view}; --shot-focus: ${focus * 100}%`;
+const crop = `/shots/${name}-focus`;
 ---
 
 <figure class="shot">
-  <div class="shot-frame" style={frameStyle}>
-    <img
-      class="is-light"
-      src={`/shots/${name}-light.webp`}
-      alt={alt}
-      width={width}
-      height={height}
-      loading={loading}
-      decoding="async"
-    />
-    <img
-      class="is-dark"
-      src={`/shots/${name}-dark.webp`}
-      alt={alt}
-      width={width}
-      height={height}
-      loading={loading}
-      decoding="async"
-    />
+  <div class="shot-frame" style={`width: ${width}px`}>
+    <img class="is-light" src={`${crop}-light.webp`} alt={alt} width={width} height={height} loading={loading} decoding="async" />
+    <img class="is-dark" src={`${crop}-dark.webp`} alt={alt} width={width} height={height} loading={loading} decoding="async" />
   </div>
-  <figcaption><span>{caption}</span><span class="tag">Example data</span></figcaption>
+  <figcaption>
+    <span>{caption}</span>
+    <span class="tag">Example data</span>
+    {
+      full && (
+        <span class="full-link">
+          <a class="is-light" href={`/shots/${name}-light.webp`}>View full screen</a>
+          <a class="is-dark" href={`/shots/${name}-dark.webp`}>View full screen</a>
+        </span>
+      )
+    }
+  </figcaption>
 </figure>

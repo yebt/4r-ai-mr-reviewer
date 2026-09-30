@@ -2,7 +2,8 @@
 import { SITE } from "../config";
 
 // Each diagram edge is two-way (a down and an up arrow, each labeled) so the
-// diagram states exactly what crosses it. R4 is shown as the pass running now.
+// diagram states exactly what crosses it. All four passes are shown done,
+// matching the computed score below them.
 const lenses = [
   { id: "R1", name: "Risk" },
   { id: "R2", name: "Readability" },
@@ -55,15 +56,17 @@ const lenses = [
         <p class="node-title">4R server <span class="mono node-addr">127.0.0.1:8080</span></p>
         <ol class="lenses" aria-label="Review passes">
           {
-            lenses.map((lens, i) => (
-              <li class:list={["lens", { active: i === 3 }]}>
+            lenses.map((lens) => (
+              <li class="lens">
+                <span class="done" aria-hidden="true" />
                 <span class="mono">{lens.id}</span> {lens.name}
+                <span class="visually-hidden">, done</span>
               </li>
             ))
           }
         </ol>
         <p class="node-meta">
-          Score <span class="mono">62</span>, computed from findings. Secrets encrypted at rest.
+          All four passes done. Score <span class="mono">62</span>, computed from the findings. Secrets encrypted at rest.
         </p>
       </div>
     </div>
@@ -270,13 +273,14 @@ const lenses = [
     color: var(--text);
     font-size: var(--fs-xs);
   }
-  .lens.active {
-    border-color: var(--accent);
-    background: var(--accent-subtle-bg);
-    color: var(--accent-text-strong);
-  }
-  .lens.active .mono {
-    color: var(--accent-text-strong);
+  .done {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    margin-right: 0.375rem;
+    vertical-align: 0.1em;
+    border-radius: var(--radius-sm);
+    background: var(--success-solid);
   }
 
   .node-provider {
