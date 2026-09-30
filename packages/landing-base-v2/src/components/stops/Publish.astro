@@ -26,9 +26,8 @@ import Shot from "../Shot.astro";
     </div>
     <Shot
       name="publish"
+      layout="side"
       full
-      width={1024}
-      height={576}
       alt="Two findings for MR !142: a medium Risk finding already marked Published, and the high, blocking Resilience finding still showing its Publish button, with a version rewritten in the author's voice selected."
       caption="Each finding is published on its own, or all at once."
     />
@@ -40,9 +39,11 @@ import Shot from "../Shot.astro";
     display: grid;
     gap: 2rem;
   }
-  @media (min-width: 60rem) {
+  /* Side by side only once the prose keeps ~18rem next to the crop at its
+     true size; below that the crop stacks under the prose, still 1:1. */
+  @media (min-width: 75rem) {
     .publish {
-      grid-template-columns: minmax(16rem, 0.8fr) minmax(0, 1.6fr);
+      grid-template-columns: minmax(16rem, 1fr) minmax(0, max-content);
       gap: 2.5rem;
       align-items: start;
     }

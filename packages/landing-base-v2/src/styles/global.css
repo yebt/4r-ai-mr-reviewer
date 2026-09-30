@@ -429,6 +429,7 @@ img {
 }
 
 .shot-frame {
+  width: fit-content;
   max-width: 100%;
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
@@ -437,9 +438,16 @@ img {
   box-shadow: var(--shadow-sm);
 }
 
+.shot-frame picture {
+  display: block;
+}
+
+/* No CSS width: the width/height attributes (of the image, or of the
+   selected source) and the 2x density descriptor set the true CSS size;
+   max-width caps it, so a crop is never upscaled. */
 .shot-frame img {
   display: block;
-  width: 100%;
+  max-width: 100%;
   height: auto;
 }
 
@@ -449,6 +457,9 @@ html:not(.dark) .shot .is-dark {
 }
 
 .shot figcaption {
+  /* The caption wraps to the image's width; it must not widen a
+     max-content grid column past the crop's true size. */
+  contain: inline-size;
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;

@@ -35,7 +35,7 @@ const msg = {
     <figure class="message">
       <div class="bubble">
         <p><b>Review !{msg.mr} finished</b></p>
-        <p>Recommendation: <b>{msg.recommendation}</b> · Score: <b>{msg.score}</b></p>
+        <p>Recommendation: <b>{msg.recommendation}</b>&nbsp;· Score:&nbsp;<b>{msg.score}</b></p>
         <p>Findings: <b>{msg.findings}</b> ({msg.blocking} blocking)</p>
         <p>Branch: <code>{msg.source}</code> → <code>{msg.target}</code></p>
         <p><span class="link">Open merge request</span></p>
@@ -48,8 +48,7 @@ const msg = {
 
     <Shot
       name="notify"
-      width={1024}
-      height={162}
+      layout="side"
       alt="A Telegram target in 4R's settings named Releases, sending to the chat @payments-team in topic thread 128, marked as the default, with a button to send a test message."
       caption="A Telegram target in the settings."
     />
@@ -64,9 +63,11 @@ const msg = {
     display: grid;
     gap: 2rem;
   }
-  @media (min-width: 60rem) {
+  /* Side by side only once the prose keeps ~18rem next to the crop at its
+     true size; below that the crop stacks under the prose, still 1:1. */
+  @media (min-width: 75rem) {
     .notify {
-      grid-template-columns: minmax(17rem, 0.75fr) minmax(0, 1.4fr);
+      grid-template-columns: minmax(17rem, 1fr) minmax(0, max-content);
       gap: 2.5rem;
       align-items: start;
     }

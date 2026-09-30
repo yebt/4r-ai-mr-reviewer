@@ -56,9 +56,8 @@ const label: Record<State, string> = { done: "Done", awaiting: "Awaiting confirm
     </ol>
     <Shot
       name="run"
+      layout="side"
       full
-      width={998}
-      height={358}
       alt={`The release run for MR !142 paused at the confirm step: the run is awaiting confirmation, with buttons to merge now or wait.`}
       caption="The confirm step in the run view."
     />
@@ -73,9 +72,11 @@ const label: Record<State, string> = { done: "Done", awaiting: "Awaiting confirm
     display: grid;
     gap: 2rem;
   }
-  @media (min-width: 60rem) {
+  /* Side by side only once the prose keeps ~18rem next to the crop at its
+     true size; below that the crop stacks under the prose, still 1:1. */
+  @media (min-width: 75rem) {
     .release {
-      grid-template-columns: minmax(17rem, 0.8fr) minmax(0, 1.4fr);
+      grid-template-columns: minmax(17rem, 1fr) minmax(0, max-content);
       gap: 2.5rem;
       align-items: start;
     }
