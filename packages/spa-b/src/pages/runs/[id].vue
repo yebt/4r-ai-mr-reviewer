@@ -18,14 +18,19 @@ import {
   flowLabel,
   formatDateTime,
   isRunCancelable,
+  mergeRequestUrl,
+  releaseTag,
+  runMergeRequestIid,
   routineKindLabel,
   runTitle,
   stateSummaryEntries,
   useRunDetail,
 } from '@modules/runs'
 import type { RoutineConfirmDecision } from '@modules/runs'
+import { useReposStore } from '@modules/repos/store'
 
 const route = useRoute('/runs/[id]')
+const reposStore = useReposStore()
 const id = computed(() => String(route.params.id))
 
 const {
@@ -93,8 +98,8 @@ const mergeConfirmDescription = computed(() => {
   if (!run.value) return ''
   const source = run.value.sourceBranch || 'the source branch'
   const target = run.value.targetBranch || 'the target branch'
-  const nextTag = run.value.state.nextTag
-  const tag = typeof nextTag === 'string' && nextTag ? nextTag : 'the next tag'
+  // The tag the server will push (it appends "-dev" outside the main flow).
+  const tag = releaseTag(run.value) ?? 'the next tag'
   return `This merges ${source} into ${target} on your real GitLab project and pushes tag ${tag}. This cannot be undone.`
 })
 
@@ -113,10 +118,22 @@ const attentionStep = computed(() => {
   return undefined
 })
 
+// Header links: back to the repo's Flow workspace (Actions tab, where its runs
+// live) and out to the merge request on GitLab once the run has one (the main
+// flow only creates it mid-run).
+const repoFlowLink = computed(() => (run.value ? { path: `/flow/${run.value.repoId}`, query: { tab: 'actions' } } : null))
+const mergeRequest = computed(() => {
+  if (!run.value) return null
+  const iid = runMergeRequestIid(run.value)
+  if (iid === null) return null
+  const repo = reposStore.repos.find((r) => r.id === run.value!.repoId)
+  return { iid, url: repo ? mergeRequestUrl(repo.url, iid) : null }
+})
+
 const mergeSummary = computed(() => {
   if (!run.value) return ''
-  const nextTag = run.value.state.nextTag
-  const tag = typeof nextTag === 'string' && nextTag ? nextTag : 'the next tag'
+  // The tag the server will push (it appends "-dev" outside the main flow).
+  const tag = releaseTag(run.value) ?? 'the next tag'
   const branches =
     run.value.sourceBranch && run.value.targetBranch
       ? `${run.value.sourceBranch} into ${run.value.targetBranch}`
@@ -149,7 +166,30 @@ const mergeSummary = computed(() => {
     <template v-else-if="run">
       <section class="flex flex-col gap-2">
         <div class="flex items-center gap-2">
-          <Text muted size="sm">{{ run.repoName ?? 'Unknown repo' }}</Text>
+          <RouterLink
+            v-if="repoFlowLink"
+            :to="repoFlowLink"
+            class="text-sm text-text-muted transition-colors hover:text-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+            data-testid="run-detail-repo-link"
+          >
+            {{ run.repoName ?? 'Unknown repo' }}
+          </RouterLink>
+          <template v-if="mergeRequest">
+            <span class="text-sm text-text-muted" aria-hidden="true">·</span>
+            <a
+              v-if="mergeRequest.url"
+              :href="mergeRequest.url"
+              target="_blank"
+              rel="noopener"
+              class="inline-flex items-center gap-1 text-sm text-text-muted transition-colors hover:text-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+              data-testid="run-detail-mr-link"
+            >
+              MR !{{ mergeRequest.iid }}
+              <Icon name="external-link" size="xs" />
+              <span class="sr-only">(opens GitLab in a new tab)</span>
+            </a>
+            <Text v-else muted size="sm">MR !{{ mergeRequest.iid }}</Text>
+          </template>
           <span
             v-if="isPolling"
             class="flex items-center gap-1 text-xs text-text-muted"

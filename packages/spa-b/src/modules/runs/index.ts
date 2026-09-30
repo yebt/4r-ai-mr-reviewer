@@ -11,6 +11,9 @@ export type { RunStats } from './dashboard'
 export {
   flowLabel,
   formatDateTime,
+  mergeRequestUrl,
+  releaseTag,
+  runMergeRequestIid,
   isRunActive,
   isRunCancelable,
   routineKindLabel,

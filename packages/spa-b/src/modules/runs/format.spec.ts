@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   formatDateTime,
   formatTime,
+  mergeRequestUrl,
+  releaseTag,
+  runMergeRequestIid,
   isRunActive,
   isRunCancelable,
   runStatusUi,
@@ -113,7 +116,7 @@ describe('stateSummaryEntries', () => {
   it('picks the notable keys present in state, labeled, in a stable order', () => {
     expect(
       stateSummaryEntries(
-        makeRun({ state: { lastTag: '2.56.0', nextTag: '2.56.1', featCount: 0, fixCount: 1, decision: 'merge' } }),
+        makeRun({ flow: 'main', state: { lastTag: '2.56.0', nextTag: '2.56.1', featCount: 0, fixCount: 1, decision: 'merge' } }),
       ),
     ).toEqual([
       { key: 'lastTag', label: 'Last tag', value: '2.56.0' },
@@ -159,5 +162,70 @@ describe('formatTime', () => {
     const out = formatTime('2026-09-25T15:27:00Z')
     expect(out).not.toBe('')
     expect(out).not.toMatch(/Sep|2026/)
+  })
+})
+
+describe('runMergeRequestIid', () => {
+  it('uses the run MR for the dev flow', () => {
+    expect(runMergeRequestIid(makeRun({ mrIid: 142 }))).toBe(142)
+  })
+
+  it('falls back to the MR the main flow created mid-run', () => {
+    expect(runMergeRequestIid(makeRun({ mrIid: 0, state: { mrIid: 57 } }))).toBe(57)
+  })
+
+  it('is null before the main flow has created its MR', () => {
+    expect(runMergeRequestIid(makeRun({ mrIid: 0, state: {} }))).toBeNull()
+  })
+})
+
+describe('mergeRequestUrl', () => {
+  it('builds the GitLab MR URL from the repo URL', () => {
+    expect(mergeRequestUrl('https://gitlab.com/acme/payments-api', 142)).toBe(
+      'https://gitlab.com/acme/payments-api/-/merge_requests/142',
+    )
+  })
+
+  it('tolerates a trailing slash', () => {
+    expect(mergeRequestUrl('https://gitlab.com/acme/payments-api/', 142)).toBe(
+      'https://gitlab.com/acme/payments-api/-/merge_requests/142',
+    )
+  })
+
+  it('is null without a repo URL', () => {
+    expect(mergeRequestUrl('', 142)).toBeNull()
+  })
+})
+
+describe('releaseTag', () => {
+  it('appends -dev for the development flow, as the server does when tagging', () => {
+    expect(releaseTag(makeRun({ kind: 'release', flow: 'development', state: { nextTag: 'v1.8.0' } }))).toBe(
+      'v1.8.0-dev',
+    )
+  })
+
+  it('treats a release run without a flow as the dev flow', () => {
+    expect(releaseTag(makeRun({ kind: 'release', flow: undefined, state: { nextTag: 'v1.8.0' } }))).toBe(
+      'v1.8.0-dev',
+    )
+  })
+
+  it('keeps the bare version for the main flow', () => {
+    expect(releaseTag(makeRun({ kind: 'release', flow: 'main', state: { nextTag: 'v3.56.1' } }))).toBe('v3.56.1')
+  })
+
+  it('keeps the bare version for approve-and-tag runs', () => {
+    expect(releaseTag(makeRun({ kind: 'approve_and_tag', state: { nextTag: 'v2.0.0' } }))).toBe('v2.0.0')
+  })
+
+  it('is null before the tag is computed', () => {
+    expect(releaseTag(makeRun({ kind: 'release', state: {} }))).toBeNull()
+  })
+})
+
+describe('stateSummaryEntries next tag', () => {
+  it('shows the tag the run will actually push', () => {
+    const run = makeRun({ kind: 'release', flow: 'development', state: { nextTag: 'v1.8.0' } })
+    expect(stateSummaryEntries(run).find((e) => e.key === 'nextTag')?.value).toBe('v1.8.0-dev')
   })
 })

@@ -120,7 +120,7 @@ const STATE_SUMMARY_FIELDS: { key: string; label: string }[] = [
 export function stateSummaryEntries(run: RoutineRun): StateSummaryEntry[] {
   const entries: StateSummaryEntry[] = []
   for (const field of STATE_SUMMARY_FIELDS) {
-    const value = run.state[field.key]
+    const value = field.key === 'nextTag' ? releaseTag(run) : run.state[field.key]
     if (value === undefined || value === null || value === '') continue
     entries.push({ key: field.key, label: field.label, value: String(value) })
   }
@@ -181,4 +181,34 @@ export function stepLabel(name: string): string {
   if (known) return known
   const words = name.replace(/[_-]+/g, ' ').trim()
   return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
+/**
+ * The merge request a run acts on: `run.mrIid` for the dev flow (the MR
+ * exists when the run starts), else the MR the main flow created mid-run and
+ * recorded in `state.mrIid` (server `effectiveMRIID`). `null` before the main
+ * flow has created it.
+ */
+export function runMergeRequestIid(run: RoutineRun): number | null {
+  if (run.mrIid > 0) return run.mrIid
+  const created = run.state.mrIid
+  return typeof created === 'number' && created > 0 ? created : null
+}
+
+/** GitLab's web URL for merge request `iid` of the project at `repoUrl`; `null` without a repo URL. */
+export function mergeRequestUrl(repoUrl: string, iid: number): string | null {
+  if (!repoUrl) return null
+  return `${repoUrl.replace(/\/+$/, '')}/-/merge_requests/${iid}`
+}
+
+/**
+ * The tag a run pushes. The server stores the computed version bare in
+ * `state.nextTag` and appends the "-dev" prerelease suffix only when tagging
+ * a release run outside the main flow (server `tagSuffix`, which also treats
+ * a release run with no flow as the dev flow). `null` before it's computed.
+ */
+export function releaseTag(run: RoutineRun): string | null {
+  const next = run.state.nextTag
+  if (typeof next !== 'string' || !next) return null
+  return run.kind === 'release' && run.flow !== 'main' ? `${next}-dev` : next
 }
