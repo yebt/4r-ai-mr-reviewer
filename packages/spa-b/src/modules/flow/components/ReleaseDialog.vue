@@ -45,6 +45,7 @@ import {
   customEmojis,
   defaultReleaseFormState,
   isValidEmojiName,
+  mainReleaseBranchProblem,
   missingConventionalBranches,
   normalizeCustomEmojiName,
   resolveDefaultBranches,
@@ -229,12 +230,14 @@ watch(
   { immediate: true },
 )
 
-const displaySource = computed(() => form.sourceBranch.trim() || 'development')
-const displayTarget = computed(() => form.targetBranch.trim() || 'main')
+// Main flow: both branches must be picked explicitly — a blank one would make
+// the backend fall back to development/main, which may not exist on this repo.
+const branchProblem = computed(() => (props.flow === 'main' ? mainReleaseBranchProblem(form) : null))
+const canSubmit = computed(() => !(props.flow === 'dev' && !props.mergeRequest) && !branchProblem.value)
 
 async function handleSubmit() {
   if (submitting.value) return
-  if (props.flow === 'dev' && !props.mergeRequest) return
+  if (!canSubmit.value) return
   submitting.value = true
   submitError.value = null
   try {
@@ -271,8 +274,12 @@ async function handleSubmit() {
           </span>
         </DialogDescription>
         <DialogDescription v-else class="mt-1 text-sm text-text-muted">
-          Cuts a release from <span class="font-mono text-text">development</span> into
-          <span class="font-mono text-text">main</span>. Override the branches below if needed.
+          <template v-if="!branchProblem">
+            Cuts a release from <span class="font-mono text-text">{{ form.sourceBranch.trim() }}</span> into
+            <span class="font-mono text-text">{{ form.targetBranch.trim() }}</span>. Change the branches below if
+            needed.
+          </template>
+          <template v-else>Cuts a release from one branch into another. Pick both branches below.</template>
         </DialogDescription>
 
         <form class="mt-4 flex flex-col gap-4" @submit.prevent="handleSubmit">
@@ -419,7 +426,8 @@ async function handleSubmit() {
             <p v-if="customEmojiError" class="text-xs text-danger-text">{{ customEmojiError }}</p>
           </div>
 
-          <label class="flex cursor-pointer items-center gap-2 text-sm">
+          <!-- Main flow's source is the long-lived development branch: never offer to delete it. -->
+          <label v-if="flow !== 'main'" class="flex cursor-pointer items-center gap-2 text-sm">
             <Checkbox v-model="form.removeSourceBranch" />
             <span class="text-text">Remove source branch after merge</span>
           </label>
@@ -437,9 +445,13 @@ async function handleSubmit() {
               <span class="font-mono">!{{ mergeRequest.iid }}</span> on GitLab now; merging and tagging wait for
               your confirmation on the run page.
             </template>
+            <template v-else-if="branchProblem">
+              {{ branchProblem }} Starting opens a merge request between them on GitLab, waits for its pipeline,
+              then approves it and adds the selected reactions; merging and tagging wait for your confirmation.
+            </template>
             <template v-else>
               Starting opens a merge request
-              <span class="font-mono">{{ displaySource }} → {{ displayTarget }}</span>
+              <span class="font-mono">{{ form.sourceBranch.trim() }} → {{ form.targetBranch.trim() }}</span>
               on GitLab now, waits for its pipeline, then approves it and adds the selected reactions — all before
               your confirmation on the run page; merging and tagging wait there too.
             </template>
@@ -449,7 +461,7 @@ async function handleSubmit() {
 
           <div class="flex justify-end gap-2 border-t border-line-subtle pt-4">
             <Button type="button" variant="ghost" @click="emit('update:open', false)">Cancel</Button>
-            <Button type="submit" :loading="submitting" :disabled="flow === 'dev' && !mergeRequest">
+            <Button type="submit" :loading="submitting" :disabled="!canSubmit">
               {{ flow === 'main' ? 'Start release to main' : 'Start release' }}
             </Button>
           </div>

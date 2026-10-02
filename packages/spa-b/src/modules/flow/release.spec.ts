@@ -8,6 +8,7 @@ import {
   defaultMergeWhenPipelineSucceeds,
   defaultReleaseFormState,
   isValidEmojiName,
+  mainReleaseBranchProblem,
   missingConventionalBranches,
   normalizeCustomEmojiName,
   resolveDefaultBranches,
@@ -217,5 +218,40 @@ describe('buildMainReleasePayload', () => {
     const payload = buildMainReleasePayload(makeForm({ sourceBranch: '', targetBranch: '' }))
     expect(payload.sourceBranch).toBe('')
     expect(payload.targetBranch).toBe('')
+  })
+})
+
+describe('buildMainReleasePayload source branch', () => {
+  it('never deletes the source branch, even if the form asks to', () => {
+    const payload = buildMainReleasePayload(makeForm({ sourceBranch: 'development', targetBranch: 'main', removeSourceBranch: true }))
+    expect(payload.removeSourceBranch).toBe(false)
+  })
+})
+
+describe('mainReleaseBranchProblem', () => {
+  it('is null once two different branches are picked', () => {
+    expect(mainReleaseBranchProblem(makeForm({ sourceBranch: 'development', targetBranch: 'master' }))).toBeNull()
+  })
+
+  it('asks for the source branch when it is blank', () => {
+    expect(mainReleaseBranchProblem(makeForm({ sourceBranch: ' ', targetBranch: 'main' }))).toBe('Pick a source branch.')
+  })
+
+  it('asks for the target branch when it is blank', () => {
+    expect(mainReleaseBranchProblem(makeForm({ sourceBranch: 'development', targetBranch: '' }))).toBe(
+      'Pick a target branch.',
+    )
+  })
+
+  it('asks for both when neither is picked', () => {
+    expect(mainReleaseBranchProblem(makeForm({ sourceBranch: '', targetBranch: '' }))).toBe(
+      'Pick a source and a target branch.',
+    )
+  })
+
+  it('rejects the same branch on both sides', () => {
+    expect(mainReleaseBranchProblem(makeForm({ sourceBranch: 'main', targetBranch: ' main ' }))).toBe(
+      'Source and target must be different branches.',
+    )
   })
 })

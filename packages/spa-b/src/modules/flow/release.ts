@@ -153,7 +153,9 @@ export function buildDevReleasePayload(form: ReleaseFormState, mrIid: number): C
 
 /** Builds the main-flow release request body from form state. Branch names
  * are trimmed and sent empty when blank, so the backend's own
- * development/main defaults apply (`CreateMainRelease`). */
+ * development/main defaults apply (`CreateMainRelease`) — the dialog never
+ * submits blank branches, see `mainReleaseBranchProblem`. The source branch
+ * is never deleted: in the main flow it is the long-lived `development`. */
 export function buildMainReleasePayload(form: ReleaseFormState): CreateMainReleaseInput {
   return {
     bump: form.bump,
@@ -161,7 +163,22 @@ export function buildMainReleasePayload(form: ReleaseFormState): CreateMainRelea
     sourceBranch: form.sourceBranch.trim(),
     targetBranch: form.targetBranch.trim(),
     ...(form.emojis.length > 0 ? { emojis: form.emojis } : {}),
-    removeSourceBranch: form.removeSourceBranch,
+    removeSourceBranch: false,
     mergeWhenPipelineSucceeds: form.mergeWhenPipelineSucceeds,
   }
+}
+
+/**
+ * Why the main-flow form can't be submitted yet, or `null` when it can. Both
+ * branches must be picked explicitly: a blank one would fall back to the
+ * backend's `development`/`main` defaults, which may not exist on this repo.
+ */
+export function mainReleaseBranchProblem(form: Pick<ReleaseFormState, 'sourceBranch' | 'targetBranch'>): string | null {
+  const source = form.sourceBranch.trim()
+  const target = form.targetBranch.trim()
+  if (!source && !target) return 'Pick a source and a target branch.'
+  if (!source) return 'Pick a source branch.'
+  if (!target) return 'Pick a target branch.'
+  if (source === target) return 'Source and target must be different branches.'
+  return null
 }
