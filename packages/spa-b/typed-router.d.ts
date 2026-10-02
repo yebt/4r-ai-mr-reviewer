@@ -38,6 +38,111 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/[...path]': RouteRecordInfo<
+      '/[...path]',
+      '/:path(.*)',
+      { path: ParamValue<true> },
+      { path: ParamValue<false> },
+      | never
+    >,
+    '/design': RouteRecordInfo<
+      '/design',
+      '/design',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/flow/': RouteRecordInfo<
+      '/flow/',
+      '/flow',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/flow/[repoId]': RouteRecordInfo<
+      '/flow/[repoId]',
+      '/flow/:repoId',
+      { repoId: ParamValue<true> },
+      { repoId: ParamValue<false> },
+      | never
+    >,
+    '/reviews/': RouteRecordInfo<
+      '/reviews/',
+      '/reviews',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/reviews/[id]': RouteRecordInfo<
+      '/reviews/[id]',
+      '/reviews/:id',
+      { id: ParamValue<true> },
+      { id: ParamValue<false> },
+      | never
+    >,
+    '/runs/': RouteRecordInfo<
+      '/runs/',
+      '/runs',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/runs/[id]': RouteRecordInfo<
+      '/runs/[id]',
+      '/runs/:id',
+      { id: ParamValue<true> },
+      { id: ParamValue<false> },
+      | never
+    >,
+    '/settings/': RouteRecordInfo<
+      '/settings/',
+      '/settings',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/accounts': RouteRecordInfo<
+      '/settings/accounts',
+      '/settings/accounts',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/notifications-security': RouteRecordInfo<
+      '/settings/notifications-security',
+      '/settings/notifications-security',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/profiles': RouteRecordInfo<
+      '/settings/profiles',
+      '/settings/profiles',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/providers': RouteRecordInfo<
+      '/settings/providers',
+      '/settings/providers',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/repos': RouteRecordInfo<
+      '/settings/repos',
+      '/settings/repos',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/telegram': RouteRecordInfo<
+      '/settings/telegram',
+      '/settings/telegram',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
   }
 
   /**
@@ -54,6 +159,126 @@ declare module 'vue-router/auto-routes' {
     'src/pages/index.vue': {
       routes:
         | '/'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/[...path].vue': {
+      routes:
+        | '/[...path]'
+      views:
+        | never
+      pathParamNames:
+        | 'path'
+    }
+    'src/pages/design.vue': {
+      routes:
+        | '/design'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/flow/index.vue': {
+      routes:
+        | '/flow/'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/flow/[repoId].vue': {
+      routes:
+        | '/flow/[repoId]'
+      views:
+        | never
+      pathParamNames:
+        | 'repoId'
+    }
+    'src/pages/reviews/index.vue': {
+      routes:
+        | '/reviews/'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/reviews/[id].vue': {
+      routes:
+        | '/reviews/[id]'
+      views:
+        | never
+      pathParamNames:
+        | 'id'
+    }
+    'src/pages/runs/index.vue': {
+      routes:
+        | '/runs/'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/runs/[id].vue': {
+      routes:
+        | '/runs/[id]'
+      views:
+        | never
+      pathParamNames:
+        | 'id'
+    }
+    'src/pages/settings/index.vue': {
+      routes:
+        | '/settings/'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/accounts.vue': {
+      routes:
+        | '/settings/accounts'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/notifications-security.vue': {
+      routes:
+        | '/settings/notifications-security'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/profiles.vue': {
+      routes:
+        | '/settings/profiles'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/providers.vue': {
+      routes:
+        | '/settings/providers'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/repos.vue': {
+      routes:
+        | '/settings/repos'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/telegram.vue': {
+      routes:
+        | '/settings/telegram'
       views:
         | never
       pathParamNames:

@@ -1,0 +1,36 @@
+---
+// One stop on MR !142's path. The heading carries the section; `log` is the
+// path log shown on the boundary rail (desktop) or under the heading (mobile).
+//
+// `crosses` marks a stop whose action leaves the operator's infrastructure
+// (to the AI provider, GitLab, or Telegram): its rail node is drawn outside
+// the boundary line with a hairline tick crossing it.
+type Variant = "success" | "warning" | "danger" | "info" | "neutral";
+interface Props {
+  id: string;
+  title: string;
+  log: string;
+  crosses?: boolean;
+  /** Optional status badge, using spa-b's status labels and tokens. */
+  status?: { label: string; variant: Variant };
+}
+const { id, title, log, crosses = false, status } = Astro.props;
+const headingId = `${id}-title`;
+// "a · b" logs render as separate lines in the desktop rail.
+const parts = log.split(" · ");
+---
+
+<section class:list={["stop", { crosses }]} id={id} aria-labelledby={headingId} data-stop>
+  <div class="stop-body">
+    <span class="rail-node" aria-hidden="true"></span>
+    {crosses && <span class="rail-tick" aria-hidden="true"></span>}
+    <div class="stop-head">
+      <h2 id={headingId}>{title}</h2>
+      <p class="stop-log">
+        <span class="log-parts">{parts.map((part) => <span class="log-part">{part}</span>)}</span>
+        {status && <span class:list={["badge", `badge-${status.variant}`]}>{status.label}</span>}
+      </p>
+    </div>
+    <slot />
+  </div>
+</section>

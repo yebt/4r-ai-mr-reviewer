@@ -1,0 +1,51 @@
+---
+import Stop from "../Stop.astro";
+import Shot from "../Shot.astro";
+---
+
+<Stop
+  id="publish"
+  title="You choose what reaches the merge request"
+  log="4 findings → GitLab"
+  crosses
+  status={{ label: "Published", variant: "success" }}
+>
+  <div class="publish">
+    <div class="prose">
+      <p>
+        Nothing is posted on its own. You publish the findings worth a reviewer's time, one at
+        a time or all at once, and each becomes an inline discussion on its file and line in
+        the MR. A finding already published is never posted twice, so you can come back later
+        and publish more.
+      </p>
+      <p>
+        If you want the comments to sound like you, save samples of your writing as a voice
+        profile. 4R rewrites the summary and each finding in that voice, and you publish the
+        rewritten card or the original, card by card.
+      </p>
+    </div>
+    <Shot
+      name="publish"
+      layout="side"
+      full
+      alt="Two findings for MR !142: a medium Risk finding already marked Published, and the high, blocking Resilience finding still showing its Publish button, with a version rewritten in the author's voice selected."
+      caption="Each finding is published on its own, or all at once."
+    />
+  </div>
+</Stop>
+
+<style>
+  .publish {
+    display: grid;
+    gap: 2rem;
+  }
+  /* Side by side only once the prose keeps ~18rem next to the crop at its
+     true size; below that the crop stacks under the prose, still 1:1. */
+  @media (min-width: 75rem) {
+    .publish {
+      grid-template-columns: minmax(16rem, 1fr) minmax(0, max-content);
+      gap: 2.5rem;
+      align-items: start;
+    }
+  }
+</style>

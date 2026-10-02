@@ -1,0 +1,121 @@
+---
+import "../styles/global.css";
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const {
+  title = "4R — Self-hosted AI review for GitLab merge requests",
+  description = "4R runs on your server, reviews GitLab merge requests through four passes (Risk, Readability, Reliability, Resilience) with your own AI provider account, computes the score from the findings, and posts only the findings you select.",
+} = Astro.props;
+
+// Absolute URLs (canonical + social) resolve against `site` in astro.config; they
+// fall back to relative paths if `site` is somehow unset so the build never fails.
+const site = Astro.site;
+const canonical = site ? new URL(Astro.url.pathname, site).href : undefined;
+const ogImage = site ? new URL("/og.png", site).href : "/og.png";
+
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "4R — AI Merge Request Reviewer",
+  applicationCategory: "DeveloperApplication",
+  operatingSystem: "Linux, macOS, Windows",
+  description,
+  ...(site ? { url: site.href } : {}),
+};
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script is:inline>
+      // Applied before paint to avoid a flash of the wrong theme. Same storage
+      // key and rules as spa-b's index.html (useColorScheme): an explicit
+      // choice wins, otherwise follow prefers-color-scheme.
+      (function () {
+        try {
+          var stored = localStorage.getItem("4r-color-scheme");
+          var mode =
+            stored === "light" || stored === "dark"
+              ? stored
+              : window.matchMedia("(prefers-color-scheme: dark)").matches
+                ? "dark"
+                : "light";
+          document.documentElement.classList.add(mode);
+        } catch (e) {
+          document.documentElement.classList.add("light");
+        }
+      })();
+    </script>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="generator" content={Astro.generator} />
+
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    {canonical && <link rel="canonical" href={canonical} />}
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="4R" />
+    {canonical && <meta property="og:url" content={canonical} />}
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="4R: AI review for GitLab merge requests, run on your own server." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#fcfcfd" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f1114" />
+
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  </head>
+  <body>
+    <!--
+    THESIS: 4R is a review service you run; the page proves it by following one MR through it.
+    OWN-WORLD: spa-b's own world. Radix-style gray, one flat indigo, hairlines, 2-8px radii, system sans; the product's real screens are the imagery.
+    STORY: acme/payments-api MR !142 enters from GitLab, crosses into your infrastructure, gets four passes, a computed score, your selection, a release that waits for you, a Telegram ping, and ends at the commands to run it.
+    FIRST VIEWPORT: left-aligned mechanism headline, two actions, and the GitLab -> 4R -> provider diagram with !142 entering.
+    FORM: structure 7 of the grounded list (the path of one MR across the infrastructure boundary), seed key 110d183e. A hairline boundary rail labeled "your infrastructure" carries a log of where !142 is at each stop.
+    FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md.
+    -->
+    <a href="#main" class="skip-link">Skip to content</a>
+    <slot />
+  </body>
+</html>
+
+<style>
+  /* Visually hidden (clip pattern) until focused from the keyboard. */
+  .skip-link:not(:focus-visible) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+  .skip-link:focus-visible {
+    position: fixed;
+    top: 0.5rem;
+    left: 0.5rem;
+    z-index: 100;
+    padding: 0.625rem 1rem;
+    border-radius: var(--radius-md);
+    background: var(--accent);
+    color: var(--text-on-accent);
+    font-size: var(--fs-small);
+    font-weight: 500;
+    text-decoration: none;
+  }
+</style>

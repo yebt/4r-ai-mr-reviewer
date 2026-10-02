@@ -288,7 +288,7 @@ func TestRoutineRunListRecentAcrossReposNewestFirst(t *testing.T) {
 	}
 
 	// ListRecent spans both repos, newest first.
-	list, err := s.ListRecent(ctx, 10)
+	list, err := s.ListRecent(ctx, 10, time.Time{}, "")
 	if err != nil {
 		t.Fatalf("ListRecent: %v", err)
 	}
@@ -304,7 +304,7 @@ func TestRoutineRunListRecentAcrossReposNewestFirst(t *testing.T) {
 	}
 
 	// The limit caps the result to the newest N.
-	limited, err := s.ListRecent(ctx, 2)
+	limited, err := s.ListRecent(ctx, 2, time.Time{}, "")
 	if err != nil {
 		t.Fatalf("ListRecent(limit 2): %v", err)
 	}

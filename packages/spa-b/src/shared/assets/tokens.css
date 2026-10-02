@@ -1,0 +1,308 @@
+/**
+ * Design tokens — "Radix-minimal, dual-theme, usability-first".
+ *
+ * A neutral GRAY 12-step scale + one ACCENT (indigo) 12-step scale, in the
+ * spirit of Radix Themes' scale system (each step has a fixed UI role,
+ * independent of hue), plus semantic aliases for app use. Both themes are
+ * hand-tuned for WCAG AA text contrast, not derived from one another.
+ *
+ * Retune the whole app by editing --accent-* below (indigo family today) —
+ * every semantic token and Tailwind utility reads through these variables.
+ *
+ * Radix-style step roles (both scales follow this ladder):
+ *   1  app background        7  border (default)
+ *   2  subtle panel bg       8  strong border / focus ring
+ *   3  ui element bg         9  solid background (accent/emphasis)
+ *   4  ui element hover bg   10 solid background hover
+ *   5  ui element active bg  11 low-contrast text (AA on step 1/2)
+ *   6  subtle border         12 high-contrast text
+ *
+ * See DESIGN.md for the full rationale and usage guidance.
+ */
+
+:root,
+:root.light {
+  /* ---- Gray scale (neutral, cool-leaning) ---- */
+  --gray-1: hsl(230 20% 99%);
+  --gray-2: hsl(230 20% 97.5%);
+  --gray-3: hsl(228 16% 95%);
+  --gray-4: hsl(227 15% 93%);
+  --gray-5: hsl(226 14% 91%);
+  --gray-6: hsl(225 13% 88%);
+  --gray-7: hsl(224 12% 83%);
+  --gray-8: hsl(222 11% 74%);
+  --gray-9: hsl(220 9% 55%);
+  --gray-10: hsl(220 9% 49%);
+  --gray-11: hsl(222 10% 39%);
+  --gray-12: hsl(224 22% 13%);
+
+  /* ---- Accent scale (indigo) ---- */
+  --accent-1: hsl(235 60% 99%);
+  --accent-2: hsl(233 100% 98%);
+  --accent-3: hsl(231 96% 96%);
+  --accent-4: hsl(230 100% 93%);
+  --accent-5: hsl(229 92% 89%);
+  --accent-6: hsl(230 78% 83%);
+  --accent-7: hsl(231 65% 75%);
+  --accent-8: hsl(232 58% 65%);
+  --accent-9: hsl(233 55% 52%);
+  --accent-10: hsl(234 58% 46%);
+  --accent-11: hsl(235 58% 45%);
+  --accent-12: hsl(236 45% 22%);
+  --accent-contrast: hsl(0 0% 100%);
+
+  /* ---- Status: success (green) ---- */
+  --success-bg: hsl(152 60% 95%);
+  --success-solid: hsl(152 55% 33%);
+  --success-text: hsl(152 65% 24%);
+  --success-contrast: hsl(0 0% 100%);
+  /* ---- Status: warning (amber) ---- */
+  --warning-bg: hsl(38 100% 95%);
+  --warning-solid: hsl(36 92% 45%);
+  --warning-text: hsl(30 85% 30%);
+  /* Amber is intrinsically too light for white text to clear AA without
+     turning muddy — pairs with dark warm text instead (see DESIGN.md). */
+  --warning-contrast: hsl(30 85% 12%);
+  /* ---- Status: danger (red) ---- */
+  --danger-bg: hsl(356 90% 97%);
+  --danger-solid: hsl(356 72% 48%);
+  --danger-text: hsl(356 70% 40%);
+  --danger-contrast: hsl(0 0% 100%);
+  /* ---- Status: info (blue) ---- */
+  --info-bg: hsl(200 90% 96%);
+  --info-solid: hsl(200 80% 38%);
+  --info-text: hsl(200 75% 32%);
+  --info-contrast: hsl(0 0% 100%);
+
+  color-scheme: light;
+}
+
+:root.dark {
+  /* ---- Gray scale (neutral, cool-leaning) ---- */
+  --gray-1: hsl(224 14% 7%);
+  --gray-2: hsl(224 13% 9.5%);
+  --gray-3: hsl(223 12% 12.5%);
+  --gray-4: hsl(222 12% 15%);
+  --gray-5: hsl(222 11% 17.5%);
+  --gray-6: hsl(221 11% 20.5%);
+  --gray-7: hsl(220 11% 25%);
+  --gray-8: hsl(219 11% 32%);
+  --gray-9: hsl(218 8% 46%);
+  --gray-10: hsl(218 8% 52%);
+  --gray-11: hsl(216 10% 68%);
+  --gray-12: hsl(210 20% 96%);
+
+  /* ---- Accent scale (indigo) ---- */
+  --accent-1: hsl(233 30% 8%);
+  --accent-2: hsl(232 34% 10.5%);
+  --accent-3: hsl(232 45% 15%);
+  --accent-4: hsl(231 55% 20%);
+  --accent-5: hsl(231 52% 25%);
+  --accent-6: hsl(231 48% 31%);
+  --accent-7: hsl(231 46% 38%);
+  --accent-8: hsl(231 48% 47%);
+  /* accent-9/10 deepened from the original 58%/66% lightness: at 58% the
+     solid accent Button (bg-accent + white text) only cleared ~3.6:1 with
+     the old dark accent-contrast, and even switching straight to white text
+     without deepening the scale left accent-10 (hover) at ~3.6:1 — below
+     AA. 52%/60% keeps the same hue/saturation and the same +8pt hover step,
+     with white text clearing 6.49:1 (base) / 4.74:1 (hover). */
+  --accent-9: hsl(233 55% 52%);
+  --accent-10: hsl(233 62% 60%);
+  --accent-11: hsl(228 90% 78%);
+  --accent-12: hsl(226 85% 92%);
+  --accent-contrast: hsl(0 0% 100%);
+
+  /* ---- Status: success (green) ---- */
+  --success-bg: hsl(152 40% 12%);
+  --success-solid: hsl(152 50% 33%);
+  --success-text: hsl(150 60% 68%);
+  --success-contrast: hsl(0 0% 100%);
+  /* ---- Status: warning (amber) ---- */
+  --warning-bg: hsl(36 60% 12%);
+  --warning-solid: hsl(38 90% 52%);
+  --warning-text: hsl(40 90% 68%);
+  --warning-contrast: hsl(30 85% 12%);
+  /* ---- Status: danger (red) ---- */
+  --danger-bg: hsl(356 45% 13%);
+  --danger-solid: hsl(356 70% 52%);
+  --danger-text: hsl(356 85% 74%);
+  --danger-contrast: hsl(0 0% 100%);
+  /* ---- Status: info (blue) ---- */
+  --info-bg: hsl(200 50% 12%);
+  --info-solid: hsl(200 75% 38%);
+  --info-text: hsl(200 85% 74%);
+  --info-contrast: hsl(0 0% 100%);
+
+  color-scheme: dark;
+}
+
+:root {
+  /* ---- Semantic aliases (theme-independent names for app use) ---- */
+  --bg-app: var(--gray-1);
+  --bg-panel: var(--gray-2);
+  --bg-panel-raised: var(--gray-1);
+  --bg-hover: var(--gray-3);
+  --bg-active: var(--gray-4);
+
+  --line-subtle: var(--gray-6);
+  --line: var(--gray-7);
+  --line-strong: var(--gray-8);
+
+  --text: var(--gray-12);
+  --text-muted: var(--gray-11);
+  --text-placeholder: var(--gray-9);
+  --text-on-accent: var(--accent-contrast);
+
+  --accent: var(--accent-9);
+  --accent-hover: var(--accent-10);
+  --accent-text: var(--accent-11);
+  --accent-text-strong: var(--accent-12);
+  --accent-subtle-bg: var(--accent-3);
+  --focus-ring: var(--accent-8);
+  /* Backdrop behind dialogs/drawers: darkened + blurred, theme-independent
+     (true black, not the gray scale — gray-12 flips light/dark, which would
+     brighten rather than darken the page behind a dark-theme dialog). */
+  --overlay: hsl(0 0% 0% / 0.6);
+
+  /* ---- Radius: crisp/technical, not soft — roughly halved from the
+     original scale. `full` stays reserved for genuinely circular/pill UI
+     (switch track/thumb, avatars, badges, drawer handle), never for panels
+     or dialogs. ---- */
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-xl: 8px;
+  --radius-full: 9999px;
+
+  /* ---- Elevation (subtle, hairline-first) ---- */
+  --shadow-sm: 0 1px 2px hsl(220 20% 4% / 0.06);
+  --shadow-md: 0 2px 8px hsl(220 20% 4% / 0.08), 0 1px 2px hsl(220 20% 4% / 0.06);
+  --shadow-lg: 0 8px 24px hsl(220 20% 4% / 0.12), 0 2px 6px hsl(220 20% 4% / 0.08);
+
+  /* ---- Motion ---- */
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+  --duration-slow: 280ms;
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ---- Fonts ---- */
+  --font-sans:
+    system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono:
+    ui-monospace, 'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
+}
+
+:root.dark {
+  --bg-panel-raised: var(--gray-2);
+  --shadow-sm: 0 1px 2px hsl(220 40% 0% / 0.3);
+  --shadow-md: 0 2px 8px hsl(220 40% 0% / 0.36), 0 1px 2px hsl(220 40% 0% / 0.24);
+  --shadow-lg: 0 8px 24px hsl(220 40% 0% / 0.48), 0 2px 6px hsl(220 40% 0% / 0.3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-base: 0ms;
+    --duration-slow: 0ms;
+  }
+}
+
+/* Tailwind v4 theme: turns the variables above into utilities
+   (bg-app, text-accent-11, border-line, rounded-md, shadow-md, ...). */
+@theme inline {
+  --color-gray-1: var(--gray-1);
+  --color-gray-2: var(--gray-2);
+  --color-gray-3: var(--gray-3);
+  --color-gray-4: var(--gray-4);
+  --color-gray-5: var(--gray-5);
+  --color-gray-6: var(--gray-6);
+  --color-gray-7: var(--gray-7);
+  --color-gray-8: var(--gray-8);
+  --color-gray-9: var(--gray-9);
+  --color-gray-10: var(--gray-10);
+  --color-gray-11: var(--gray-11);
+  --color-gray-12: var(--gray-12);
+
+  --color-accent-1: var(--accent-1);
+  --color-accent-2: var(--accent-2);
+  --color-accent-3: var(--accent-3);
+  --color-accent-4: var(--accent-4);
+  --color-accent-5: var(--accent-5);
+  --color-accent-6: var(--accent-6);
+  --color-accent-7: var(--accent-7);
+  --color-accent-8: var(--accent-8);
+  --color-accent-9: var(--accent-9);
+  --color-accent-10: var(--accent-10);
+  --color-accent-11: var(--accent-11);
+  --color-accent-12: var(--accent-12);
+  --color-accent-contrast: var(--accent-contrast);
+
+  --color-success-bg: var(--success-bg);
+  --color-success-solid: var(--success-solid);
+  --color-success-text: var(--success-text);
+  --color-success-contrast: var(--success-contrast);
+  --color-warning-bg: var(--warning-bg);
+  --color-warning-solid: var(--warning-solid);
+  --color-warning-text: var(--warning-text);
+  --color-warning-contrast: var(--warning-contrast);
+  --color-danger-bg: var(--danger-bg);
+  --color-danger-solid: var(--danger-solid);
+  --color-danger-text: var(--danger-text);
+  --color-danger-contrast: var(--danger-contrast);
+  --color-info-bg: var(--info-bg);
+  --color-info-solid: var(--info-solid);
+  --color-info-text: var(--info-text);
+  --color-info-contrast: var(--info-contrast);
+
+  --color-bg-app: var(--bg-app);
+  --color-bg-panel: var(--bg-panel);
+  --color-bg-panel-raised: var(--bg-panel-raised);
+  --color-bg-hover: var(--bg-hover);
+  --color-bg-active: var(--bg-active);
+  --color-line-subtle: var(--line-subtle);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-text-placeholder: var(--text-placeholder);
+  --color-text-on-accent: var(--text-on-accent);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-text: var(--accent-text);
+  --color-accent-text-strong: var(--accent-text-strong);
+  --color-accent-subtle-bg: var(--accent-subtle-bg);
+  --color-focus-ring: var(--focus-ring);
+  --color-overlay: var(--overlay);
+
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+  --radius-full: var(--radius-full);
+
+  --shadow-token-sm: var(--shadow-sm);
+  --shadow-token-md: var(--shadow-md);
+  --shadow-token-lg: var(--shadow-lg);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  /* Type scale: modest, deliberate steps for a dense dev tool. */
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.125rem;
+  --text-base: 0.875rem;
+  --text-base--line-height: 1.25rem;
+  --text-md: 0.9375rem;
+  --text-md--line-height: 1.375rem;
+  --text-lg: 1.0625rem;
+  --text-lg--line-height: 1.5rem;
+  --text-xl: 1.25rem;
+  --text-xl--line-height: 1.75rem;
+  --text-2xl: 1.5rem;
+  --text-2xl--line-height: 2rem;
+  --text-3xl: 1.875rem;
+  --text-3xl--line-height: 2.375rem;
+}

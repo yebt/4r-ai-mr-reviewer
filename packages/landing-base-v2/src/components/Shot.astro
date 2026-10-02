@@ -1,0 +1,66 @@
+---
+// A real spa-b screen, art-directed per width and switched per theme.
+//
+// Each theme gets its own <picture>; the one for the other theme is
+// display:none and lazy, so it is never fetched. Inside a picture, a source
+// serves the mobile crop under 48rem; the image itself serves the desktop crop: the
+// `side` crop when the stop places the shot next to prose, else `focus`.
+// Every variant renders at its true CSS size (width/height from ./shots.ts),
+// capped by max-width: 100%, never upscaled. `full` adds a desktop-only
+// "View full screen" link to the whole capture (/shots/${name}-{theme}.webp).
+import { SHOTS } from "./shots";
+
+interface Props {
+  name: keyof typeof SHOTS;
+  alt: string;
+  caption: string;
+  layout?: "focus" | "side";
+  full?: boolean;
+  eager?: boolean;
+}
+const { name, alt, caption, layout = "focus", full = false, eager = false } = Astro.props;
+const sizes = SHOTS[name];
+const desktopVariant = layout === "side" && sizes.side ? "side" : "focus";
+const desktop = sizes[desktopVariant]!;
+const mobile = sizes.mobile;
+const loading = eager ? "eager" : "lazy";
+const themes = ["light", "dark"] as const;
+---
+
+<figure class="shot">
+  <div class="shot-frame">
+    {
+      themes.map((theme) => (
+        <picture class={`is-${theme}`}>
+          <source
+            media="(max-width: 47.99rem)"
+            srcset={`/shots/${name}-mobile-${theme}.webp 2x`}
+            width={mobile.width}
+            height={mobile.height}
+          />
+          <img
+            src={`/shots/${name}-${desktopVariant}-${theme}.webp`}
+            srcset={`/shots/${name}-${desktopVariant}-${theme}.webp 2x`}
+            alt={alt}
+            width={desktop.width}
+            height={desktop.height}
+            loading={loading}
+            decoding="async"
+          />
+        </picture>
+      ))
+    }
+  </div>
+  <figcaption>
+    <span>{caption}</span>
+    <span class="tag">Example data</span>
+    {
+      full && (
+        <span class="full-link">
+          <a class="is-light" href={`/shots/${name}-light.webp`}>View full screen</a>
+          <a class="is-dark" href={`/shots/${name}-dark.webp`}>View full screen</a>
+        </span>
+      )
+    }
+  </figcaption>
+</figure>

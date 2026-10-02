@@ -1,0 +1,110 @@
+---
+import Stop from "../Stop.astro";
+import { SITE } from "../../config";
+
+// Commands verified against the root Makefile (dev, build, run-spa targets)
+// and packages/server/internal/config (AIR_HTTP_ADDR default 127.0.0.1:8080).
+const clone = [
+  `git clone ${SITE.github}.git`,
+  "cd 4r-ai-mr-reviewer",
+  "(cd packages/spa-b && bun install)",
+];
+---
+
+<Stop id="self-host" title="Run it yourself" log="your server">
+  <div class="prose lead">
+    <p>
+      You need <strong>Go 1.26+</strong>, <strong>Node 22+</strong> with <strong>bun</strong>,
+      and <strong>git</strong>. The server is one Go binary with a SQLite file next to it.
+    </p>
+  </div>
+
+  <ol class="steps">
+    <li class="step">
+      <div class="step-text">
+        <h3>Get the code</h3>
+        <p>Clone the repository and install the web UI's packages once.</p>
+      </div>
+      <pre><code>{clone.join("\n")}</code></pre>
+    </li>
+
+    <li class="step">
+      <div class="step-text">
+        <h3>Try it locally</h3>
+        <p>
+          Starts the API server and the web UI together. Open
+          <code>http://localhost:5173</code>; the UI proxies <code>/api</code> to the server.
+        </p>
+      </div>
+      <pre><code>make dev</code></pre>
+    </li>
+
+    <li class="step">
+      <div class="step-text">
+        <h3>Run the server binary</h3>
+        <p>
+          Listens on <code>127.0.0.1:8080</code> by default. Set <code>AIR_HTTP_ADDR</code> to
+          change it, for example <code>AIR_HTTP_ADDR=:8080</code> in a container. The binary
+          serves the HTTP API; run the web UI against it with <code>make run-spa</code>.
+        </p>
+      </div>
+      <pre><code>{"make build\n./bin/air-server"}</code></pre>
+    </li>
+  </ol>
+
+  <p class="aside">
+    Deep reviews clone over HTTPS, so the GitLab token needs the <code>read_repository</code>
+    scope as well as <code>api</code>. Every setting is in the <a href={SITE.docs}>docs</a>.
+  </p>
+</Stop>
+
+<style>
+  .lead {
+    margin-bottom: 2rem;
+  }
+  .steps {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border-top: 1px solid var(--line-subtle);
+  }
+  .step {
+    display: grid;
+    gap: 1rem;
+    padding: 1.5rem 0;
+    border-bottom: 1px solid var(--line-subtle);
+    min-width: 0;
+  }
+  @media (min-width: 60rem) {
+    .step {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+      gap: 3rem;
+      align-items: start;
+    }
+  }
+  .step-text {
+    display: grid;
+    gap: 0.5rem;
+  }
+  .step p {
+    color: var(--text-muted);
+    font-size: 0.9375rem;
+  }
+  pre {
+    margin: 0;
+    padding: 0.875rem 1rem;
+    overflow-x: auto;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--bg-panel);
+    color: var(--text);
+    font-size: var(--fs-small);
+    line-height: 1.7;
+  }
+  .aside {
+    margin-top: 2.5rem;
+    max-width: 64ch;
+    color: var(--text-muted);
+    font-size: 0.9375rem;
+  }
+</style>

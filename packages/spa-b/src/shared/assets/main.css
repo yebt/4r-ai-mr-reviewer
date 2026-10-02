@@ -1,0 +1,117 @@
+@import 'tailwindcss';
+@import './tokens.css';
+
+/* Class-based dark mode: html.dark, toggled by useColorMode() before paint
+   (see index.html) and kept in sync afterwards by useColorScheme(). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    background-color: var(--bg-app);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: 1.45;
+    transition:
+      background-color var(--duration-base) var(--ease-standard),
+      color var(--duration-base) var(--ease-standard);
+  }
+
+  code,
+  kbd,
+  pre,
+  samp {
+    font-family: var(--font-mono);
+  }
+
+  ::selection {
+    background-color: var(--accent-5);
+    color: var(--accent-12);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+
+  #app {
+    min-height: 100dvh;
+  }
+}
+
+@layer components {
+  /* Centralized dialog/drawer backdrop — darkened + blurred, like a docs
+     search modal. Every Reka Dialog/AlertDialog/Drawer overlay uses this
+     one class (`class="overlay z-*"`, z-index stays per call site since
+     stacking differs); retune the whole app's backdrop from here. Reka
+     toggles `data-state` on the overlay element itself as it mounts/
+     unmounts, so the fade below runs on open/close with no extra wiring. */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background-color: var(--overlay);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    transition: opacity var(--duration-base) var(--ease-standard);
+  }
+
+  .overlay[data-state='closed'] {
+    opacity: 0;
+  }
+}
+
+@layer base {
+  /* Dual-theme Shiki output (see useCodeHighlighter.ts): each token carries
+     both colors as CSS variables; pick the active one from <html>.dark. */
+  .shiki,
+  .shiki span {
+    color: var(--shiki-light);
+    background-color: var(--shiki-light-bg) !important;
+  }
+
+  .dark .shiki,
+  .dark .shiki span {
+    color: var(--shiki-dark);
+    background-color: var(--shiki-dark-bg) !important;
+  }
+
+  .shiki {
+    padding: 0.875rem 1rem;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--line);
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    overflow-x: auto;
+  }
+}
+
+/* NProgress route-transition bar (src/core/router/index.ts), recolored to
+   the accent token. Deliberately kept OUTSIDE any @layer: cascade layers
+   always lose to unlayered rules regardless of source order, and
+   nprogress.css's own .bar/.peg rules are unlayered — so an @layer
+   components override here would never win. main.ts imports
+   'nprogress/nprogress.css' before this file, so this unlayered rule also
+   wins the plain source-order cascade against nprogress's own. */
+#nprogress .bar {
+  background: var(--accent);
+}
+
+#nprogress .peg {
+  box-shadow:
+    0 0 10px var(--accent),
+    0 0 5px var(--accent);
+}

@@ -3,6 +3,7 @@ package review
 import (
 	"context"
 	"errors"
+	"time"
 )
 
 // ErrNotFound is returned when a review does not exist.
@@ -22,6 +23,12 @@ type Repository interface {
 	// ListArchivedByRepo returns a repo's archived reviews (without findings)
 	// newest first.
 	ListArchivedByRepo(ctx context.Context, repoID string) ([]Review, error)
+	// ListRecent returns the most recent reviews (without findings) across ALL
+	// repos, filtered by archived, newest first, capped at limit and
+	// keyset-paginated from (cursorTime, cursorID). cursorID == "" fetches the
+	// first page; otherwise only rows strictly older than (cursorTime,
+	// cursorID) in the (created_at DESC, id DESC) keyset order are returned.
+	ListRecent(ctx context.Context, limit int, archived bool, cursorTime time.Time, cursorID string) ([]Review, error)
 	// HasActiveForMR reports whether an in-flight (pending or running) review
 	// already exists for the given repo + merge-request IID. Used to guard
 	// webhook-triggered reviews against a storm of duplicates.

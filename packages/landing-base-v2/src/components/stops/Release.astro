@@ -1,0 +1,138 @@
+---
+import Stop from "../Stop.astro";
+import Shot from "../Shot.astro";
+
+// The dev-flow release routine's step ledger, in server order
+// (packages/server/internal/app/routines/service.go, release run Steps). Notes
+// are the step outputs the server records (done steps) or what the step will
+// do (pending), filled with the !142 example.
+// Dev-flow tags are the computed version plus the "-dev" suffix (tagSuffix).
+const version = "v1.8.0";
+const tag = `${version}-dev`;
+type State = "done" | "awaiting" | "pending";
+const steps: { name: string; state: State; note?: string }[] = [
+  { name: "verify", state: "done", note: "verified" },
+  { name: "react", state: "done", note: "2 reactions added" },
+  { name: "approve", state: "done", note: "Merge request approved" },
+  { name: "compute_tag", state: "done", note: `Next version ${version} — 2 features, 1 fix` },
+  { name: "confirm", state: "awaiting", note: "merge now, or wait?" },
+  { name: "merge", state: "pending" },
+  { name: "tag", state: "pending", note: `creates ${tag}` },
+  { name: "notify", state: "pending" },
+];
+// spa-b's run/step status labels (modules/runs/format.ts).
+const label: Record<State, string> = { done: "Done", awaiting: "Awaiting confirmation", pending: "Pending" };
+---
+
+<Stop
+  id="release"
+  title="The release waits for you before it merges"
+  log="!142 release run"
+  status={{ label: "Awaiting confirmation", variant: "warning" }}
+>
+  <div class="prose intro">
+    <p>
+      A release routine walks a fixed list of steps and records each one as it finishes. If a
+      step fails, the run stops there; once you fix the cause and resume, it skips the steps
+      already done instead of starting over. The development flow merges the MR into
+      <code>development</code> and tags it <code>{tag}</code>.
+    </p>
+    <p>
+      Before the merge, the run pauses and asks you to <strong>merge</strong> or <strong>wait</strong>. Nothing is merged or tagged until you answer.
+    </p>
+  </div>
+  <div class="release">
+    <ol class="ledger" aria-label="Release steps for !142 (example data)">
+      {
+        steps.map((s) => (
+          <li class:list={["step", s.state]}>
+            <span class="dot" aria-hidden="true" />
+            <span class="name">{s.name}</span>
+            <span class="state">{label[s.state]}</span>
+            {s.note && <span class="note">{s.note}</span>}
+          </li>
+        ))
+      }
+    </ol>
+    <Shot
+      name="run"
+      layout="side"
+      full
+      alt={`The release run for MR !142 paused at the confirm step: the run is awaiting confirmation, with buttons to merge now or wait.`}
+      caption="The confirm step in the run view."
+    />
+  </div>
+</Stop>
+
+<style>
+  .intro {
+    margin-bottom: 2rem;
+  }
+  .release {
+    display: grid;
+    gap: 2rem;
+  }
+  /* Side by side only once the prose keeps ~18rem next to the crop at its
+     true size; below that the crop stacks under the prose, still 1:1. */
+  @media (min-width: 75rem) {
+    .release {
+      grid-template-columns: minmax(17rem, 1fr) minmax(0, max-content);
+      gap: 2.5rem;
+      align-items: start;
+    }
+  }
+  .ledger {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border-top: 1px solid var(--line-subtle);
+  }
+  .step {
+    display: grid;
+    grid-template-columns: 0.75rem minmax(0, 1fr) auto;
+    column-gap: 0.75rem;
+    align-items: baseline;
+    padding: 0.625rem 0;
+    border-bottom: 1px solid var(--line-subtle);
+  }
+  .dot {
+    width: 9px;
+    height: 9px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--line-strong);
+    align-self: center;
+  }
+  .done .dot {
+    background: var(--success-solid);
+    border-color: var(--success-solid);
+  }
+  .awaiting .dot {
+    background: var(--warning-solid);
+    border-color: var(--warning-solid);
+  }
+  .name {
+    font-family: var(--font-mono);
+    font-size: var(--fs-small);
+    color: var(--text);
+  }
+  .pending .name {
+    color: var(--text-muted);
+  }
+  .state {
+    font-size: var(--fs-small);
+    color: var(--text-muted);
+    text-align: right;
+  }
+  .done .state {
+    color: var(--success-text);
+  }
+  .awaiting .state {
+    color: var(--warning-text);
+    font-weight: 600;
+  }
+  .note {
+    grid-column: 2 / -1;
+    font-size: var(--fs-small);
+    color: var(--text-muted);
+  }
+</style>

@@ -831,21 +831,28 @@ func (s *Service) ListBranches(ctx context.Context, repoID string) ([]string, er
 // falls back to the default, and anything above the max is clamped so a single
 // request cannot ask for an unbounded number of rows.
 const (
-	defaultRecentLimit = 20
+	defaultRecentLimit = 30
 	maxRecentLimit     = 100
 )
 
-// ListRecent returns the most recent runs across all repos, newest first. The
-// limit is clamped: a non-positive value defaults to defaultRecentLimit and a
-// value above maxRecentLimit is capped to maxRecentLimit.
-func (s *Service) ListRecent(ctx context.Context, limit int) ([]routine.Run, error) {
+// clampRecentLimit applies the shared ListRecent/ListRecentArchived clamp: a
+// non-positive value defaults to defaultRecentLimit and a value above
+// maxRecentLimit is capped to maxRecentLimit.
+func clampRecentLimit(limit int) int {
 	if limit <= 0 {
-		limit = defaultRecentLimit
+		return defaultRecentLimit
 	}
 	if limit > maxRecentLimit {
-		limit = maxRecentLimit
+		return maxRecentLimit
 	}
-	return s.runs.ListRecent(ctx, limit)
+	return limit
+}
+
+// ListRecent returns the most recent runs across all repos, newest first,
+// clamped like clampRecentLimit and keyset-paginated from (cursorTime,
+// cursorID); an empty cursorID fetches the first page.
+func (s *Service) ListRecent(ctx context.Context, limit int, cursorTime time.Time, cursorID string) ([]routine.Run, error) {
+	return s.runs.ListRecent(ctx, clampRecentLimit(limit), cursorTime, cursorID)
 }
 
 // Archive soft-hides a finished run from the active list, keeping its history.
@@ -872,16 +879,10 @@ func (s *Service) ListArchivedByRepo(ctx context.Context, repoID string) ([]rout
 	return s.runs.ListArchivedByRepo(ctx, repoID)
 }
 
-// ListRecentArchived returns recent archived runs across all repos, clamped like
-// ListRecent.
-func (s *Service) ListRecentArchived(ctx context.Context, limit int) ([]routine.Run, error) {
-	if limit <= 0 {
-		limit = defaultRecentLimit
-	}
-	if limit > maxRecentLimit {
-		limit = maxRecentLimit
-	}
-	return s.runs.ListRecentArchived(ctx, limit)
+// ListRecentArchived returns recent archived runs across all repos, clamped
+// and keyset-paginated exactly like ListRecent.
+func (s *Service) ListRecentArchived(ctx context.Context, limit int, cursorTime time.Time, cursorID string) ([]routine.Run, error) {
+	return s.runs.ListRecentArchived(ctx, clampRecentLimit(limit), cursorTime, cursorID)
 }
 
 // PreviewInput asks for a dry-run of the next release version without creating a

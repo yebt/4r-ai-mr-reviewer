@@ -1,0 +1,116 @@
+---
+import Stop from "../Stop.astro";
+import Shot from "../Shot.astro";
+
+// The review-finished message, as built by buildReviewMessage in
+// packages/server/internal/app/reviews/service.go (sent as Telegram HTML),
+// filled with the !142 example.
+const msg = {
+  mr: 142,
+  recommendation: "Request changes",
+  score: 62,
+  findings: 6,
+  blocking: 1,
+  source: "feature/webhook-retries",
+  target: "development",
+};
+---
+
+<Stop id="notify" title="A Telegram message when it is done" log="→ Telegram" crosses>
+  <div class="prose intro">
+    <p>
+      Add a Telegram target with a bot token and a chat, and a topic thread if the chat uses
+      them. 4R sends it a message when a review finishes and when a release routine reaches
+      its notify step. Pick the chat from the bot's recent updates instead of copying IDs, and
+      send a test message before you rely on it.
+    </p>
+    <p>
+      Notification rules are global or per repository; a repository's own rules replace the
+      global ones for that repository. A message that fails to send is logged and never holds
+      up the review.
+    </p>
+  </div>
+
+  <div class="notify">
+    <figure class="message">
+      <div class="bubble">
+        <p><b>Review !{msg.mr} finished</b></p>
+        <p>Recommendation: <b>{msg.recommendation}</b>&nbsp;· Score:&nbsp;<b>{msg.score}</b></p>
+        <p>Findings: <b>{msg.findings}</b> ({msg.blocking} blocking)</p>
+        <p>Branch: <code>{msg.source}</code> → <code>{msg.target}</code></p>
+        <p><span class="link">Open merge request</span></p>
+      </div>
+      <figcaption>
+        <span>The message a Telegram target receives when the review of !142 finishes.</span>
+        <span class="tag">Example data</span>
+      </figcaption>
+    </figure>
+
+    <Shot
+      name="notify"
+      layout="side"
+      alt="A Telegram target in 4R's settings named Releases, sending to the chat @payments-team in topic thread 128, marked as the default, with a button to send a test message."
+      caption="A Telegram target in the settings."
+    />
+  </div>
+</Stop>
+
+<style>
+  .intro {
+    margin-bottom: 2rem;
+  }
+  .notify {
+    display: grid;
+    gap: 2rem;
+  }
+  /* Side by side only once the prose keeps ~18rem next to the crop at its
+     true size; below that the crop stacks under the prose, still 1:1. */
+  @media (min-width: 75rem) {
+    .notify {
+      grid-template-columns: minmax(17rem, 1fr) minmax(0, max-content);
+      gap: 2.5rem;
+      align-items: start;
+    }
+  }
+  .message {
+    margin: 0;
+  }
+  /* A plain chat bubble: panel surface, hairline, one squared corner. */
+  .bubble {
+    display: grid;
+    gap: 0.25rem;
+    max-width: 24rem;
+    padding: 0.75rem 0.875rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-xl) var(--radius-xl) var(--radius-xl) var(--radius-sm);
+    background: var(--bg-panel);
+    font-size: 0.9375rem;
+    line-height: 1.45;
+    color: var(--text);
+    overflow-wrap: anywhere;
+  }
+  .bubble b {
+    font-weight: 600;
+  }
+  .bubble code {
+    font-size: var(--fs-small);
+  }
+  .link {
+    color: var(--accent-text);
+    text-decoration: underline;
+    text-underline-offset: 0.18em;
+  }
+  figcaption {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.75rem;
+    margin-top: 0.625rem;
+    font-size: var(--fs-small);
+    color: var(--text-muted);
+  }
+  .tag {
+    padding: 0 0.375rem;
+    border: 1px solid var(--line-subtle);
+    border-radius: var(--radius-sm);
+  }
+</style>

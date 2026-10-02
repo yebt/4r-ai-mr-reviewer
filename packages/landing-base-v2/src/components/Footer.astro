@@ -1,0 +1,67 @@
+---
+import { SITE } from "../config";
+import Mark from "./Mark.astro";
+---
+
+<footer class="site-footer">
+  <div class="wrap inner">
+    <div class="brand">
+      <Mark size={18} />
+      <p><strong>4R</strong>, AI review for GitLab merge requests. You run it; you decide what gets posted.</p>
+    </div>
+    <nav aria-label="Footer">
+      <ul>
+        <li><a href={SITE.github}>Source on GitHub</a></li>
+        <li><a href={SITE.docs}>Documentation</a></li>
+        <li><a href={`${SITE.github}/blob/main/docs/API.md`}>API reference</a></li>
+        <li><a href="#main">Back to top</a></li>
+      </ul>
+    </nav>
+  </div>
+</footer>
+
+<style>
+  .site-footer {
+    border-top: 1px solid var(--line-subtle);
+    background: var(--bg-panel);
+  }
+  .inner {
+    display: grid;
+    gap: 1.5rem;
+    padding-top: 2.5rem;
+    padding-bottom: 3rem;
+  }
+  @media (min-width: 60rem) {
+    .inner {
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+    }
+  }
+  .brand {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    color: var(--text-muted);
+    font-size: 0.9375rem;
+  }
+  .brand :global(.mark) {
+    margin-top: 0.2rem;
+  }
+  .brand strong {
+    color: var(--text);
+  }
+  ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1.25rem;
+  }
+  a {
+    display: inline-flex;
+    min-height: 2.5rem;
+    align-items: center;
+    font-size: 0.9375rem;
+  }
+</style>

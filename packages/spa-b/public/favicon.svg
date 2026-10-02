@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect width="32" height="32" fill="#0a0a0b"/>
+  <!-- Four lenses; one lit (the active pass) in the lime signal. -->
+  <rect x="6"  y="6"  width="8" height="8" fill="#d6ff3f"/>
+  <rect x="18" y="6"  width="8" height="8" fill="#2a2a30"/>
+  <rect x="6"  y="18" width="8" height="8" fill="#2a2a30"/>
+  <rect x="18" y="18" width="8" height="8" fill="#2a2a30"/>
+</svg>

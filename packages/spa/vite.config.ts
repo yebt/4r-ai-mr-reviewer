@@ -25,6 +25,8 @@ export default defineConfig({
   // The backend has no CORS (single-user, local). In dev we proxy /api to it so
   // the SPA can call the API same-origin.
   server: {
+    // Allow access through `tailscale serve` (https://<machine>.<tailnet>.ts.net).
+    allowedHosts: ['.ts.net'],
     proxy: {
       '/api': {
         target: process.env.VITE_API_TARGET ?? 'http://localhost:8080',

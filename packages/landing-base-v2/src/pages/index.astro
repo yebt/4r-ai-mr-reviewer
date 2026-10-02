@@ -1,0 +1,57 @@
+---
+import Layout from "../layouts/Layout.astro";
+import Header from "../components/Header.astro";
+import Hero from "../components/Hero.astro";
+import Passes from "../components/stops/Passes.astro";
+import Score from "../components/stops/Score.astro";
+import Publish from "../components/stops/Publish.astro";
+import Flow from "../components/stops/Flow.astro";
+import Release from "../components/stops/Release.astro";
+import Notify from "../components/stops/Notify.astro";
+import Secrets from "../components/stops/Secrets.astro";
+import SelfHost from "../components/stops/SelfHost.astro";
+import Footer from "../components/Footer.astro";
+---
+
+<Layout>
+  <Header />
+  <main id="main" tabindex="-1">
+    <Hero />
+    <div class="path wrap">
+      <p class="boundary-label"><span>your infrastructure</span></p>
+      <Passes />
+      <Score />
+      <Publish />
+      <Flow />
+      <Release />
+      <Notify />
+      <Secrets />
+      <SelfHost />
+    </div>
+  </main>
+  <Footer />
+</Layout>
+
+<script>
+  // Progressive enhancement: light the rail node of the stop in view. Without
+  // JS (or IntersectionObserver) every node stays a neutral hairline square.
+  const stops = document.querySelectorAll<HTMLElement>("[data-stop]");
+  if ("IntersectionObserver" in window && stops.length) {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          stops.forEach((s) => s.classList.toggle("is-current", s === entry.target));
+        }
+      },
+      { rootMargin: "-45% 0px -50% 0px" },
+    );
+    stops.forEach((s) => observer.observe(s));
+  }
+</script>
+
+<style>
+  main:focus {
+    outline: none;
+  }
+</style>

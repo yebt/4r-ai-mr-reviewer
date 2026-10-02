@@ -177,7 +177,14 @@ func (s *Server) getRoutine(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err, http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusOK, toRun(run))
+	// Best-effort repoName, matching listRecentRoutines: the detail page shows
+	// which repo the run belongs to. An unresolvable repo yields an empty
+	// repoName rather than failing the request.
+	dto := toRun(run)
+	if rp, gerr := s.repos.Get(r.Context(), run.RepoID); gerr == nil {
+		dto.RepoName = rp.Name
+	}
+	writeJSON(w, http.StatusOK, dto)
 }
 
 // listRoutines returns a repo's routine runs, newest first.
@@ -198,8 +205,12 @@ func (s *Server) listRoutines(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-// listRecentRoutines returns recent routine runs across all repos, newest first.
-// An optional ?limit=N caps the result (the service clamps it to a sane range).
+// listRecentRoutines returns recent routine runs across all repos, newest
+// first, keyset-paginated. An optional ?limit=N caps the result (the service
+// clamps it to a sane range); an optional ?cursor=<opaque> continues from a
+// prior page's X-Next-Cursor. A malformed cursor is a 400. When exactly limit
+// rows are returned, the response carries an X-Next-Cursor header for the next
+// page; when fewer are returned, the header is omitted (end of the list).
 // Each item carries a best-effort repoName resolved via the repos service so the
 // global list can show which repo a run belongs to; an unresolvable repo yields
 // an empty repoName rather than failing the whole list.
@@ -210,11 +221,22 @@ func (s *Server) listRecentRoutines(w http.ResponseWriter, r *http.Request) {
 			limit = n
 		}
 	}
+	limit = clampListLimit(limit)
+	var cursorTime time.Time
+	var cursorID string
+	if q := r.URL.Query().Get("cursor"); q != "" {
+		var err error
+		cursorTime, cursorID, err = decodeCursor(q)
+		if err != nil {
+			writeErr(w, err, http.StatusBadRequest)
+			return
+		}
+	}
 	list := s.routines.ListRecent
 	if q := r.URL.Query().Get("archived"); q == "1" || q == "true" {
 		list = s.routines.ListRecentArchived
 	}
-	runs, err := list(r.Context(), limit)
+	runs, err := list(r.Context(), limit, cursorTime, cursorID)
 	if err != nil {
 		writeErr(w, err, http.StatusInternalServerError)
 		return
@@ -233,6 +255,10 @@ func (s *Server) listRecentRoutines(w http.ResponseWriter, r *http.Request) {
 		}
 		dto.RepoName = name
 		out = append(out, dto)
+	}
+	if len(runs) == limit {
+		last := runs[len(runs)-1]
+		w.Header().Set("X-Next-Cursor", encodeCursor(last.CreatedAt, last.ID))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -439,9 +465,10 @@ type routineRunResp struct {
 	CreatedAt time.Time         `json:"createdAt"`
 	UpdatedAt time.Time         `json:"updatedAt"`
 	Archived  bool              `json:"archived"`
-	// RepoName is a best-effort repo display name, populated only on the global
-	// recent-runs list (listRecentRoutines); it stays empty (and omitted) on the
-	// per-repo and single-run paths, which already know their repo context.
+	// RepoName is a best-effort repo display name, populated on the global
+	// recent-runs list (listRecentRoutines) and the single-run detail
+	// (getRoutine), which both render across repos. It stays empty (and
+	// omitted) on the per-repo paths, which already know their repo context.
 	RepoName string `json:"repoName,omitempty"`
 	// Flow, SourceBranch and TargetBranch are decoded best-effort from a release
 	// run's immutable params so the UI can show which branches a run moves and

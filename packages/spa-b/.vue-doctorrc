@@ -1,0 +1,15 @@
+{
+  "ignore": {
+    "files": [
+      "**/*.spec.ts",
+      "**/*.test.ts",
+      ".vue-doctor-eslint.config.mjs",
+      "src/pages/design.vue"
+    ],
+    "rules": [
+      "eqeqeq",
+      "no-useless-undefined",
+      "require-unicode-regexp"
+    ]
+  }
+}

@@ -475,6 +475,66 @@ func (s *Server) listReviews(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// listRecentReviews returns recent reviews across all repos, newest first,
+// keyset-paginated. An optional ?limit=N caps the result (the service clamps
+// it to a sane range); an optional ?cursor=<opaque> continues from a prior
+// page's X-Next-Cursor. A malformed cursor is a 400. ?archived=1 switches to
+// archived reviews. When exactly limit rows are returned, the response
+// carries an X-Next-Cursor header for the next page; when fewer are returned,
+// the header is omitted (end of the list). Each item carries a best-effort
+// repoName resolved via the repos service, exactly like listRecentRoutines,
+// so the global list can show which repo a review belongs to; an
+// unresolvable repo yields an empty repoName rather than failing the whole
+// list. The per-repo /repos/{id}/reviews path (listReviews) is unaffected.
+func (s *Server) listRecentReviews(w http.ResponseWriter, r *http.Request) {
+	limit := 0
+	if q := r.URL.Query().Get("limit"); q != "" {
+		if n, err := strconv.Atoi(q); err == nil {
+			limit = n
+		}
+	}
+	limit = clampListLimit(limit)
+	var cursorTime time.Time
+	var cursorID string
+	if q := r.URL.Query().Get("cursor"); q != "" {
+		var err error
+		cursorTime, cursorID, err = decodeCursor(q)
+		if err != nil {
+			writeErr(w, err, http.StatusBadRequest)
+			return
+		}
+	}
+	archived := false
+	if q := r.URL.Query().Get("archived"); q == "1" || q == "true" {
+		archived = true
+	}
+	rvs, err := s.reviews.ListRecent(r.Context(), limit, archived, cursorTime, cursorID)
+	if err != nil {
+		writeErr(w, err, http.StatusInternalServerError)
+		return
+	}
+	// Cache repo-name lookups so several reviews from the same repo cost one lookup.
+	names := make(map[string]string)
+	out := make([]reviewResp, 0, len(rvs))
+	for _, rv := range rvs {
+		dto := toReview(rv)
+		name, ok := names[rv.RepoID]
+		if !ok {
+			if rp, gerr := s.repos.Get(r.Context(), rv.RepoID); gerr == nil {
+				name = rp.Name
+			}
+			names[rv.RepoID] = name
+		}
+		dto.RepoName = name
+		out = append(out, dto)
+	}
+	if len(rvs) == limit {
+		last := rvs[len(rvs)-1]
+		w.Header().Set("X-Next-Cursor", encodeCursor(last.CreatedAt, last.ID))
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 func (s *Server) createReview(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		RepoID     string `json:"repoId"`
@@ -850,6 +910,11 @@ type reviewResp struct {
 	Reasonings       []reasoningResp `json:"reasonings"`
 	CreatedAt        time.Time       `json:"createdAt"`
 	UpdatedAt        time.Time       `json:"updatedAt"`
+	// RepoName is a best-effort repo display name, populated only on the global
+	// recent-reviews list (listRecentReviews), which renders across repos. It
+	// stays empty (and omitted) on every other path, including the per-repo
+	// /repos/{id}/reviews list, which already knows its repo context.
+	RepoName string `json:"repoName,omitempty"`
 }
 
 func toReview(rv review.Review) reviewResp {

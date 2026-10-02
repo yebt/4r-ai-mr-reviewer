@@ -104,19 +104,33 @@ func (s *RoutineRunStore) ListArchivedByRepo(ctx context.Context, repoID string)
 }
 
 // ListRecent returns the most recent active (non-archived) runs across all repos,
-// newest first, capped at limit.
-func (s *RoutineRunStore) ListRecent(ctx context.Context, limit int) ([]routine.Run, error) {
-	return s.queryRuns(ctx,
-		`SELECT `+routineRunCols+` FROM routine_run WHERE archived = 0 ORDER BY created_at DESC LIMIT ?`,
-		limit)
+// newest first, capped at limit and keyset-paginated from (cursorTime, cursorID).
+func (s *RoutineRunStore) ListRecent(ctx context.Context, limit int, cursorTime time.Time, cursorID string) ([]routine.Run, error) {
+	return s.listRecent(ctx, 0, limit, cursorTime, cursorID)
 }
 
 // ListRecentArchived returns the most recent archived runs across all repos,
-// newest first, capped at limit.
-func (s *RoutineRunStore) ListRecentArchived(ctx context.Context, limit int) ([]routine.Run, error) {
+// newest first, capped at limit and keyset-paginated from (cursorTime, cursorID).
+func (s *RoutineRunStore) ListRecentArchived(ctx context.Context, limit int, cursorTime time.Time, cursorID string) ([]routine.Run, error) {
+	return s.listRecent(ctx, 1, limit, cursorTime, cursorID)
+}
+
+// listRecent runs the shared keyset-pagination query for ListRecent/
+// ListRecentArchived. archived selects the archived flag (0 or 1). An empty
+// cursorID means the first page: no keyset predicate is applied. Otherwise
+// only rows strictly older than (cursorTime, cursorID) in the
+// (created_at DESC, id DESC) order are returned, matching the tiebreak used
+// to compute the next cursor.
+func (s *RoutineRunStore) listRecent(ctx context.Context, archived int, limit int, cursorTime time.Time, cursorID string) ([]routine.Run, error) {
+	if cursorID == "" {
+		return s.queryRuns(ctx,
+			`SELECT `+routineRunCols+` FROM routine_run WHERE archived = ? ORDER BY created_at DESC, id DESC LIMIT ?`,
+			archived, limit)
+	}
+	ts := formatTime(cursorTime)
 	return s.queryRuns(ctx,
-		`SELECT `+routineRunCols+` FROM routine_run WHERE archived = 1 ORDER BY created_at DESC LIMIT ?`,
-		limit)
+		`SELECT `+routineRunCols+` FROM routine_run WHERE archived = ? AND (created_at < ? OR (created_at = ? AND id < ?)) ORDER BY created_at DESC, id DESC LIMIT ?`,
+		archived, ts, ts, cursorID, limit)
 }
 
 // SetArchived flips only the archived flag, mapping a missing row to

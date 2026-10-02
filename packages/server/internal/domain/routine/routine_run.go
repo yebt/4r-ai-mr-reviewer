@@ -140,13 +140,15 @@ type RunStore interface {
 	// ListByRepo returns a repo's active (non-archived) runs, newest first.
 	ListByRepo(ctx context.Context, repoID string) ([]Run, error)
 	// ListRecent returns the most recent active (non-archived) runs across all
-	// repos, newest first, capped at limit.
-	ListRecent(ctx context.Context, limit int) ([]Run, error)
+	// repos, newest first, capped at limit. cursorID == "" fetches the first
+	// page; otherwise only rows strictly older than (cursorTime, cursorID) in
+	// the (created_at DESC, id DESC) keyset order are returned.
+	ListRecent(ctx context.Context, limit int, cursorTime time.Time, cursorID string) ([]Run, error)
 	// ListArchivedByRepo returns a repo's archived runs, newest first.
 	ListArchivedByRepo(ctx context.Context, repoID string) ([]Run, error)
 	// ListRecentArchived returns the most recent archived runs across all repos,
-	// newest first, capped at limit.
-	ListRecentArchived(ctx context.Context, limit int) ([]Run, error)
+	// newest first, capped at limit, keyset-paginated exactly like ListRecent.
+	ListRecentArchived(ctx context.Context, limit int, cursorTime time.Time, cursorID string) ([]Run, error)
 	// SetArchived flips only the archived flag; ErrRunNotFound if the run is
 	// missing.
 	SetArchived(ctx context.Context, id string, archived bool) error

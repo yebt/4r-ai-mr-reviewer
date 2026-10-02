@@ -357,6 +357,29 @@ func (s *Service) ListArchived(ctx context.Context, repoID string) ([]review.Rev
 	return s.reviews.ListArchivedByRepo(ctx, repoID)
 }
 
+// defaultRecentLimit and maxRecentLimit bound ListRecent: a non-positive limit
+// falls back to the default, and anything above the max is clamped so a single
+// request cannot ask for an unbounded number of rows.
+const (
+	defaultRecentLimit = 30
+	maxRecentLimit     = 100
+)
+
+// ListRecent returns the most recent reviews (without findings) across ALL
+// repos, filtered by archived, newest first. The limit is clamped: a
+// non-positive value defaults to defaultRecentLimit and a value above
+// maxRecentLimit is capped to maxRecentLimit. It is keyset-paginated from
+// (cursorTime, cursorID); an empty cursorID fetches the first page.
+func (s *Service) ListRecent(ctx context.Context, limit int, archived bool, cursorTime time.Time, cursorID string) ([]review.Review, error) {
+	if limit <= 0 {
+		limit = defaultRecentLimit
+	}
+	if limit > maxRecentLimit {
+		limit = maxRecentLimit
+	}
+	return s.reviews.ListRecent(ctx, limit, archived, cursorTime, cursorID)
+}
+
 // Get returns a review with its findings.
 func (s *Service) Get(ctx context.Context, reviewID string) (review.Review, error) {
 	return s.reviews.Get(ctx, reviewID)
