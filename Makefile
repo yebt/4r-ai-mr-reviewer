@@ -11,8 +11,10 @@ DOCS    := packages/documentation
 # The SPA dev server proxies /api to the backend. Derive its target from the
 # same AIR_HTTP_ADDR the server listens on (default 127.0.0.1:8080), so
 # `make dev` works with or without AIR_HTTP_ADDR set (":8082" → localhost:8082).
+# An explicit VITE_API_TARGET (e.g. `VITE_API_TARGET=http://localhost:8082 make
+# run-spa`) always wins, so the SPA can point at a backend started elsewhere.
 API_ADDR   := $(or $(AIR_HTTP_ADDR),127.0.0.1:8080)
-API_TARGET := http://$(patsubst :%,localhost:%,$(API_ADDR))
+API_TARGET := $(or $(VITE_API_TARGET),http://$(patsubst :%,localhost:%,$(API_ADDR)))
 BIN    := $(CURDIR)/bin
 BINARY := $(BIN)/air-server
 
@@ -26,6 +28,7 @@ help: ## Show this help
 	@echo ""
 	@echo "Config via env: AIR_HTTP_ADDR (default 127.0.0.1:8080), AIR_DB_PATH,"
 	@echo "                AIR_PASSWORD (empty = key-file mode), AIR_SKILLS_DIR"
+	@echo "                VITE_API_TARGET (SPA proxy target; default derived from AIR_HTTP_ADDR)"
 	@echo ""
 	@echo "Example: make dev   # backend + SPA (packages/spa-b) together"
 
