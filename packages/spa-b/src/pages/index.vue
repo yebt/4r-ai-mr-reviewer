@@ -18,6 +18,7 @@ import {
   RunStatusChip,
 } from '@modules/runs'
 import { Alert, Button, Heading, Icon, Skeleton, Text } from '@shared/ui/design-system'
+import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
 
 const runsStore = useRunsStore()
 const reposStore = useReposStore()
@@ -102,7 +103,7 @@ const quickNavItems: QuickNavItem[] = [
     </div>
 
     <Alert v-else-if="runsStore.runsState.status === 'error'" status="danger">
-      <p>{{ runsStore.error?.message ?? 'Failed to load runs' }}</p>
+      <p>{{ resolveErrorMessage(runsStore.error, 'Failed to load runs') }}</p>
       <Button variant="outline" size="sm" class="mt-2" @click="runsStore.refetch()">Retry</Button>
     </Alert>
 

@@ -33,6 +33,7 @@ import { Alert, Button, ConfirmDialog, Fab, Icon, Skeleton, Text } from '@shared
 import AccountForm from './AccountForm.vue'
 import { useAccountsStore } from '../store'
 import type { Account } from '../types'
+import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
 
 const store = useAccountsStore()
 
@@ -106,7 +107,7 @@ async function handleDelete(account: Account) {
     </div>
 
     <Alert v-else-if="store.accountsState.status === 'error'" status="danger">
-      <p>{{ store.error?.message ?? 'Failed to load accounts' }}</p>
+      <p>{{ resolveErrorMessage(store.error, 'Failed to load accounts') }}</p>
       <Button variant="outline" size="sm" class="mt-2" @click="store.refetch()">Retry</Button>
     </Alert>
 

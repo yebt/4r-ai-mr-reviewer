@@ -36,6 +36,7 @@ import RepoForm from './RepoForm.vue'
 import WebhookDialog from './WebhookDialog.vue'
 import { useReposStore } from '../store'
 import type { Repo } from '../types'
+import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
 
 const store = useReposStore()
 const accountsStore = useAccountsStore()
@@ -149,7 +150,7 @@ async function handleDelete(repo: Repo) {
     </div>
 
     <Alert v-else-if="store.reposState.status === 'error'" status="danger">
-      <p>{{ store.error?.message ?? 'Failed to load repositories' }}</p>
+      <p>{{ resolveErrorMessage(store.error, 'Failed to load repositories') }}</p>
       <Button variant="outline" size="sm" class="mt-2" @click="store.refetch()">Retry</Button>
     </Alert>
 

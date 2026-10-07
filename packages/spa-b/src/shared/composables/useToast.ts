@@ -4,7 +4,11 @@ import { ref } from 'vue'
 export type ToastKind = 'success' | 'error' | 'info'
 
 export interface ToastOptions {
-  /** Auto-dismiss delay in ms. `0` disables auto-dismiss. Defaults to 5000. */
+  /**
+   * Auto-dismiss delay in ms. `0` disables auto-dismiss. Defaults to 5000 for
+   * success/info and to `0` (stay until dismissed) for errors, which carry the
+   * cause and next step and must not vanish before they are read.
+   */
   duration?: number
 }
 
@@ -16,6 +20,7 @@ export interface ToastRecord {
 }
 
 const DEFAULT_DURATION = 5000
+const DEFAULT_ERROR_DURATION = 0
 
 // Module-level state: one shared queue for the whole app, regardless of how
 // many components call useToast(). ToastHost.vue (mounted once in App.vue)
@@ -45,7 +50,7 @@ function dismiss(id: string) {
 
 function push(kind: ToastKind, message: string, opts?: ToastOptions): string {
   const id = generateId()
-  const duration = opts?.duration ?? DEFAULT_DURATION
+  const duration = opts?.duration ?? (kind === 'error' ? DEFAULT_ERROR_DURATION : DEFAULT_DURATION)
 
   toasts.value = [...toasts.value, { id, kind, message, duration }]
 
@@ -63,7 +68,8 @@ function push(kind: ToastKind, message: string, opts?: ToastOptions): string {
  * Global toast queue. `success`/`error`/`info` push a toast and return its
  * id; `dismiss(id)` removes one immediately (used by ToastHost for the
  * close button and swipe-to-dismiss). Toasts auto-dismiss after `duration`
- * ms (default 5000) unless `duration: 0` is passed.
+ * ms (default 5000) unless `duration: 0` is passed; error toasts persist
+ * until dismissed unless a `duration` is given.
  */
 export function useToast() {
   return {

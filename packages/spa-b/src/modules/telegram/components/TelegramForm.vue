@@ -10,6 +10,7 @@ import { nextTick, reactive, ref, computed } from 'vue'
 import { Alert, Button, Checkbox, Field, Input } from '@shared/ui/design-system'
 import { useTelegramStore } from '../store'
 import type { TelegramTarget } from '../types'
+import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
 
 const props = defineProps<{
   target?: TelegramTarget | null
@@ -72,7 +73,7 @@ async function handleSubmit() {
         })
     emit('saved', result)
   } catch (err) {
-    formError.value = err instanceof Error ? err.message : 'Failed to save Telegram target'
+    formError.value = resolveErrorMessage(err, 'Failed to save Telegram target')
   } finally {
     saving.value = false
   }

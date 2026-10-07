@@ -67,6 +67,8 @@ import FindingCard from '@modules/reviews/components/FindingCard.vue'
 import HumanizeTabs from '@modules/reviews/components/HumanizeTabs.vue'
 import HumanizeAllDialog from '@modules/reviews/components/HumanizeAllDialog.vue'
 import ScoreMeter from '@modules/reviews/components/ScoreMeter.vue'
+import { isNotFound } from '@shared/api/isNotFound'
+import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
 
 const route = useRoute('/reviews/[id]')
 const router = useRouter()
@@ -258,8 +260,18 @@ function handlePublishAll() {
       <Skeleton class="h-32 w-full" />
     </div>
 
+    <Alert v-else-if="state.status === 'error' && isNotFound(error)" status="info" data-testid="review-not-found">
+      <p>This review no longer exists. It may have been discarded or removed.</p>
+      <RouterLink
+        to="/reviews"
+        class="mt-2 inline-flex items-center text-sm font-medium text-accent-text underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+      >
+        Back to reviews
+      </RouterLink>
+    </Alert>
+
     <Alert v-else-if="state.status === 'error'" status="danger">
-      <p>{{ error?.message ?? 'Failed to load review' }}</p>
+      <p>{{ resolveErrorMessage(error, 'Failed to load review') }}</p>
       <Button variant="outline" size="sm" class="mt-2" @click="refetch()">Retry</Button>
     </Alert>
 

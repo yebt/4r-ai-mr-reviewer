@@ -36,6 +36,7 @@ import { Alert, Badge, Button, Checkbox, Field, Icon, Input, Select, Spinner, Te
 import type { SelectItemOption } from '@shared/ui/design-system'
 import { useProvidersStore } from '../store'
 import type { Provider, ProviderKind, TestProviderResult } from '../types'
+import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
 
 const props = defineProps<{
   provider?: Provider | null
@@ -155,7 +156,7 @@ async function handleTestConnection() {
       apiKey: form.apiKey,
     })
   } catch (err) {
-    testResult.value = { ok: false, error: err instanceof Error ? err.message : 'Test failed' }
+    testResult.value = { ok: false, error: resolveErrorMessage(err, 'Test failed') }
   } finally {
     testing.value = false
   }
@@ -202,7 +203,7 @@ async function handleSubmit() {
         })
     emit('saved', result)
   } catch (err) {
-    formError.value = err instanceof Error ? err.message : 'Failed to save provider'
+    formError.value = resolveErrorMessage(err, 'Failed to save provider')
   } finally {
     saving.value = false
   }

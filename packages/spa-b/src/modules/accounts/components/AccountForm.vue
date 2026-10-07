@@ -9,6 +9,7 @@ import { nextTick, reactive, ref, computed } from 'vue'
 import { Alert, Field, Input, Button } from '@shared/ui/design-system'
 import { useAccountsStore } from '../store'
 import type { Account } from '../types'
+import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
 
 const props = defineProps<{
   account?: Account | null
@@ -65,7 +66,7 @@ async function handleSubmit() {
         })
     emit('saved', result)
   } catch (err) {
-    formError.value = err instanceof Error ? err.message : 'Failed to save account'
+    formError.value = resolveErrorMessage(err, 'Failed to save account')
   } finally {
     saving.value = false
   }

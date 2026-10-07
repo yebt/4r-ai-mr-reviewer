@@ -54,6 +54,26 @@ describe('useToast', () => {
     expect(toasts.value).toHaveLength(0)
   })
 
+  it('keeps error toasts until they are dismissed', () => {
+    const { toasts, error, dismiss } = useToast()
+    const id = error('Could not save')
+
+    vi.advanceTimersByTime(10 * 60_000)
+    expect(toasts.value).toHaveLength(1)
+    expect(toasts.value[0]?.duration).toBe(0)
+
+    dismiss(id)
+    expect(toasts.value).toHaveLength(0)
+  })
+
+  it('lets a caller opt an error toast into auto-dismiss explicitly', () => {
+    const { toasts, error } = useToast()
+    error('Transient', { duration: 100 })
+
+    vi.advanceTimersByTime(100)
+    expect(toasts.value).toHaveLength(0)
+  })
+
   it('auto-dismisses after a custom duration', () => {
     const { toasts, info } = useToast()
     info('Quick one', { duration: 100 })

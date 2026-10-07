@@ -17,6 +17,7 @@ import { computed, reactive, ref } from 'vue'
 import { Alert, Badge, Button, Checkbox, Field, Icon, Input, Skeleton, Text } from '@shared/ui/design-system'
 import { useToast } from '@shared/composables/useToast'
 import { resolveVaultErrorMessage, useVaultStore } from '../store'
+import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
 
 const store = useVaultStore()
 const toast = useToast()
@@ -113,7 +114,7 @@ async function handleSubmit() {
     <Alert v-else-if="store.unavailable" status="info">Vault management isn't available on this instance.</Alert>
 
     <Alert v-else-if="store.statusState.status === 'error'" status="danger">
-      <p>{{ store.error?.message ?? 'Failed to load vault status' }}</p>
+      <p>{{ resolveErrorMessage(store.error, 'Failed to load vault status') }}</p>
       <Button variant="outline" size="sm" class="mt-2" @click="store.refetch()">Retry</Button>
     </Alert>
 

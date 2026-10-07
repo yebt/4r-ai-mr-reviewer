@@ -37,6 +37,7 @@ import { Alert, Badge, Button, ConfirmDialog, Fab, Icon, Skeleton, Text } from '
 import ProviderForm from './ProviderForm.vue'
 import { sortDefaultFirst, useProvidersStore } from '../store'
 import type { Provider, TestProviderResult } from '../types'
+import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
 
 const store = useProvidersStore()
 
@@ -139,7 +140,7 @@ async function handleTest(provider: Provider) {
   } catch (err) {
     testResults.value = {
       ...testResults.value,
-      [provider.id]: { ok: false, error: err instanceof Error ? err.message : 'Test failed' },
+      [provider.id]: { ok: false, error: resolveErrorMessage(err, 'Test failed') },
     }
   } finally {
     testingId.value = null
@@ -181,7 +182,7 @@ async function handleTest(provider: Provider) {
     </div>
 
     <Alert v-else-if="store.providersState.status === 'error'" status="danger">
-      <p>{{ store.error?.message ?? 'Failed to load providers' }}</p>
+      <p>{{ resolveErrorMessage(store.error, 'Failed to load providers') }}</p>
       <Button variant="outline" size="sm" class="mt-2" @click="store.refetch()">Retry</Button>
     </Alert>
 

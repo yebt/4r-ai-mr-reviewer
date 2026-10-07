@@ -17,6 +17,7 @@ import { DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRo
 import { Alert, Button, ConfirmDialog, Icon, Switch, Text } from '@shared/ui/design-system'
 import { useReposStore } from '../store'
 import type { Repo } from '../types'
+import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
 
 const props = defineProps<{
   open: boolean
@@ -79,7 +80,7 @@ async function handleToggleEnabled(enabled: boolean) {
       requireConfirmation: props.repo.webhookRequireConfirmation,
     })
   } catch (err) {
-    actionError.value = err instanceof Error ? err.message : 'Failed to update webhook'
+    actionError.value = resolveErrorMessage(err, 'Failed to update webhook')
   } finally {
     savingEnabled.value = false
   }
@@ -95,7 +96,7 @@ async function handleToggleConfirmation(requireConfirmation: boolean) {
       requireConfirmation,
     })
   } catch (err) {
-    actionError.value = err instanceof Error ? err.message : 'Failed to update webhook'
+    actionError.value = resolveErrorMessage(err, 'Failed to update webhook')
   } finally {
     savingConfirmation.value = false
   }
@@ -109,7 +110,7 @@ async function handleRotate() {
     await store.rotateWebhookSecret(props.repo.id)
     secretVisible.value = true
   } catch (err) {
-    actionError.value = err instanceof Error ? err.message : 'Failed to rotate webhook secret'
+    actionError.value = resolveErrorMessage(err, 'Failed to rotate webhook secret')
   } finally {
     rotating.value = false
   }

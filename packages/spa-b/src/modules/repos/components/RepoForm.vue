@@ -53,6 +53,7 @@ import { useReposStore } from '../store'
 import { searchAccountProjects } from '../api'
 import { projectToDraft } from '../projectSearch'
 import type { AccountProject, Repo } from '../types'
+import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
 
 const NO_PROVIDER_VALUE = '__use_default_provider__'
 const NO_PROFILE_VALUE = '__no_default_profile__'
@@ -151,7 +152,7 @@ async function runProjectSearch() {
   try {
     projects.value = await searchAccountProjects(form.accountId, query)
   } catch (err) {
-    searchError.value = err instanceof Error ? err.message : 'Failed to search projects'
+    searchError.value = resolveErrorMessage(err, 'Failed to search projects')
     projects.value = []
   } finally {
     searching.value = false
@@ -229,7 +230,7 @@ async function handleSubmit() {
         })
     emit('saved', result)
   } catch (err) {
-    formError.value = err instanceof Error ? err.message : 'Failed to save repository'
+    formError.value = resolveErrorMessage(err, 'Failed to save repository')
   } finally {
     saving.value = false
   }

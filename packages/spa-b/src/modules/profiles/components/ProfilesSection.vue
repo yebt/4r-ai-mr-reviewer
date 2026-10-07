@@ -32,6 +32,7 @@ import { Alert, Badge, Button, ConfirmDialog, Fab, Icon, Skeleton, Text } from '
 import ProfileForm from './ProfileForm.vue'
 import { useProfilesStore } from '../store'
 import type { Profile, StyleGuideStatus } from '../types'
+import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
 
 // `Badge`'s status prop type isn't re-exported from the design-system
 // barrel, so this mirrors its literal union locally rather than editing it.
@@ -137,7 +138,7 @@ async function handleRedistill(profile: Profile) {
     </div>
 
     <Alert v-else-if="store.profilesState.status === 'error'" status="danger">
-      <p>{{ store.error?.message ?? 'Failed to load profiles' }}</p>
+      <p>{{ resolveErrorMessage(store.error, 'Failed to load profiles') }}</p>
       <Button variant="outline" size="sm" class="mt-2" @click="store.refetch()">Retry</Button>
     </Alert>
 

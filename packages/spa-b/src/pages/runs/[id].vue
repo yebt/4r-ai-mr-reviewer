@@ -28,6 +28,8 @@ import {
 } from '@modules/runs'
 import type { RoutineConfirmDecision } from '@modules/runs'
 import { useReposStore } from '@modules/repos/store'
+import { isNotFound } from '@shared/api/isNotFound'
+import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
 
 const route = useRoute('/runs/[id]')
 const reposStore = useReposStore()
@@ -158,8 +160,18 @@ const mergeSummary = computed(() => {
       <Skeleton class="h-24 w-full" />
     </div>
 
+    <Alert v-else-if="state.status === 'error' && isNotFound(error)" status="info" data-testid="run-not-found">
+      <p>This run no longer exists. It may have been discarded or removed.</p>
+      <RouterLink
+        to="/runs"
+        class="mt-2 inline-flex items-center text-sm font-medium text-accent-text underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+      >
+        Back to runs
+      </RouterLink>
+    </Alert>
+
     <Alert v-else-if="state.status === 'error'" status="danger">
-      <p>{{ error?.message ?? 'Failed to load run' }}</p>
+      <p>{{ resolveErrorMessage(error, 'Failed to load run') }}</p>
       <Button variant="outline" size="sm" class="mt-2" @click="refetch()">Retry</Button>
     </Alert>
 

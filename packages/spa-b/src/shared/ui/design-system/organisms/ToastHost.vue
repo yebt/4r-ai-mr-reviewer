@@ -70,6 +70,7 @@ function handleOpenChange(id: string, open: boolean) {
       v-for="toast in toasts"
       :key="toast.id"
       :type="toast.kind === 'error' ? 'foreground' : 'background'"
+      :duration="toast.duration > 0 ? toast.duration : Infinity"
       :class="kindCardClassMap[toast.kind]"
       class="pointer-events-auto relative flex w-full items-start gap-2.5 overflow-hidden rounded-lg border p-3 pl-4 text-sm shadow-token-lg transition-[opacity] duration-[var(--duration-base)] ease-[var(--ease-standard)] data-[state=closed]:opacity-0 data-[state=open]:animate-[toast-card-in_var(--duration-base)_var(--ease-standard)] data-[swipe=move]:transition-none"
       @update:open="(open) => handleOpenChange(toast.id, open)"

@@ -16,6 +16,7 @@ import { useTelegramStore } from '@modules/telegram/store'
 import { useReposStore } from '@modules/repos/store'
 import { unroutedEvents, useNotificationsStore } from '../store'
 import type { NotificationRule } from '../types'
+import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
 
 const store = useNotificationsStore()
 const telegramStore = useTelegramStore()
@@ -78,7 +79,7 @@ async function handleAdd() {
     newTarget.value = ''
     newScope.value = ''
   } catch (err) {
-    addError.value = err instanceof Error ? err.message : 'Failed to add rule'
+    addError.value = resolveErrorMessage(err, 'Failed to add rule')
   } finally {
     adding.value = false
   }
@@ -170,7 +171,7 @@ const showUnrouted = computed(() => store.eventsState.status === 'success' && un
     </div>
 
     <Alert v-else-if="store.rulesState.status === 'error'" status="danger">
-      <p>{{ store.error?.message ?? 'Failed to load notification rules' }}</p>
+      <p>{{ resolveErrorMessage(store.error, 'Failed to load notification rules') }}</p>
       <Button variant="outline" size="sm" class="mt-2" @click="store.refetch()">Retry</Button>
     </Alert>
 
