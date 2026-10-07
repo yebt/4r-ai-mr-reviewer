@@ -91,7 +91,7 @@ function displayValue(value: unknown): string {
 <template>
   <ComboboxRoot v-model="modelValue" :disabled="disabled" ignore-filter class="relative">
     <ComboboxAnchor
-      class="flex h-8 w-full items-center gap-1.5 rounded-md border border-line bg-bg-panel px-2.5 transition-colors focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus-ring has-[[aria-invalid=true]]:border-danger-solid"
+      class="flex h-8 w-full items-center gap-1.5 rounded-md border border-line-control bg-bg-panel px-2.5 transition-colors focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus-ring has-[[aria-invalid=true]]:border-danger-solid"
     >
       <ComboboxInput
         :id="id"

@@ -31,6 +31,6 @@ const modelValue = defineModel<string>({ default: '' })
     :placeholder="placeholder"
     :disabled="disabled"
     v-bind="$attrs"
-    class="h-8 w-full rounded-md border border-line bg-bg-panel px-2.5 text-sm text-text placeholder:text-text-placeholder transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-50 aria-[invalid=true]:border-danger-solid"
+    class="h-8 w-full rounded-md border border-line-control bg-bg-panel px-2.5 text-sm text-text placeholder:text-text-placeholder transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-50 aria-[invalid=true]:border-danger-solid"
   />
 </template>

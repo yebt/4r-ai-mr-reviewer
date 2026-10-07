@@ -49,7 +49,7 @@ const modelValue = defineModel<string>()
       :id="id"
       :aria-invalid="ariaInvalid"
       :aria-describedby="ariaDescribedby"
-      class="flex h-8 w-full items-center justify-between gap-2 rounded-md border border-line bg-bg-panel px-2.5 text-sm text-text transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-50 aria-[invalid=true]:border-danger-solid data-[placeholder]:text-text-placeholder"
+      class="flex h-8 w-full items-center justify-between gap-2 rounded-md border border-line-control bg-bg-panel px-2.5 text-sm text-text transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-50 aria-[invalid=true]:border-danger-solid data-[placeholder]:text-text-placeholder"
     >
       <SelectValue :placeholder="placeholder" />
       <SelectIcon as-child>

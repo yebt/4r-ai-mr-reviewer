@@ -64,16 +64,39 @@ something that genuinely needs a specific step (e.g. a custom illustration):
 | `--line-subtle` | gray-6 | Dividers, faint separators |
 | `--line` | gray-7 | Default component border |
 | `--line-strong` | gray-8 | Emphasized border, input focus edge |
+| `--line-control` | gray-9 | Border of interactive controls (input, textarea, select, combobox, checkbox) and the switch's off track. Use this, not `--line`, for anything the user must perceive as a control |
 | `--text` | gray-12 | Primary text |
 | `--text-muted` | gray-11 | Secondary text, captions, labels |
-| `--text-placeholder` | gray-9 | Input placeholders |
+| `--text-placeholder` | gray-10 | Input placeholders |
 | `--text-on-accent` | accent-contrast | Text/icons on solid accent fills |
 | `--accent` | accent-9 | Primary action background |
 | `--accent-hover` | accent-10 | Primary action hover |
 | `--accent-text` | accent-11 | Accent-colored text (links, active state) |
 | `--accent-text-strong` | accent-12 | High-contrast accent text |
 | `--accent-subtle-bg` | accent-3 | Selected/highlighted row or menu-item background |
-| `--focus-ring` | accent-8 | `:focus-visible` outline color |
+| `--focus-ring` | accent-8 (light) / accent-10 (dark) | `:focus-visible` outline color |
+| `--control-on` | accent-9 (light) / accent-10 (dark) | Switch "on" track |
+
+### Non-text contrast (WCAG 1.4.11) and placeholder text
+
+Controls must be perceivable without relying on a subtle fill: borders, the
+switch track and the focus ring need **>= 3:1** against the surfaces they sit
+on (`--bg-app`, `--bg-panel`, `--bg-panel-raised`); placeholder text is text, so
+**>= 4.5:1**. `--line` / `--line-subtle` are decorative (cards, dividers) and
+are intentionally low-contrast — never use them as a control's only boundary.
+Measured with the WCAG 2.x relative-luminance formula on the resolved colors:
+
+| Token | Light (app / panel / raised) | Dark (app / panel / raised) | Target |
+| --- | --- | --- | --- |
+| `--line-control` (input border, switch off track) | 3.43 / 3.31 / 3.43 | 3.96 / 3.76 / 3.76 | 3:1 |
+| `--control-on` (switch on track) | 6.33 / 6.11 / 6.33 | 4.00 / 3.80 / 3.80 | 3:1 |
+| `--focus-ring` | 3.52 / 3.40 / 3.52 | 4.00 / 3.80 / 3.80 | 3:1 |
+| `--text-placeholder` | 4.93 / 4.75 / 4.93 | 4.89 / 4.64 / 4.64 | 4.5:1 |
+
+Before: control border (`--line`) 1.49 / 1.44 light and 1.74 / 1.65 dark; switch
+off track about 1.11 light; dark switch on 2.76; dark focus ring 2.55-2.69;
+light placeholder 3.31. To keep the placeholder at 4.5:1, light `--gray-10` was
+darkened from 49% to 45% lightness. Re-measure when any of these steps change.
 
 ### Status (success / warning / danger / info)
 

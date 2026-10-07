@@ -90,7 +90,7 @@ const filteredRepos = computed(() => {
         <input
           v-model="query"
           type="text"
-          class="h-9 w-full rounded-md border border-line bg-bg-panel pl-8 pr-3 text-sm text-text outline-none placeholder:text-text-placeholder focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+          class="h-9 w-full rounded-md border border-line-control bg-bg-panel pl-8 pr-3 text-sm text-text outline-none placeholder:text-text-placeholder focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
           placeholder="Search repositories…"
           autocomplete="off"
           aria-label="Search repositories"
