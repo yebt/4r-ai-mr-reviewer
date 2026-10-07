@@ -250,7 +250,7 @@ const tab = computed<FlowTab>({
           <DialogOverlay class="overlay z-20" />
           <DialogContent
             @close-auto-focus="(event: Event) => restoreFocusOnClose(event, restoreSettingsFocus)"
-            class="fixed left-1/2 top-1/2 z-30 max-h-[85vh] w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-line bg-bg-panel-raised p-5 shadow-token-lg focus:outline-none"
+            class="fixed left-1/2 top-1/2 z-30 max-h-[85svh] w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-line bg-bg-panel-raised p-5 shadow-token-lg focus:outline-none"
           >
             <DialogTitle class="text-md font-semibold">Reassign repository</DialogTitle>
             <DialogDescription class="mt-1 text-sm text-text-muted">

@@ -181,7 +181,7 @@ const ROW_MENU_TRIGGER_CLASS =
   'inline-flex shrink-0 items-center justify-center whitespace-nowrap font-medium transition-colors ' +
   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring ' +
   'disabled:cursor-not-allowed disabled:opacity-50 bg-transparent text-text hover:bg-bg-hover ' +
-  'h-7 gap-1.5 rounded-md px-2.5 text-xs'
+  'h-10 gap-1.5 rounded-md px-2.5 text-xs sm:h-7'
 
 // Per-row plain trigger buttons, keyed by run id. Used only to return focus
 // to a row's `⋯` button once its Reka menu unmounts — the plain button and

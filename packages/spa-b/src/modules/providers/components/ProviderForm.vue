@@ -304,7 +304,7 @@ async function handleSubmit() {
             v-model="openRouterQuery"
             type="text"
             placeholder="Search OpenRouter models…"
-            class="h-full min-w-0 flex-1 bg-transparent text-sm text-text outline-none placeholder:text-text-placeholder"
+            class="h-full min-w-0 flex-1 bg-transparent text-[1rem] text-text outline-none placeholder:text-text-placeholder md:text-sm"
             @focus="ensureOpenRouterModelsLoaded"
           />
         </div>
@@ -376,7 +376,7 @@ async function handleSubmit() {
         :disabled="form.models.length === 0"
         :aria-describedby="describedBy"
         :aria-invalid="invalid"
-        class="flex h-8 w-full items-center justify-between gap-2 rounded-md border border-line bg-bg-panel px-2.5 text-sm text-text transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-50 aria-[invalid=true]:border-danger-solid"
+        class="flex h-8 w-full items-center justify-between gap-2 rounded-md border border-line-control bg-bg-panel px-2.5 text-[1rem] text-text md:text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-50 aria-[invalid=true]:border-danger-solid"
       >
         <option value="" disabled>Select a default model…</option>
         <option v-for="modelId in form.models" :key="modelId" :value="modelId">{{ modelId }}</option>
@@ -404,7 +404,7 @@ async function handleSubmit() {
 
     <Alert v-if="formError" status="danger">{{ formError }}</Alert>
 
-    <div class="flex justify-end gap-2 border-t border-line-subtle pt-4">
+    <div class="dialog-footer">
       <Button type="button" variant="ghost" @click="emit('cancel')">Cancel</Button>
       <Button type="submit" :loading="saving">{{ isEditing ? 'Save changes' : 'Add provider' }}</Button>
     </div>

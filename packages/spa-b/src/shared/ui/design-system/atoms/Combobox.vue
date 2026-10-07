@@ -102,7 +102,7 @@ function displayValue(value: unknown): string {
         :aria-label="ariaLabel"
         :aria-invalid="ariaInvalid"
         :aria-describedby="ariaDescribedby"
-        class="h-full min-w-0 flex-1 border-none bg-transparent text-sm text-text outline-none placeholder:text-text-placeholder disabled:cursor-not-allowed"
+        class="h-full min-w-0 flex-1 border-none bg-transparent text-[1rem] text-text outline-none md:text-sm placeholder:text-text-placeholder disabled:cursor-not-allowed"
       />
       <ComboboxTrigger class="shrink-0" :aria-label="ariaLabel ? `${ariaLabel} options` : 'Show options'">
         <Icon name="chevron-down" size="sm" class="text-text-muted" />

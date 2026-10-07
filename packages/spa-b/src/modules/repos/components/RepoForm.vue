@@ -246,7 +246,7 @@ async function handleSubmit() {
       </RouterLink>
       first.
     </Alert>
-    <div class="flex justify-end gap-2 border-t border-line-subtle pt-4">
+    <div class="dialog-footer">
       <Button type="button" variant="ghost" @click="emit('cancel')">Cancel</Button>
     </div>
   </div>
@@ -308,7 +308,7 @@ async function handleSubmit() {
             :aria-describedby="describedBy"
             :aria-invalid="invalid"
             placeholder="Search projects or paste a URL…"
-            class="h-full min-w-0 flex-1 bg-transparent text-sm text-text outline-none placeholder:text-text-placeholder"
+            class="h-full min-w-0 flex-1 bg-transparent text-[1rem] text-text outline-none placeholder:text-text-placeholder md:text-sm"
             @focus="openResults"
             @blur="closeResults"
             @keydown.esc="closeResults"
@@ -392,7 +392,7 @@ async function handleSubmit() {
 
     <Alert v-if="formError" status="danger">{{ formError }}</Alert>
 
-    <div class="flex justify-end gap-2 border-t border-line-subtle pt-4">
+    <div class="dialog-footer">
       <Button type="button" variant="ghost" @click="emit('cancel')">Cancel</Button>
       <Button type="submit" :loading="saving">{{ isEditing ? 'Save changes' : 'Add repository' }}</Button>
     </div>

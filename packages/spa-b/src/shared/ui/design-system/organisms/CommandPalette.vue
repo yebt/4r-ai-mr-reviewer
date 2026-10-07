@@ -137,7 +137,7 @@ watch(isOpen, async (open) => {
               ref="inputRef"
               v-model="query"
               placeholder="Search or jump to…"
-              class="h-6 min-w-0 flex-1 bg-transparent text-base text-text outline-none placeholder:text-text-placeholder"
+              class="h-6 min-w-0 flex-1 bg-transparent text-[1rem] text-text outline-none md:text-base placeholder:text-text-placeholder"
             />
             <Kbd class="shrink-0">Esc</Kbd>
           </div>

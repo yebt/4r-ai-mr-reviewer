@@ -46,7 +46,7 @@ const variantClassMap: Record<ButtonVariant, string> = {
 }
 
 const sizeClassMap: Record<ButtonSize, string> = {
-  sm: 'h-7 gap-1.5 rounded-md px-2.5 text-xs',
+  sm: 'h-10 gap-1.5 rounded-md px-2.5 text-xs sm:h-7',
   md: 'h-8 gap-2 rounded-md px-3 text-sm',
   lg: 'h-10 gap-2 rounded-lg px-4 text-base',
 }

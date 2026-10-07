@@ -262,7 +262,7 @@ async function handleTest(target: TelegramTarget) {
       <DialogPortal>
         <DialogOverlay class="overlay z-20" />
         <DialogContent
-          class="fixed left-1/2 top-1/2 z-30 max-h-[85vh] w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-line bg-bg-panel-raised p-5 shadow-token-lg focus:outline-none"
+          class="fixed left-1/2 top-1/2 z-30 max-h-[85svh] w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-line bg-bg-panel-raised p-5 shadow-token-lg focus:outline-none"
         >
           <DialogTitle class="text-md font-semibold">
             {{ editingTarget ? 'Edit Telegram target' : 'Add Telegram target' }}

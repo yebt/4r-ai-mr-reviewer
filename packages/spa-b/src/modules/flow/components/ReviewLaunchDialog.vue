@@ -169,7 +169,7 @@ async function handleSubmit() {
     <DialogPortal>
       <DialogOverlay class="overlay z-20" />
       <DialogContent
-        class="fixed left-1/2 top-1/2 z-30 max-h-[85vh] w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-line bg-bg-panel-raised p-5 shadow-token-lg focus:outline-none"
+        class="fixed left-1/2 top-1/2 z-30 max-h-[85svh] w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-line bg-bg-panel-raised p-5 shadow-token-lg focus:outline-none"
       >
         <DialogTitle class="text-md font-semibold">Start a review</DialogTitle>
         <DialogDescription v-if="mergeRequest" class="mt-1 text-sm text-text-muted">
@@ -236,7 +236,7 @@ async function handleSubmit() {
 
           <Alert v-if="submitError" status="danger">{{ submitError }}</Alert>
 
-          <div class="flex justify-end gap-2 border-t border-line-subtle pt-4">
+          <div class="dialog-footer">
             <Button type="button" variant="ghost" @click="emit('update:open', false)">Cancel</Button>
             <Button type="submit" :loading="submitting" :disabled="!mergeRequest">
               {{ activeReview ? 'Start another review' : 'Start review' }}

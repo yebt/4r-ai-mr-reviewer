@@ -108,7 +108,7 @@ async function handleSubmit() {
 
     <Alert v-if="formError" status="danger">{{ formError }}</Alert>
 
-    <div class="flex justify-end gap-2 border-t border-line-subtle pt-4">
+    <div class="dialog-footer">
       <Button type="button" variant="ghost" @click="emit('cancel')">Cancel</Button>
       <Button type="submit" :loading="saving">{{ isEditing ? 'Save changes' : 'Add account' }}</Button>
     </div>
