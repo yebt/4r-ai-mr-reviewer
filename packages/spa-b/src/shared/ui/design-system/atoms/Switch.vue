@@ -26,7 +26,7 @@ const modelValue = defineModel<boolean>({ default: false })
     :disabled="disabled"
     :aria-invalid="ariaInvalid"
     :aria-describedby="ariaDescribedby"
-    class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full bg-bg-active transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-accent"
+    class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full bg-line-control transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-control-on"
   >
     <SwitchThumb
       class="block size-4 translate-x-0.5 rounded-full bg-bg-panel-raised shadow-token-sm transition-transform data-[state=checked]:translate-x-4"

@@ -36,6 +36,7 @@ import RepoForm from './RepoForm.vue'
 import WebhookDialog from './WebhookDialog.vue'
 import { useReposStore } from '../store'
 import type { Repo } from '../types'
+import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
 
 const store = useReposStore()
 const accountsStore = useAccountsStore()
@@ -149,7 +150,7 @@ async function handleDelete(repo: Repo) {
     </div>
 
     <Alert v-else-if="store.reposState.status === 'error'" status="danger">
-      <p>{{ store.error?.message ?? 'Failed to load repositories' }}</p>
+      <p>{{ resolveErrorMessage(store.error, 'Failed to load repositories') }}</p>
       <Button variant="outline" size="sm" class="mt-2" @click="store.refetch()">Retry</Button>
     </Alert>
 
@@ -227,7 +228,7 @@ async function handleDelete(repo: Repo) {
       <DialogPortal>
         <DialogOverlay class="overlay z-20" />
         <DialogContent
-          class="fixed left-1/2 top-1/2 z-30 max-h-[85vh] w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-line bg-bg-panel-raised p-5 shadow-token-lg focus:outline-none"
+          class="fixed left-1/2 top-1/2 z-30 max-h-[85svh] w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-line bg-bg-panel-raised p-5 shadow-token-lg focus:outline-none"
         >
           <DialogTitle class="text-md font-semibold">
             {{ editingRepo ? 'Reassign repository' : 'Add repository' }}

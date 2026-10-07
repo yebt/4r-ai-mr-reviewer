@@ -11,6 +11,7 @@ import { Alert, Badge, Button, Checkbox, Field, Icon, Input, Select } from '@sha
 import type { SelectItemOption } from '@shared/ui/design-system'
 import { useProfilesStore } from '../store'
 import type { Profile } from '../types'
+import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
 
 const props = defineProps<{
   profile?: Profile | null
@@ -91,7 +92,7 @@ async function handleSubmit() {
         })
     emit('saved', result)
   } catch (err) {
-    formError.value = err instanceof Error ? err.message : 'Failed to save profile'
+    formError.value = resolveErrorMessage(err, 'Failed to save profile')
   } finally {
     saving.value = false
   }
@@ -165,7 +166,7 @@ async function handleSubmit() {
 
     <Alert v-if="formError" status="danger">{{ formError }}</Alert>
 
-    <div class="flex justify-end gap-2 border-t border-line-subtle pt-4">
+    <div class="dialog-footer">
       <Button type="button" variant="ghost" @click="emit('cancel')">Cancel</Button>
       <Button type="submit" :loading="saving">{{ isEditing ? 'Save changes' : 'Add profile' }}</Button>
     </div>

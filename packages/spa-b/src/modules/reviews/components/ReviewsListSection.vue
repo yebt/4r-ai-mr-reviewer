@@ -92,6 +92,8 @@ import {
   filterReviews,
   repoFilterOptions,
 } from '../filters'
+import { focusFirstAvailable, neighborId } from '@shared/composables/focusAfterRemoval'
+import { useAutoPageWhileEmpty } from '@shared/composables/useAutoPageWhileEmpty'
 import { RECOMMENDATION_LABELS } from '../labels'
 import { useReviewsStore } from '../store'
 import ReviewStatusChip from './ReviewStatusChip.vue'
@@ -111,6 +113,24 @@ const repoOptions = computed(() => repoFilterOptions(store.reviews))
 const filteredReviews = computed(() =>
   filterReviews(store.reviews, { repoId: repoFilter.value, status: statusFilter.value }),
 )
+
+const filtersActive = computed(() => repoFilter.value !== ALL_REPOS_VALUE || statusFilter.value !== ALL_STATUSES_VALUE)
+
+function clearFilters() {
+  repoFilter.value = ALL_REPOS_VALUE
+  statusFilter.value = ALL_STATUSES_VALUE
+}
+
+// Filters run client-side over the loaded pages, and the sentinel below only
+// renders when rows match — so keep paging while a filter matches nothing but
+// older pages remain, instead of claiming "no match" too early.
+const { searching } = useAutoPageWhileEmpty({
+  filtersActive,
+  matchCount: computed(() => filteredReviews.value.length),
+  hasMore: computed(() => store.hasMore),
+  blocked: computed(() => store.isLoading || store.isLoadingMore || !!store.error),
+  loadMore: () => store.loadMore(),
+})
 
 // Infinite-scroll sentinel — only rendered while the list has rows (see the
 // template's v-else branch), so this never fires against a detached/empty
@@ -151,7 +171,7 @@ const ROW_MENU_TRIGGER_CLASS =
   'inline-flex shrink-0 items-center justify-center whitespace-nowrap font-medium transition-colors ' +
   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring ' +
   'disabled:cursor-not-allowed disabled:opacity-50 bg-transparent text-text hover:bg-bg-hover ' +
-  'h-7 gap-1.5 rounded-md px-2.5 text-xs'
+  'h-10 gap-1.5 rounded-md px-2.5 text-xs sm:h-7'
 
 // Per-row plain trigger buttons, keyed by review id. Used only to return
 // focus to a row's `⋯` button once its Reka menu unmounts — the plain button
@@ -241,8 +261,12 @@ const discardingId = ref<string | null>(null)
 async function handleDiscard(review: ReviewWithRepo) {
   discardingId.value = review.id
   try {
+    const after = neighborId(filteredReviews.value.map((r) => r.id), review.id)
     await store.discard(review.id)
     confirmDiscardId.value = null
+    // The removed row owned focus; hand it to the next row's ⋯ (or the heading).
+    await nextTick()
+    focusFirstAvailable(after ? rowMenuTriggerRefs.get(after) : null, document.getElementById('reviews-heading'))
   } catch {
     // no-op — store already toasted the error
   } finally {
@@ -255,7 +279,7 @@ async function handleDiscard(review: ReviewWithRepo) {
   <section class="flex flex-col gap-4">
     <div class="flex items-center justify-between gap-3">
       <div class="flex min-w-0 flex-col gap-1">
-        <Text as="h2" size="xl" class="font-semibold tracking-tight">Reviews</Text>
+        <Text as="h2" id="reviews-heading" tabindex="-1" size="xl" class="font-semibold tracking-tight focus:outline-none">Reviews</Text>
         <Text muted size="sm" class="truncate">AI code reviews run across every connected repository.</Text>
       </div>
     </div>
@@ -306,11 +330,18 @@ async function handleDiscard(review: ReviewWithRepo) {
       class="flex flex-col items-center gap-2 rounded-lg border border-dashed border-line p-8 text-center"
     >
       <Icon name="list" size="lg" class="text-text-muted" />
-      <Text v-if="store.reviews.length === 0" muted>No reviews yet.</Text>
-      <Text v-else muted>No reviews match the selected filters.</Text>
-      <Text v-if="store.reviews.length === 0" muted size="sm">
-        Reviews launched against a connected repository will show up here.
-      </Text>
+      <template v-if="searching">
+        <Spinner size="sm" />
+        <Text muted data-testid="reviews-searching">Looking through older reviews…</Text>
+      </template>
+      <template v-else-if="store.reviews.length === 0">
+        <Text muted>No reviews yet.</Text>
+        <Text muted size="sm">Reviews launched against a connected repository will show up here.</Text>
+      </template>
+      <template v-else>
+        <Text muted>No reviews match the selected filters.</Text>
+        <Button variant="outline" size="sm" @click="clearFilters">Clear filters</Button>
+      </template>
     </div>
 
     <template v-else>
@@ -434,6 +465,7 @@ async function handleDiscard(review: ReviewWithRepo) {
       confirm-label="Discard"
       danger
       :pending="!!confirmDiscardReview && discardingId === confirmDiscardReview.id"
+      :restore-focus="() => (confirmDiscardId ? rowMenuTriggerRefs.get(confirmDiscardId) : null)"
       @confirm="confirmDiscardReview && handleDiscard(confirmDiscardReview)"
     >
       <template #trigger>

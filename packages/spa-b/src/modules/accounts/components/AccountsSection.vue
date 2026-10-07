@@ -33,6 +33,7 @@ import { Alert, Button, ConfirmDialog, Fab, Icon, Skeleton, Text } from '@shared
 import AccountForm from './AccountForm.vue'
 import { useAccountsStore } from '../store'
 import type { Account } from '../types'
+import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
 
 const store = useAccountsStore()
 
@@ -106,7 +107,7 @@ async function handleDelete(account: Account) {
     </div>
 
     <Alert v-else-if="store.accountsState.status === 'error'" status="danger">
-      <p>{{ store.error?.message ?? 'Failed to load accounts' }}</p>
+      <p>{{ resolveErrorMessage(store.error, 'Failed to load accounts') }}</p>
       <Button variant="outline" size="sm" class="mt-2" @click="store.refetch()">Retry</Button>
     </Alert>
 
@@ -178,7 +179,7 @@ async function handleDelete(account: Account) {
       <DialogPortal>
         <DialogOverlay class="overlay z-20" />
         <DialogContent
-          class="fixed left-1/2 top-1/2 z-30 max-h-[85vh] w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-line bg-bg-panel-raised p-5 shadow-token-lg focus:outline-none"
+          class="fixed left-1/2 top-1/2 z-30 max-h-[85svh] w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-line bg-bg-panel-raised p-5 shadow-token-lg focus:outline-none"
         >
           <DialogTitle class="text-md font-semibold">
             {{ editingAccount ? 'Edit account' : 'Add account' }}

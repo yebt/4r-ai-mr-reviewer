@@ -41,17 +41,17 @@ describe('ConfirmDialog', () => {
     expect(wrapper.emitted('confirm')).toHaveLength(1)
   })
 
-  it('disables and shows a spinner on the confirm button while pending', async () => {
+  it('shows a spinner and blocks confirm on the confirm button while pending', async () => {
     const wrapper = mountDialog({ pending: true })
     await openDialog(wrapper)
 
     const buttons = wrapper.findAll('button')
     const confirmButton = buttons[buttons.length - 1]!
 
-    expect(confirmButton.attributes('disabled')).toBeDefined()
+    expect(confirmButton.attributes('aria-disabled')).toBe('true')
     expect(confirmButton.find('svg[role="status"]').exists()).toBe(true)
 
-    // A disabled native button never dispatches a click event.
+    // A loading Button swallows the click instead of emitting it.
     await confirmButton.trigger('click')
     expect(wrapper.emitted('confirm')).toBeUndefined()
   })

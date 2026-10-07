@@ -91,7 +91,7 @@ function displayValue(value: unknown): string {
 <template>
   <ComboboxRoot v-model="modelValue" :disabled="disabled" ignore-filter class="relative">
     <ComboboxAnchor
-      class="flex h-8 w-full items-center gap-1.5 rounded-md border border-line bg-bg-panel px-2.5 transition-colors focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus-ring has-[[aria-invalid=true]]:border-danger-solid"
+      class="flex h-8 w-full items-center gap-1.5 rounded-md border border-line-control bg-bg-panel px-2.5 transition-colors focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus-ring has-[[aria-invalid=true]]:border-danger-solid"
     >
       <ComboboxInput
         :id="id"
@@ -102,7 +102,7 @@ function displayValue(value: unknown): string {
         :aria-label="ariaLabel"
         :aria-invalid="ariaInvalid"
         :aria-describedby="ariaDescribedby"
-        class="h-full min-w-0 flex-1 border-none bg-transparent text-sm text-text outline-none placeholder:text-text-placeholder disabled:cursor-not-allowed"
+        class="h-full min-w-0 flex-1 border-none bg-transparent text-[1rem] text-text outline-none md:text-sm placeholder:text-text-placeholder disabled:cursor-not-allowed"
       />
       <ComboboxTrigger class="shrink-0" :aria-label="ariaLabel ? `${ariaLabel} options` : 'Show options'">
         <Icon name="chevron-down" size="sm" class="text-text-muted" />

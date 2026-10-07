@@ -31,6 +31,7 @@
  * types — see that module's own `index.ts`).
  */
 import { computed, ref } from 'vue'
+import { restoreFocusOnClose } from '@shared/composables/focusAfterRemoval'
 import { useRoute, useRouter } from 'vue-router'
 import {
   DialogContent,
@@ -49,8 +50,9 @@ import {
   TabsRoot,
   TabsTrigger,
 } from 'reka-ui'
-import { Button, Heading, Icon, Select, Skeleton, Text } from '@shared/ui/design-system'
+import { Alert, Button, Heading, Icon, Select, Skeleton, Text } from '@shared/ui/design-system'
 import type { SelectItemOption } from '@shared/ui/design-system'
+import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
 import PreflightDialog from '@modules/repos/components/PreflightDialog.vue'
 import RepoForm from '@modules/repos/components/RepoForm.vue'
 import WebhookDialog from '@modules/repos/components/WebhookDialog.vue'
@@ -93,6 +95,10 @@ const newMergeRequestDialogOpen = ref(false)
 
 // Repository settings — see the top-of-file note. All three reuse
 // `modules/repos`' existing form/dialog pieces for the current `repo`.
+// The three dialogs open from menu items that unmount with the menu, so Reka's
+// default focus return lands on <body>; send focus back to the gear instead.
+const settingsButton = ref<{ $el: HTMLElement } | null>(null)
+const restoreSettingsFocus = () => settingsButton.value?.$el
 const providerFormDialogOpen = ref(false)
 const webhookDialogOpen = ref(false)
 const preflightDialogOpen = ref(false)
@@ -121,6 +127,12 @@ const tab = computed<FlowTab>({
       <Skeleton class="h-7 w-64" />
       <Skeleton class="h-4 w-96" />
     </div>
+
+    <!-- Repos failed to load: that is not "not tracked". -->
+    <Alert v-else-if="!repo && reposStore.reposState.status === 'error'" status="danger">
+      <p>{{ resolveErrorMessage(reposStore.error, 'Failed to load repositories') }}</p>
+      <Button variant="outline" size="sm" class="mt-2" @click="reposStore.refetch()">Retry</Button>
+    </Alert>
 
     <div
       v-else-if="!repo"
@@ -163,7 +175,7 @@ const tab = computed<FlowTab>({
 
           <DropdownMenuRoot>
             <DropdownMenuTrigger as-child>
-              <Button variant="outline" size="sm" aria-label="Repository settings">
+              <Button ref="settingsButton" variant="outline" size="sm" aria-label="Repository settings">
                 <Icon name="settings" size="sm" />
               </Button>
             </DropdownMenuTrigger>
@@ -237,7 +249,8 @@ const tab = computed<FlowTab>({
         <DialogPortal>
           <DialogOverlay class="overlay z-20" />
           <DialogContent
-            class="fixed left-1/2 top-1/2 z-30 max-h-[85vh] w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-line bg-bg-panel-raised p-5 shadow-token-lg focus:outline-none"
+            @close-auto-focus="(event: Event) => restoreFocusOnClose(event, restoreSettingsFocus)"
+            class="fixed left-1/2 top-1/2 z-30 max-h-[85svh] w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-line bg-bg-panel-raised p-5 shadow-token-lg focus:outline-none"
           >
             <DialogTitle class="text-md font-semibold">Reassign repository</DialogTitle>
             <DialogDescription class="mt-1 text-sm text-text-muted">
@@ -254,10 +267,15 @@ const tab = computed<FlowTab>({
         </DialogPortal>
       </DialogRoot>
 
-      <WebhookDialog :open="webhookDialogOpen" :repo="repo" @update:open="(value) => (webhookDialogOpen = value)" />
+      <WebhookDialog
+        :open="webhookDialogOpen"
+        :repo="repo"
+        :restore-focus="restoreSettingsFocus"
+        @update:open="(value) => (webhookDialogOpen = value)" />
       <PreflightDialog
         :open="preflightDialogOpen"
         :repo="repo"
+        :restore-focus="restoreSettingsFocus"
         @update:open="(value) => (preflightDialogOpen = value)"
       />
     </template>

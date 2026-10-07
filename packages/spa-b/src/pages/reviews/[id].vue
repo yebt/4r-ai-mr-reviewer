@@ -61,11 +61,14 @@ import { hasUnpublished } from '@modules/reviews/publish'
 import { useReviewsStore } from '@modules/reviews/store'
 import { useReviewHumanize } from '@modules/reviews/useReviewHumanize'
 import type { Finding } from '@modules/reviews/types'
+import { emptyFindingsMessage } from '@modules/reviews/findingsState'
 import ReviewStatusChip from '@modules/reviews/components/ReviewStatusChip.vue'
 import FindingCard from '@modules/reviews/components/FindingCard.vue'
 import HumanizeTabs from '@modules/reviews/components/HumanizeTabs.vue'
 import HumanizeAllDialog from '@modules/reviews/components/HumanizeAllDialog.vue'
 import ScoreMeter from '@modules/reviews/components/ScoreMeter.vue'
+import { isNotFound } from '@shared/api/isNotFound'
+import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
 
 const route = useRoute('/reviews/[id]')
 const router = useRouter()
@@ -257,8 +260,18 @@ function handlePublishAll() {
       <Skeleton class="h-32 w-full" />
     </div>
 
+    <Alert v-else-if="state.status === 'error' && isNotFound(error)" status="info" data-testid="review-not-found">
+      <p>This review no longer exists. It may have been discarded or removed.</p>
+      <RouterLink
+        to="/reviews"
+        class="mt-2 inline-flex items-center text-sm font-medium text-accent-text underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+      >
+        Back to reviews
+      </RouterLink>
+    </Alert>
+
     <Alert v-else-if="state.status === 'error'" status="danger">
-      <p>{{ error?.message ?? 'Failed to load review' }}</p>
+      <p>{{ resolveErrorMessage(error, 'Failed to load review') }}</p>
       <Button variant="outline" size="sm" class="mt-2" @click="refetch()">Retry</Button>
     </Alert>
 
@@ -403,7 +416,18 @@ function handlePublishAll() {
       <div class="flex flex-col gap-4">
         <Text as="h2" size="lg" class="font-semibold">Findings</Text>
 
-        <Text v-if="review.findings.length === 0" muted size="sm">No findings.</Text>
+        <div v-if="review.findings.length === 0" class="flex flex-wrap items-center gap-3" data-testid="review-findings-empty">
+          <Text muted size="sm">{{ emptyFindingsMessage(review.status) }}</Text>
+          <Button
+            v-if="review.status === 'error'"
+            variant="outline"
+            size="sm"
+            :loading="pendingAction === 'retry'"
+            @click="handleRetry"
+          >
+            Retry review
+          </Button>
+        </div>
 
         <template v-else>
           <div v-for="dimension in FINDING_DIMENSIONS" :key="dimension">

@@ -53,6 +53,7 @@ import { useReposStore } from '../store'
 import { searchAccountProjects } from '../api'
 import { projectToDraft } from '../projectSearch'
 import type { AccountProject, Repo } from '../types'
+import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
 
 const NO_PROVIDER_VALUE = '__use_default_provider__'
 const NO_PROFILE_VALUE = '__no_default_profile__'
@@ -151,7 +152,7 @@ async function runProjectSearch() {
   try {
     projects.value = await searchAccountProjects(form.accountId, query)
   } catch (err) {
-    searchError.value = err instanceof Error ? err.message : 'Failed to search projects'
+    searchError.value = resolveErrorMessage(err, 'Failed to search projects')
     projects.value = []
   } finally {
     searching.value = false
@@ -229,7 +230,7 @@ async function handleSubmit() {
         })
     emit('saved', result)
   } catch (err) {
-    formError.value = err instanceof Error ? err.message : 'Failed to save repository'
+    formError.value = resolveErrorMessage(err, 'Failed to save repository')
   } finally {
     saving.value = false
   }
@@ -245,7 +246,7 @@ async function handleSubmit() {
       </RouterLink>
       first.
     </Alert>
-    <div class="flex justify-end gap-2 border-t border-line-subtle pt-4">
+    <div class="dialog-footer">
       <Button type="button" variant="ghost" @click="emit('cancel')">Cancel</Button>
     </div>
   </div>
@@ -307,7 +308,7 @@ async function handleSubmit() {
             :aria-describedby="describedBy"
             :aria-invalid="invalid"
             placeholder="Search projects or paste a URL…"
-            class="h-full min-w-0 flex-1 bg-transparent text-sm text-text outline-none placeholder:text-text-placeholder"
+            class="h-full min-w-0 flex-1 bg-transparent text-[1rem] text-text outline-none placeholder:text-text-placeholder md:text-sm"
             @focus="openResults"
             @blur="closeResults"
             @keydown.esc="closeResults"
@@ -391,7 +392,7 @@ async function handleSubmit() {
 
     <Alert v-if="formError" status="danger">{{ formError }}</Alert>
 
-    <div class="flex justify-end gap-2 border-t border-line-subtle pt-4">
+    <div class="dialog-footer">
       <Button type="button" variant="ghost" @click="emit('cancel')">Cancel</Button>
       <Button type="submit" :loading="saving">{{ isEditing ? 'Save changes' : 'Add repository' }}</Button>
     </div>

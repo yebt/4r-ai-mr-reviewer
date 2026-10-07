@@ -85,6 +85,8 @@ import {
 import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
 import { useScrollContainer } from '@shared/composables/useScrollContainer'
 import { useReposStore } from '@modules/repos/store'
+import { focusFirstAvailable, neighborId } from '@shared/composables/focusAfterRemoval'
+import { useAutoPageWhileEmpty } from '@shared/composables/useAutoPageWhileEmpty'
 import RunStatusChip from './RunStatusChip.vue'
 import { useRunsStore } from '../store'
 import {
@@ -107,6 +109,24 @@ const repoOptions = computed(() => repoFilterOptions(store.runs, reposStore.repo
 const filteredRuns = computed(() =>
   filterRuns(store.runs, { repoId: repoFilter.value, status: statusFilter.value }),
 )
+
+const filtersActive = computed(() => repoFilter.value !== ALL_REPOS_VALUE || statusFilter.value !== ALL_STATUSES_VALUE)
+
+function clearFilters() {
+  repoFilter.value = ALL_REPOS_VALUE
+  statusFilter.value = ALL_STATUSES_VALUE
+}
+
+// Filters run client-side over the loaded pages and the virtualized list only
+// pages in when rows exist — so keep paging while a filter matches nothing but
+// older pages remain, instead of claiming "no match" too early.
+const { searching } = useAutoPageWhileEmpty({
+  filtersActive,
+  matchCount: computed(() => filteredRuns.value.length),
+  hasMore: computed(() => store.hasMore),
+  blocked: computed(() => store.isLoading || store.isLoadingMore || !!store.error),
+  loadMore: () => store.loadMore(),
+})
 
 // The store's polling `watch` only reacts to `hasActiveRun`/document
 // visibility — it has no idea whether this page is still mounted. Without
@@ -161,7 +181,7 @@ const ROW_MENU_TRIGGER_CLASS =
   'inline-flex shrink-0 items-center justify-center whitespace-nowrap font-medium transition-colors ' +
   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring ' +
   'disabled:cursor-not-allowed disabled:opacity-50 bg-transparent text-text hover:bg-bg-hover ' +
-  'h-7 gap-1.5 rounded-md px-2.5 text-xs'
+  'h-10 gap-1.5 rounded-md px-2.5 text-xs sm:h-7'
 
 // Per-row plain trigger buttons, keyed by run id. Used only to return focus
 // to a row's `⋯` button once its Reka menu unmounts — the plain button and
@@ -323,8 +343,12 @@ async function handleCancel(run: RoutineRun) {
 async function handleDelete(run: RoutineRun) {
   deletingId.value = run.id
   try {
+    const after = neighborId(filteredRuns.value.map((r) => r.id), run.id)
     await store.removeRun(run.id)
     confirmDeleteId.value = null
+    // The removed row owned focus; hand it to the next row's ⋯ (or the heading).
+    await nextTick()
+    focusFirstAvailable(after ? rowMenuTriggerRefs.get(after) : null, document.getElementById('runs-heading'))
   } catch {
     // no-op — store already toasted the error
   } finally {
@@ -338,7 +362,7 @@ async function handleDelete(run: RoutineRun) {
     <div class="flex items-center justify-between gap-3">
       <div class="flex min-w-0 flex-col gap-1">
         <div class="flex items-center gap-2">
-          <Text as="h2" size="xl" class="font-semibold tracking-tight">Runs</Text>
+          <Text as="h2" id="runs-heading" tabindex="-1" size="xl" class="font-semibold tracking-tight focus:outline-none">Runs</Text>
           <span
             v-if="store.isPolling"
             class="flex items-center gap-1 text-xs text-text-muted"
@@ -392,8 +416,15 @@ async function handleDelete(run: RoutineRun) {
       class="flex flex-col items-center gap-2 rounded-lg border border-dashed border-line p-8 text-center"
     >
       <Icon name="list" size="lg" class="text-text-muted" />
-      <Text v-if="store.runs.length === 0" muted>{{ store.archived ? 'No archived runs.' : 'No runs yet.' }}</Text>
-      <Text v-else muted>No runs match the selected filters.</Text>
+      <template v-if="searching">
+        <Spinner size="sm" />
+        <Text muted data-testid="runs-searching">Looking through older runs…</Text>
+      </template>
+      <Text v-else-if="store.runs.length === 0" muted>{{ store.archived ? 'No archived runs.' : 'No runs yet.' }}</Text>
+      <template v-else>
+        <Text muted>No runs match the selected filters.</Text>
+        <Button variant="outline" size="sm" @click="clearFilters">Clear filters</Button>
+      </template>
     </div>
 
     <template v-else>
@@ -528,6 +559,7 @@ async function handleDelete(run: RoutineRun) {
       description="Permanently removes this run's history. This cannot be undone."
       confirm-label="Delete"
       :pending="!!confirmDeleteRun && deletingId === confirmDeleteRun.id"
+      :restore-focus="() => (confirmDeleteId ? rowMenuTriggerRefs.get(confirmDeleteId) : null)"
       @confirm="confirmDeleteRun && handleDelete(confirmDeleteRun)"
     >
       <template #trigger>
@@ -540,6 +572,7 @@ async function handleDelete(run: RoutineRun) {
       description="Stops the routine run in progress. This cannot be undone."
       confirm-label="Cancel run"
       :pending="!!confirmCancelRun && cancellingId === confirmCancelRun.id"
+      :restore-focus="() => (confirmCancelId ? rowMenuTriggerRefs.get(confirmCancelId) : null)"
       @confirm="confirmCancelRun && handleCancel(confirmCancelRun)"
     >
       <template #trigger>

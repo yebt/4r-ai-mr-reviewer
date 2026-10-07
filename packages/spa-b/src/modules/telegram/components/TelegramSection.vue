@@ -37,6 +37,7 @@ import { Alert, Badge, Button, ConfirmDialog, Fab, Icon, Skeleton, Text } from '
 import TelegramForm from './TelegramForm.vue'
 import { sortDefaultFirst, useTelegramStore } from '../store'
 import type { TelegramTarget, TestTelegramTargetResult } from '../types'
+import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
 
 const store = useTelegramStore()
 
@@ -119,7 +120,7 @@ async function handleTest(target: TelegramTarget) {
   } catch (err) {
     testResults.value = {
       ...testResults.value,
-      [target.id]: { ok: false, error: err instanceof Error ? err.message : 'Test failed' },
+      [target.id]: { ok: false, error: resolveErrorMessage(err, 'Test failed') },
     }
   } finally {
     testingId.value = null
@@ -161,7 +162,7 @@ async function handleTest(target: TelegramTarget) {
     </div>
 
     <Alert v-else-if="store.targetsState.status === 'error'" status="danger">
-      <p>{{ store.error?.message ?? 'Failed to load Telegram targets' }}</p>
+      <p>{{ resolveErrorMessage(store.error, 'Failed to load Telegram targets') }}</p>
       <Button variant="outline" size="sm" class="mt-2" @click="store.refetch()">Retry</Button>
     </Alert>
 
@@ -261,7 +262,7 @@ async function handleTest(target: TelegramTarget) {
       <DialogPortal>
         <DialogOverlay class="overlay z-20" />
         <DialogContent
-          class="fixed left-1/2 top-1/2 z-30 max-h-[85vh] w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-line bg-bg-panel-raised p-5 shadow-token-lg focus:outline-none"
+          class="fixed left-1/2 top-1/2 z-30 max-h-[85svh] w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-line bg-bg-panel-raised p-5 shadow-token-lg focus:outline-none"
         >
           <DialogTitle class="text-md font-semibold">
             {{ editingTarget ? 'Edit Telegram target' : 'Add Telegram target' }}

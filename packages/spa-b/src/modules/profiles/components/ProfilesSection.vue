@@ -32,6 +32,7 @@ import { Alert, Badge, Button, ConfirmDialog, Fab, Icon, Skeleton, Text } from '
 import ProfileForm from './ProfileForm.vue'
 import { useProfilesStore } from '../store'
 import type { Profile, StyleGuideStatus } from '../types'
+import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
 
 // `Badge`'s status prop type isn't re-exported from the design-system
 // barrel, so this mirrors its literal union locally rather than editing it.
@@ -137,7 +138,7 @@ async function handleRedistill(profile: Profile) {
     </div>
 
     <Alert v-else-if="store.profilesState.status === 'error'" status="danger">
-      <p>{{ store.error?.message ?? 'Failed to load profiles' }}</p>
+      <p>{{ resolveErrorMessage(store.error, 'Failed to load profiles') }}</p>
       <Button variant="outline" size="sm" class="mt-2" @click="store.refetch()">Retry</Button>
     </Alert>
 
@@ -226,7 +227,7 @@ async function handleRedistill(profile: Profile) {
       <DialogPortal>
         <DialogOverlay class="overlay z-20" />
         <DialogContent
-          class="fixed left-1/2 top-1/2 z-30 max-h-[85vh] w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-line bg-bg-panel-raised p-5 shadow-token-lg focus:outline-none"
+          class="fixed left-1/2 top-1/2 z-30 max-h-[85svh] w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-line bg-bg-panel-raised p-5 shadow-token-lg focus:outline-none"
         >
           <DialogTitle class="text-md font-semibold">
             {{ editingProfile ? 'Edit profile' : 'Add profile' }}

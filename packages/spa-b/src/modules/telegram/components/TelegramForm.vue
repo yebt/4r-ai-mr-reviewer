@@ -10,6 +10,7 @@ import { nextTick, reactive, ref, computed } from 'vue'
 import { Alert, Button, Checkbox, Field, Input } from '@shared/ui/design-system'
 import { useTelegramStore } from '../store'
 import type { TelegramTarget } from '../types'
+import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
 
 const props = defineProps<{
   target?: TelegramTarget | null
@@ -72,7 +73,7 @@ async function handleSubmit() {
         })
     emit('saved', result)
   } catch (err) {
-    formError.value = err instanceof Error ? err.message : 'Failed to save Telegram target'
+    formError.value = resolveErrorMessage(err, 'Failed to save Telegram target')
   } finally {
     saving.value = false
   }
@@ -125,7 +126,7 @@ async function handleSubmit() {
 
     <Alert v-if="formError" status="danger">{{ formError }}</Alert>
 
-    <div class="flex justify-end gap-2 border-t border-line-subtle pt-4">
+    <div class="dialog-footer">
       <Button type="button" variant="ghost" @click="emit('cancel')">Cancel</Button>
       <Button type="submit" :loading="saving">{{ isEditing ? 'Save changes' : 'Add target' }}</Button>
     </div>

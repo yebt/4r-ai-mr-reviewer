@@ -32,7 +32,8 @@
   --gray-7: hsl(224 12% 83%);
   --gray-8: hsl(222 11% 74%);
   --gray-9: hsl(220 9% 55%);
-  --gray-10: hsl(220 9% 49%);
+  /* gray-10 darkened from 49% -> 45% so --text-placeholder (4.5:1 text) clears AA on panels. */
+  --gray-10: hsl(220 9% 45%);
   --gray-11: hsl(222 10% 39%);
   --gray-12: hsl(224 22% 13%);
 
@@ -148,10 +149,14 @@
   --line-subtle: var(--gray-6);
   --line: var(--gray-7);
   --line-strong: var(--gray-8);
+  /* Borders/tracks of interactive controls (inputs, selects, checkbox, switch
+     track). WCAG 1.4.11 needs 3:1 against the surface they sit on; --line
+     (gray-7) is only ~1.4:1 and stays for decorative dividers/cards. */
+  --line-control: var(--gray-9);
 
   --text: var(--gray-12);
   --text-muted: var(--gray-11);
-  --text-placeholder: var(--gray-9);
+  --text-placeholder: var(--gray-10);
   --text-on-accent: var(--accent-contrast);
 
   --accent: var(--accent-9);
@@ -160,6 +165,9 @@
   --accent-text-strong: var(--accent-12);
   --accent-subtle-bg: var(--accent-3);
   --focus-ring: var(--accent-8);
+  /* Switch "on" track: needs 3:1 against the page, which accent-9 only
+     reaches in light; dark uses accent-10 (see :root.dark below). */
+  --control-on: var(--accent-9);
   /* Backdrop behind dialogs/drawers: darkened + blurred, theme-independent
      (true black, not the gray scale — gray-12 flips light/dark, which would
      brighten rather than darken the page behind a dark-theme dialog). */
@@ -194,6 +202,9 @@
 }
 
 :root.dark {
+  /* accent-8 only reaches 2.55-2.69:1 on dark surfaces; accent-10 clears 3:1. */
+  --focus-ring: var(--accent-10);
+  --control-on: var(--accent-10);
   --bg-panel-raised: var(--gray-2);
   --shadow-sm: 0 1px 2px hsl(220 40% 0% / 0.3);
   --shadow-md: 0 2px 8px hsl(220 40% 0% / 0.36), 0 1px 2px hsl(220 40% 0% / 0.24);
@@ -263,6 +274,7 @@
   --color-line-subtle: var(--line-subtle);
   --color-line: var(--line);
   --color-line-strong: var(--line-strong);
+  --color-line-control: var(--line-control);
   --color-text: var(--text);
   --color-text-muted: var(--text-muted);
   --color-text-placeholder: var(--text-placeholder);
@@ -273,6 +285,7 @@
   --color-accent-text-strong: var(--accent-text-strong);
   --color-accent-subtle-bg: var(--accent-subtle-bg);
   --color-focus-ring: var(--focus-ring);
+  --color-control-on: var(--control-on);
   --color-overlay: var(--overlay);
 
   --radius-sm: var(--radius-sm);

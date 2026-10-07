@@ -69,13 +69,13 @@ async function onSubmit(): Promise<void> {
             type="password"
             autocomplete="current-password"
             autofocus
-            :disabled="submitting"
+            :readonly="submitting"
             :aria-describedby="describedBy"
             :aria-invalid="invalid"
           />
         </Field>
 
-        <Button type="submit" variant="accent" :loading="submitting" :disabled="submitting" class="w-full">
+        <Button type="submit" variant="accent" :loading="submitting" class="w-full">
           Sign in
         </Button>
       </form>
