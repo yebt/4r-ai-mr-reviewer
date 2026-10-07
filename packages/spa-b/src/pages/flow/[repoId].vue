@@ -49,8 +49,9 @@ import {
   TabsRoot,
   TabsTrigger,
 } from 'reka-ui'
-import { Button, Heading, Icon, Select, Skeleton, Text } from '@shared/ui/design-system'
+import { Alert, Button, Heading, Icon, Select, Skeleton, Text } from '@shared/ui/design-system'
 import type { SelectItemOption } from '@shared/ui/design-system'
+import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
 import PreflightDialog from '@modules/repos/components/PreflightDialog.vue'
 import RepoForm from '@modules/repos/components/RepoForm.vue'
 import WebhookDialog from '@modules/repos/components/WebhookDialog.vue'
@@ -121,6 +122,12 @@ const tab = computed<FlowTab>({
       <Skeleton class="h-7 w-64" />
       <Skeleton class="h-4 w-96" />
     </div>
+
+    <!-- Repos failed to load: that is not "not tracked". -->
+    <Alert v-else-if="!repo && reposStore.reposState.status === 'error'" status="danger">
+      <p>{{ resolveErrorMessage(reposStore.error, 'Failed to load repositories') }}</p>
+      <Button variant="outline" size="sm" class="mt-2" @click="reposStore.refetch()">Retry</Button>
+    </Alert>
 
     <div
       v-else-if="!repo"

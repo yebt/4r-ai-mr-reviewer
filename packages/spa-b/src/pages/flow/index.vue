@@ -14,7 +14,8 @@
  */
 import { computed, ref } from 'vue'
 import { useFilter } from 'reka-ui'
-import { Badge, Heading, Icon, Skeleton, Text } from '@shared/ui/design-system'
+import { Alert, Badge, Button, Heading, Icon, Skeleton, Text } from '@shared/ui/design-system'
+import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
 import { useReposStore } from '@modules/repos/store'
 import { useReviewsStore } from '@modules/reviews/store'
 import { useRunsStore } from '@modules/runs/store'
@@ -59,6 +60,14 @@ const filteredRepos = computed(() => {
         <Skeleton class="h-4 w-48" />
       </div>
     </div>
+
+    <!-- A failed load is not an empty list: say why and offer Retry, never
+         "No repositories tracked yet". Stale rows from an earlier success
+         still win over a failed background refetch. -->
+    <Alert v-else-if="reposStore.reposState.status === 'error' && reposStore.repos.length === 0" status="danger">
+      <p>{{ resolveErrorMessage(reposStore.error, 'Failed to load repositories') }}</p>
+      <Button variant="outline" size="sm" class="mt-2" @click="reposStore.refetch()">Retry</Button>
+    </Alert>
 
     <div
       v-else-if="reposStore.repos.length === 0"

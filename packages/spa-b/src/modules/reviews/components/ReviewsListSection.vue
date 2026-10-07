@@ -93,6 +93,7 @@ import {
   repoFilterOptions,
 } from '../filters'
 import { focusFirstAvailable, neighborId } from '@shared/composables/focusAfterRemoval'
+import { useAutoPageWhileEmpty } from '@shared/composables/useAutoPageWhileEmpty'
 import { RECOMMENDATION_LABELS } from '../labels'
 import { useReviewsStore } from '../store'
 import ReviewStatusChip from './ReviewStatusChip.vue'
@@ -112,6 +113,24 @@ const repoOptions = computed(() => repoFilterOptions(store.reviews))
 const filteredReviews = computed(() =>
   filterReviews(store.reviews, { repoId: repoFilter.value, status: statusFilter.value }),
 )
+
+const filtersActive = computed(() => repoFilter.value !== ALL_REPOS_VALUE || statusFilter.value !== ALL_STATUSES_VALUE)
+
+function clearFilters() {
+  repoFilter.value = ALL_REPOS_VALUE
+  statusFilter.value = ALL_STATUSES_VALUE
+}
+
+// Filters run client-side over the loaded pages, and the sentinel below only
+// renders when rows match — so keep paging while a filter matches nothing but
+// older pages remain, instead of claiming "no match" too early.
+const { searching } = useAutoPageWhileEmpty({
+  filtersActive,
+  matchCount: computed(() => filteredReviews.value.length),
+  hasMore: computed(() => store.hasMore),
+  blocked: computed(() => store.isLoading || store.isLoadingMore || !!store.error),
+  loadMore: () => store.loadMore(),
+})
 
 // Infinite-scroll sentinel — only rendered while the list has rows (see the
 // template's v-else branch), so this never fires against a detached/empty
@@ -311,11 +330,18 @@ async function handleDiscard(review: ReviewWithRepo) {
       class="flex flex-col items-center gap-2 rounded-lg border border-dashed border-line p-8 text-center"
     >
       <Icon name="list" size="lg" class="text-text-muted" />
-      <Text v-if="store.reviews.length === 0" muted>No reviews yet.</Text>
-      <Text v-else muted>No reviews match the selected filters.</Text>
-      <Text v-if="store.reviews.length === 0" muted size="sm">
-        Reviews launched against a connected repository will show up here.
-      </Text>
+      <template v-if="searching">
+        <Spinner size="sm" />
+        <Text muted data-testid="reviews-searching">Looking through older reviews…</Text>
+      </template>
+      <template v-else-if="store.reviews.length === 0">
+        <Text muted>No reviews yet.</Text>
+        <Text muted size="sm">Reviews launched against a connected repository will show up here.</Text>
+      </template>
+      <template v-else>
+        <Text muted>No reviews match the selected filters.</Text>
+        <Button variant="outline" size="sm" @click="clearFilters">Clear filters</Button>
+      </template>
     </div>
 
     <template v-else>

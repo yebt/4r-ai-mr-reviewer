@@ -86,6 +86,7 @@ import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
 import { useScrollContainer } from '@shared/composables/useScrollContainer'
 import { useReposStore } from '@modules/repos/store'
 import { focusFirstAvailable, neighborId } from '@shared/composables/focusAfterRemoval'
+import { useAutoPageWhileEmpty } from '@shared/composables/useAutoPageWhileEmpty'
 import RunStatusChip from './RunStatusChip.vue'
 import { useRunsStore } from '../store'
 import {
@@ -108,6 +109,24 @@ const repoOptions = computed(() => repoFilterOptions(store.runs, reposStore.repo
 const filteredRuns = computed(() =>
   filterRuns(store.runs, { repoId: repoFilter.value, status: statusFilter.value }),
 )
+
+const filtersActive = computed(() => repoFilter.value !== ALL_REPOS_VALUE || statusFilter.value !== ALL_STATUSES_VALUE)
+
+function clearFilters() {
+  repoFilter.value = ALL_REPOS_VALUE
+  statusFilter.value = ALL_STATUSES_VALUE
+}
+
+// Filters run client-side over the loaded pages and the virtualized list only
+// pages in when rows exist — so keep paging while a filter matches nothing but
+// older pages remain, instead of claiming "no match" too early.
+const { searching } = useAutoPageWhileEmpty({
+  filtersActive,
+  matchCount: computed(() => filteredRuns.value.length),
+  hasMore: computed(() => store.hasMore),
+  blocked: computed(() => store.isLoading || store.isLoadingMore || !!store.error),
+  loadMore: () => store.loadMore(),
+})
 
 // The store's polling `watch` only reacts to `hasActiveRun`/document
 // visibility — it has no idea whether this page is still mounted. Without
@@ -397,8 +416,15 @@ async function handleDelete(run: RoutineRun) {
       class="flex flex-col items-center gap-2 rounded-lg border border-dashed border-line p-8 text-center"
     >
       <Icon name="list" size="lg" class="text-text-muted" />
-      <Text v-if="store.runs.length === 0" muted>{{ store.archived ? 'No archived runs.' : 'No runs yet.' }}</Text>
-      <Text v-else muted>No runs match the selected filters.</Text>
+      <template v-if="searching">
+        <Spinner size="sm" />
+        <Text muted data-testid="runs-searching">Looking through older runs…</Text>
+      </template>
+      <Text v-else-if="store.runs.length === 0" muted>{{ store.archived ? 'No archived runs.' : 'No runs yet.' }}</Text>
+      <template v-else>
+        <Text muted>No runs match the selected filters.</Text>
+        <Button variant="outline" size="sm" @click="clearFilters">Clear filters</Button>
+      </template>
     </div>
 
     <template v-else>

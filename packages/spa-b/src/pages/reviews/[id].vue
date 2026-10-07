@@ -61,6 +61,7 @@ import { hasUnpublished } from '@modules/reviews/publish'
 import { useReviewsStore } from '@modules/reviews/store'
 import { useReviewHumanize } from '@modules/reviews/useReviewHumanize'
 import type { Finding } from '@modules/reviews/types'
+import { emptyFindingsMessage } from '@modules/reviews/findingsState'
 import ReviewStatusChip from '@modules/reviews/components/ReviewStatusChip.vue'
 import FindingCard from '@modules/reviews/components/FindingCard.vue'
 import HumanizeTabs from '@modules/reviews/components/HumanizeTabs.vue'
@@ -403,7 +404,18 @@ function handlePublishAll() {
       <div class="flex flex-col gap-4">
         <Text as="h2" size="lg" class="font-semibold">Findings</Text>
 
-        <Text v-if="review.findings.length === 0" muted size="sm">No findings.</Text>
+        <div v-if="review.findings.length === 0" class="flex flex-wrap items-center gap-3" data-testid="review-findings-empty">
+          <Text muted size="sm">{{ emptyFindingsMessage(review.status) }}</Text>
+          <Button
+            v-if="review.status === 'error'"
+            variant="outline"
+            size="sm"
+            :loading="pendingAction === 'retry'"
+            @click="handleRetry"
+          >
+            Retry review
+          </Button>
+        </div>
 
         <template v-else>
           <div v-for="dimension in FINDING_DIMENSIONS" :key="dimension">

@@ -37,13 +37,16 @@ const recent = computed(() => recentRuns(runsStore.runs, 6))
 interface StatTile {
   key: string
   label: string
-  value: number
+  /** `null` = could not be loaded; rendered as a dash, never as a misleading 0. */
+  value: number | null
   icon: string
   emphasize: boolean
 }
 
+const reposFailed = computed(() => reposStore.reposState.status === 'error' && reposStore.repos.length === 0)
+
 const statTiles = computed<StatTile[]>(() => [
-  { key: 'repos', label: 'Repositories', value: reposStore.repos.length, icon: 'git-branch', emphasize: false },
+  { key: 'repos', label: 'Repositories', value: reposFailed.value ? null : reposStore.repos.length, icon: 'git-branch', emphasize: false },
   { key: 'active', label: 'Active runs', value: stats.value.active, icon: 'activity', emphasize: false },
   {
     key: 'attention',
@@ -117,8 +120,12 @@ const quickNavItems: QuickNavItem[] = [
             <Text muted size="sm">{{ tile.label }}</Text>
           </div>
           <Text as="span" size="2xl" class="font-semibold tracking-tight" :class="tile.emphasize ? 'text-warning-text' : 'text-text'">
-            {{ tile.value }}
+            {{ tile.value ?? '—' }}
           </Text>
+          <div v-if="tile.value === null" class="flex items-center gap-2">
+            <Text muted size="xs">Couldn't load</Text>
+            <Button variant="ghost" size="sm" @click="reposStore.refetch()">Retry</Button>
+          </div>
         </div>
       </div>
 
