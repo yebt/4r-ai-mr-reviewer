@@ -18,10 +18,13 @@ import { Alert, Button, ConfirmDialog, Icon, Switch, Text } from '@shared/ui/des
 import { useReposStore } from '../store'
 import type { Repo } from '../types'
 import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
+import { restoreFocusOnClose } from '@shared/composables/focusAfterRemoval'
 
 const props = defineProps<{
   open: boolean
   repo: Repo | null
+  /** Where focus goes on close (the menu item that opened this unmounts). */
+  restoreFocus?: () => HTMLElement | null | undefined
 }>()
 
 const emit = defineEmits<{
@@ -122,6 +125,7 @@ async function handleRotate() {
     <DialogPortal>
       <DialogOverlay class="overlay z-20" />
       <DialogContent
+        @close-auto-focus="(event: Event) => restoreFocusOnClose(event, props.restoreFocus)"
         class="fixed left-1/2 top-1/2 z-30 max-h-[85vh] w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-line bg-bg-panel-raised p-5 shadow-token-lg focus:outline-none"
       >
         <DialogTitle class="text-md font-semibold">Webhook</DialogTitle>

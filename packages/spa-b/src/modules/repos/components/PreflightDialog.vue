@@ -15,9 +15,10 @@
  * counts live in `../preflight.ts` so they stay unit-testable.
  */
 import { computed, ref, watch } from 'vue'
-import { DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui'
+import { DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui'
 import { Alert, Badge, Button, Icon, Spinner, Text } from '@shared/ui/design-system'
 import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
+import { restoreFocusOnClose } from '@shared/composables/focusAfterRemoval'
 import { preflightRepo } from '../api'
 import { checkStatusUi, summarizePreflightChecks } from '../preflight'
 import type { Preflight, Repo } from '../types'
@@ -25,11 +26,22 @@ import type { Preflight, Repo } from '../types'
 const props = defineProps<{
   open: boolean
   repo: Repo | null
+  /** Where focus goes on close (the menu item that opened this unmounts). */
+  restoreFocus?: () => HTMLElement | null | undefined
 }>()
 
 const emit = defineEmits<{
   'update:open': [value: boolean]
 }>()
+
+// Initial focus goes to Close: the dialog opens while the check is still
+// loading, so no other control exists yet and Reka would otherwise park focus
+// on the (non-interactive) dialog container.
+const closeButton = ref<{ $el: HTMLElement } | null>(null)
+function focusClose(event: Event) {
+  event.preventDefault()
+  closeButton.value?.$el.focus({ preventScroll: true })
+}
 
 const preflight = ref<Preflight | null>(null)
 const loading = ref(false)
@@ -74,6 +86,8 @@ watch(
     <DialogPortal>
       <DialogOverlay class="overlay z-20" />
       <DialogContent
+        @open-auto-focus="focusClose"
+        @close-auto-focus="(event: Event) => restoreFocusOnClose(event, props.restoreFocus)"
         class="fixed left-1/2 top-1/2 z-30 max-h-[85vh] w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-line bg-bg-panel-raised p-5 shadow-token-lg focus:outline-none"
       >
         <DialogTitle class="text-md font-semibold">Check permissions</DialogTitle>
@@ -133,6 +147,12 @@ watch(
 
             <Button variant="outline" size="sm" class="self-start" @click="runPreflight">Retry</Button>
           </template>
+        </div>
+
+        <div class="mt-5 flex justify-end">
+          <DialogClose as-child>
+            <Button ref="closeButton" variant="outline" size="sm">Close</Button>
+          </DialogClose>
         </div>
       </DialogContent>
     </DialogPortal>

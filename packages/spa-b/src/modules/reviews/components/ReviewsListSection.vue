@@ -465,6 +465,7 @@ async function handleDiscard(review: ReviewWithRepo) {
       confirm-label="Discard"
       danger
       :pending="!!confirmDiscardReview && discardingId === confirmDiscardReview.id"
+      :restore-focus="() => (confirmDiscardId ? rowMenuTriggerRefs.get(confirmDiscardId) : null)"
       @confirm="confirmDiscardReview && handleDiscard(confirmDiscardReview)"
     >
       <template #trigger>

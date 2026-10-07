@@ -29,3 +29,17 @@ export function focusFirstAvailable(
   const el = target?.isConnected ? target : fallback
   el?.focus({ preventScroll: true })
 }
+
+/**
+ * Handler body for Reka's `@close-auto-focus` on a dialog opened from a menu
+ * item or a hidden programmatic trigger. Those triggers unmount (or are not
+ * focusable), so Reka's default focus return lands on <body>. When `target`
+ * resolves to a live element, take over and focus it instead (e.g. the gear
+ * button or the row's ⋯ button); otherwise keep Reka's default.
+ */
+export function restoreFocusOnClose(event: Event, target: (() => HTMLElement | null | undefined) | undefined): void {
+  const el = target?.()
+  if (!el?.isConnected) return
+  event.preventDefault()
+  el.focus({ preventScroll: true })
+}

@@ -559,6 +559,7 @@ async function handleDelete(run: RoutineRun) {
       description="Permanently removes this run's history. This cannot be undone."
       confirm-label="Delete"
       :pending="!!confirmDeleteRun && deletingId === confirmDeleteRun.id"
+      :restore-focus="() => (confirmDeleteId ? rowMenuTriggerRefs.get(confirmDeleteId) : null)"
       @confirm="confirmDeleteRun && handleDelete(confirmDeleteRun)"
     >
       <template #trigger>
@@ -571,6 +572,7 @@ async function handleDelete(run: RoutineRun) {
       description="Stops the routine run in progress. This cannot be undone."
       confirm-label="Cancel run"
       :pending="!!confirmCancelRun && cancellingId === confirmCancelRun.id"
+      :restore-focus="() => (confirmCancelId ? rowMenuTriggerRefs.get(confirmCancelId) : null)"
       @confirm="confirmCancelRun && handleCancel(confirmCancelRun)"
     >
       <template #trigger>

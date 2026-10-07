@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { focusFirstAvailable, neighborId } from './focusAfterRemoval'
+import { focusFirstAvailable, neighborId, restoreFocusOnClose } from './focusAfterRemoval'
 
 describe('neighborId', () => {
   const ids = ['a', 'b', 'c']
@@ -35,5 +35,27 @@ describe('focusFirstAvailable', () => {
 
     target.remove()
     fallback.remove()
+  })
+})
+
+describe('restoreFocusOnClose', () => {
+  it('takes over Reka\'s close-auto-focus and focuses the target', () => {
+    const target = document.createElement('button')
+    document.body.append(target)
+    const event = new Event('closeAutoFocus', { cancelable: true })
+
+    restoreFocusOnClose(event, () => target)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(document.activeElement).toBe(target)
+    target.remove()
+  })
+
+  it('leaves the default behavior alone without a (connected) target', () => {
+    const event = new Event('closeAutoFocus', { cancelable: true })
+    restoreFocusOnClose(event, undefined)
+    restoreFocusOnClose(event, () => null)
+    restoreFocusOnClose(event, () => document.createElement('button')) // detached
+    expect(event.defaultPrevented).toBe(false)
   })
 })

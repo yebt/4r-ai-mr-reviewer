@@ -44,6 +44,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from 'reka-ui'
+import { restoreFocusOnClose } from '../../../composables/focusAfterRemoval'
 import Button from '../atoms/Button.vue'
 
 const props = withDefaults(
@@ -55,6 +56,12 @@ const props = withDefaults(
     danger?: boolean
     /** Wired to the confirm Button's `:loading` — disables it and shows a spinner. */
     pending?: boolean
+    /**
+     * Where focus goes when the dialog closes, for triggers that are hidden or
+     * unmount (lifted list dialogs). Falls back to Reka's default when it
+     * returns nothing live.
+     */
+    restoreFocus?: () => HTMLElement | null | undefined
   }>(),
   {
     confirmLabel: 'Delete',
@@ -91,6 +98,7 @@ watch(
     <AlertDialogPortal>
       <AlertDialogOverlay class="overlay z-20" />
       <AlertDialogContent
+        @close-auto-focus="(event: Event) => restoreFocusOnClose(event, restoreFocus)"
         class="fixed left-1/2 top-1/2 z-30 w-[min(24rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-line bg-bg-panel-raised p-5 shadow-token-lg focus:outline-none"
       >
         <AlertDialogTitle class="text-md font-semibold text-text">{{ title }}</AlertDialogTitle>
