@@ -32,7 +32,10 @@ const emit = defineEmits<{
   click: [event: MouseEvent]
 }>()
 
-const isDisabled = computed(() => props.disabled || props.loading)
+// Only the real `disabled` prop uses the native attribute. A loading button
+// must stay focusable (a natively disabled element drops focus to <body>
+// mid-action), so it is announced via aria-disabled and blocked in JS.
+const isInert = computed(() => props.disabled || props.loading)
 
 const variantClassMap: Record<ButtonVariant, string> = {
   accent: 'bg-accent text-text-on-accent hover:bg-accent-hover',
@@ -59,7 +62,7 @@ const sizeClass = computed(() => sizeClassMap[props.size])
 const spinnerSize = computed(() => spinnerSizeMap[props.size])
 
 function onClick(event: MouseEvent) {
-  if (isDisabled.value) return
+  if (isInert.value) return
   emit('click', event)
 }
 </script>
@@ -67,10 +70,11 @@ function onClick(event: MouseEvent) {
 <template>
   <button
     :type="type"
-    :disabled="isDisabled"
+    :disabled="disabled"
+    :aria-disabled="loading && !disabled ? 'true' : undefined"
     :aria-busy="loading || undefined"
     :class="[variantClass, sizeClass]"
-    class="inline-flex shrink-0 items-center justify-center whitespace-nowrap font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-50"
+    class="inline-flex shrink-0 items-center justify-center whitespace-nowrap font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-progress aria-disabled:opacity-50"
     @click="onClick"
   >
     <Spinner v-if="loading" :size="spinnerSize" />

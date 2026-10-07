@@ -92,6 +92,7 @@ import {
   filterReviews,
   repoFilterOptions,
 } from '../filters'
+import { focusFirstAvailable, neighborId } from '@shared/composables/focusAfterRemoval'
 import { RECOMMENDATION_LABELS } from '../labels'
 import { useReviewsStore } from '../store'
 import ReviewStatusChip from './ReviewStatusChip.vue'
@@ -241,8 +242,12 @@ const discardingId = ref<string | null>(null)
 async function handleDiscard(review: ReviewWithRepo) {
   discardingId.value = review.id
   try {
+    const after = neighborId(filteredReviews.value.map((r) => r.id), review.id)
     await store.discard(review.id)
     confirmDiscardId.value = null
+    // The removed row owned focus; hand it to the next row's ⋯ (or the heading).
+    await nextTick()
+    focusFirstAvailable(after ? rowMenuTriggerRefs.get(after) : null, document.getElementById('reviews-heading'))
   } catch {
     // no-op — store already toasted the error
   } finally {
@@ -255,7 +260,7 @@ async function handleDiscard(review: ReviewWithRepo) {
   <section class="flex flex-col gap-4">
     <div class="flex items-center justify-between gap-3">
       <div class="flex min-w-0 flex-col gap-1">
-        <Text as="h2" size="xl" class="font-semibold tracking-tight">Reviews</Text>
+        <Text as="h2" id="reviews-heading" tabindex="-1" size="xl" class="font-semibold tracking-tight focus:outline-none">Reviews</Text>
         <Text muted size="sm" class="truncate">AI code reviews run across every connected repository.</Text>
       </div>
     </div>

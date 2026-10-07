@@ -85,6 +85,7 @@ import {
 import { resolveErrorMessage } from '@shared/api/resolveErrorMessage'
 import { useScrollContainer } from '@shared/composables/useScrollContainer'
 import { useReposStore } from '@modules/repos/store'
+import { focusFirstAvailable, neighborId } from '@shared/composables/focusAfterRemoval'
 import RunStatusChip from './RunStatusChip.vue'
 import { useRunsStore } from '../store'
 import {
@@ -323,8 +324,12 @@ async function handleCancel(run: RoutineRun) {
 async function handleDelete(run: RoutineRun) {
   deletingId.value = run.id
   try {
+    const after = neighborId(filteredRuns.value.map((r) => r.id), run.id)
     await store.removeRun(run.id)
     confirmDeleteId.value = null
+    // The removed row owned focus; hand it to the next row's ⋯ (or the heading).
+    await nextTick()
+    focusFirstAvailable(after ? rowMenuTriggerRefs.get(after) : null, document.getElementById('runs-heading'))
   } catch {
     // no-op — store already toasted the error
   } finally {
@@ -338,7 +343,7 @@ async function handleDelete(run: RoutineRun) {
     <div class="flex items-center justify-between gap-3">
       <div class="flex min-w-0 flex-col gap-1">
         <div class="flex items-center gap-2">
-          <Text as="h2" size="xl" class="font-semibold tracking-tight">Runs</Text>
+          <Text as="h2" id="runs-heading" tabindex="-1" size="xl" class="font-semibold tracking-tight focus:outline-none">Runs</Text>
           <span
             v-if="store.isPolling"
             class="flex items-center gap-1 text-xs text-text-muted"

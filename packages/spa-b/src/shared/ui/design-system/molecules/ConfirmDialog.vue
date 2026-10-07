@@ -8,12 +8,15 @@
  * fixes the hardcoded `text-white` those inline copies used on the confirm
  * button.
  *
- * `pending` wires straight into the confirm Button's `:loading`, which sets
- * the underlying native `<button disabled>`. A disabled button never
- * dispatches a click event, so while `pending` is true neither `confirm`
- * fires again nor does Reka's built-in close-on-Action behavior run — the
- * dialog just stays open with a spinner until the caller flips `pending`
- * back to false (on success or failure).
+ * `pending` wires straight into the confirm Button's `:loading`. A loading
+ * Button stays focusable (`aria-disabled`, not native `disabled`) but never
+ * emits `click`, so while `pending` is true neither `confirm` fires again nor
+ * does Reka's built-in close-on-Action behavior re-run.
+ *
+ * Focus rescue: callers usually delete the row that owned the trigger, which
+ * would strand focus on <body>. When `pending` settles and focus is on
+ * <body>, focus moves to the page's <main> landmark. Callers that know a
+ * better target (next row, section heading) focus it themselves first.
  *
  * Usage:
  * ```html
@@ -29,6 +32,7 @@
  * </ConfirmDialog>
  * ```
  */
+import { nextTick, watch } from 'vue'
 import {
   AlertDialogAction,
   AlertDialogCancel,
@@ -42,7 +46,7 @@ import {
 } from 'reka-ui'
 import Button from '../atoms/Button.vue'
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     title: string
     description?: string
@@ -62,6 +66,21 @@ withDefaults(
 const emit = defineEmits<{
   confirm: []
 }>()
+
+watch(
+  () => props.pending,
+  (pending, wasPending) => {
+    if (!wasPending || pending) return
+    void nextTick(() => {
+      const active = document.activeElement
+      if (active && active !== document.body) return
+      const main = document.querySelector<HTMLElement>('main')
+      if (!main) return
+      if (!main.hasAttribute('tabindex')) main.setAttribute('tabindex', '-1')
+      main.focus({ preventScroll: true })
+    })
+  },
+)
 </script>
 
 <template>
