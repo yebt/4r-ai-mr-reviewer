@@ -62,7 +62,13 @@ const sizeClass = computed(() => sizeClassMap[props.size])
 const spinnerSize = computed(() => spinnerSizeMap[props.size])
 
 function onClick(event: MouseEvent) {
-  if (isInert.value) return
+  if (isInert.value) {
+    // Without native `disabled`, a loading submit button still submits its form:
+    // Enter in a field and Space/Enter on the button both arrive as this click.
+    // Cancelling it cancels the submission, so a slow request can't be re-sent.
+    event.preventDefault()
+    return
+  }
   emit('click', event)
 }
 </script>
