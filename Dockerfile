@@ -41,9 +41,9 @@ ENTRYPOINT ["/usr/local/bin/air-server"]
 # ---------------------------------------------------------------------------
 FROM oven/bun:1-alpine AS web-build
 WORKDIR /src
-COPY packages/spa/package.json packages/spa/bun.lock ./
+COPY packages/spa-b/package.json packages/spa-b/bun.lock ./
 RUN bun install --frozen-lockfile
-COPY packages/spa/ ./
+COPY packages/spa-b/ ./
 RUN bun run build-only
 
 # --- Web runtime image: nginx serves the SPA and proxies the API -----------
