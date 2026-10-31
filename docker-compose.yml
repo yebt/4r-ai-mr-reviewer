@@ -31,6 +31,12 @@ services:
       # Optional: password-encrypt the secret vault instead of the on-disk
       # key-file. If set, the key-file is NOT used. See the guide's Security note.
       # AIR_PASSWORD: "${AIR_PASSWORD:-}"
+    # Unique hostname for nginx. Dokploy also attaches `web` to the shared
+    # dokploy-network, where another stack's service may be named plain `api`.
+    networks:
+      default:
+        aliases:
+          - air-api
     volumes:
       # Persistent: the SQLite DB and the vault key-file. Losing this volume
       # loses all data AND makes stored tokens/keys unrecoverable.

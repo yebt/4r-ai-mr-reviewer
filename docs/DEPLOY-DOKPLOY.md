@@ -13,16 +13,16 @@ same-origin. The provided setup does exactly that in one Compose project:
 
 ```
 Internet ──HTTPS──▶ Dokploy/Traefik ──▶ web (nginx) ──┬─ /            → SPA static files
-                                                       ├─ /api/*       → api:8080 (prefix stripped)
-                                                       ├─ /webhooks/*  → api:8080 (GitLab)
-                                                       ├─ /telegram/webhook → api:8080 (Telegram bot)
-                                                       └─ /health      → api:8080
+                                                       ├─ /api/*       → air-api:8080 (prefix stripped)
+                                                       ├─ /webhooks/*  → air-api:8080 (GitLab)
+                                                       ├─ /telegram/webhook → air-api:8080 (Telegram bot)
+                                                       └─ /health      → air-api:8080
                                                               │
                                                           api (Go) ── /data volume (SQLite DB + vault key)
 ```
 
 - `web` (nginx) is the only service exposed; attach your domain to it.
-- `api` is reached only over the internal Docker network (`api:8080`).
+- `api` is reached only over the internal Docker network (`air-api:8080`, a unique alias — plain `api` can resolve to another stack on `dokploy-network`).
 - The whole thing is defined by `Dockerfile`, `docker/nginx.conf`, and
   `docker-compose.yml` at the repo root.
 
