@@ -2,6 +2,8 @@
 /**
  * Token-colored loading spinner. Inherits `currentColor` so it reads correctly
  * inside any Button variant (accent text on accent bg, muted text elsewhere).
+ * A faint full ring with a short arc: unlike an open icon, it still reads as a
+ * spinner at 12px.
  */
 import { computed } from 'vue'
 
@@ -35,11 +37,15 @@ const sizeClass = computed(() => sizeMap[props.size])
     role="status"
     aria-label="Loading"
   >
-    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-    <path
-      class="opacity-75"
-      fill="currentColor"
-      d="M4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4Z"
+    <circle
+      class="opacity-25"
+      data-testid="spinner-track"
+      cx="12"
+      cy="12"
+      r="10"
+      stroke="currentColor"
+      stroke-width="3"
     />
+    <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
   </svg>
 </template>

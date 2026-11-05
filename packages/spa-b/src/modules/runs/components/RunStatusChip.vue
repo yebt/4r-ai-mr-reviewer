@@ -3,13 +3,12 @@
  * Status chip for a run (or a step, via `status="stepStatusUi"` reuse isn't
  * needed — steps aren't rendered in this first-cut list). Thin `Badge`
  * wrapper driven by `runStatusUi` so the status→variant/icon/label mapping
- * lives in one place (`format.ts`). Spins the icon while `spin` is true
- * (the `running` status only) so the animation itself never needs a
- * `prefers-reduced-motion` opt-out beyond what `Icon`/Tailwind already give
- * other spinners in this app.
+ * lives in one place (`format.ts`). Shows the `Spinner` atom while `spin` is
+ * true (the `running` status only), which brings its own
+ * `prefers-reduced-motion` opt-out.
  */
 import { computed } from 'vue'
-import { Badge, Icon } from '@shared/ui/design-system'
+import { Badge, Icon, Spinner } from '@shared/ui/design-system'
 import { runStatusUi } from '../format'
 import type { RoutineRunStatus } from '../types'
 
@@ -22,7 +21,8 @@ const ui = computed(() => runStatusUi[props.status])
 
 <template>
   <Badge :status="ui.variant">
-    <Icon :name="ui.icon" size="xs" :class="{ 'animate-spin motion-reduce:animate-none': ui.spin }" />
+    <Spinner v-if="ui.spin" size="xs" aria-hidden="true" />
+    <Icon v-else :name="ui.icon" size="xs" />
     {{ ui.label }}
   </Badge>
 </template>

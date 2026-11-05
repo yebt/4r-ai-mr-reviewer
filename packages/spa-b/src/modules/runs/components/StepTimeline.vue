@@ -14,7 +14,7 @@
  * decision (Merge / Wait, Resume / Skip) exactly where the run is paused.
  */
 import { computed } from 'vue'
-import { Icon, Text } from '@shared/ui/design-system'
+import { Icon, Spinner, Text } from '@shared/ui/design-system'
 import { formatTime, stepLabel } from '../format'
 import type { RoutineStep } from '../types'
 
@@ -28,7 +28,8 @@ type NodeState = 'done' | 'running' | 'attention' | 'failed' | 'skipped' | 'pend
 // Literal class strings for Tailwind's scanner (same approach as Badge.vue).
 const NODE_CLASS: Record<NodeState, string> = {
   done: 'bg-success-bg text-success-text',
-  running: 'bg-info-bg text-info-text',
+  // No disc: the spinner's own ring is the node.
+  running: 'text-info-text',
   attention: 'bg-warning-bg text-warning-text ring-1 ring-warning-solid',
   failed: 'bg-danger-bg text-danger-text',
   skipped: 'bg-bg-hover text-text-muted',
@@ -37,7 +38,6 @@ const NODE_CLASS: Record<NodeState, string> = {
 
 const NODE_ICON: Partial<Record<NodeState, string>> = {
   done: 'check',
-  running: 'loader-circle',
   attention: 'circle-pause',
   failed: 'x',
   skipped: 'minus',
@@ -88,12 +88,8 @@ const rows = computed(() =>
         :class="NODE_CLASS[row.state]"
         aria-hidden="true"
       >
-        <Icon
-          v-if="NODE_ICON[row.state]"
-          :name="NODE_ICON[row.state]!"
-          size="xs"
-          :class="row.state === 'running' ? 'motion-safe:animate-spin' : ''"
-        />
+        <Spinner v-if="row.state === 'running'" size="xl" />
+        <Icon v-else-if="NODE_ICON[row.state]" :name="NODE_ICON[row.state]!" size="xs" />
       </span>
 
       <div class="flex min-w-0 flex-1 flex-col gap-0.5 pt-0.5">

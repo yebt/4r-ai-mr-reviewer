@@ -6,7 +6,7 @@
  * as one visual language.
  */
 import { computed } from 'vue'
-import { Badge, Icon } from '@shared/ui/design-system'
+import { Badge, Icon, Spinner } from '@shared/ui/design-system'
 import { stepStatusUi } from '../format'
 import type { RoutineStepStatus } from '../types'
 
@@ -19,7 +19,8 @@ const ui = computed(() => stepStatusUi[props.status])
 
 <template>
   <Badge :status="ui.variant">
-    <Icon :name="ui.icon" size="xs" :class="{ 'animate-spin motion-reduce:animate-none': ui.spin }" />
+    <Spinner v-if="ui.spin" size="xs" aria-hidden="true" />
+    <Icon v-else :name="ui.icon" size="xs" />
     {{ ui.label }}
   </Badge>
 </template>
