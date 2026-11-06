@@ -215,7 +215,7 @@ const tab = computed<FlowTab>({
             v-for="t in FLOW_TABS"
             :key="t.id"
             :value="t.id"
-            class="-mb-px inline-flex shrink-0 items-center gap-1.5 border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-text-muted outline-none transition-colors hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring data-[state=active]:border-accent-solid data-[state=active]:text-text"
+            class="inline-flex shrink-0 items-center gap-1.5 border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-text-muted outline-none transition-colors hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring data-[state=active]:border-accent-10 data-[state=active]:text-text"
           >
             <Icon :name="t.icon" size="sm" />
             {{ t.label }}

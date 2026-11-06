@@ -4,8 +4,7 @@
  * ok/fail/unknown summary counts stay unit-testable without mounting a
  * component. Mirrors the old app's `modules/repos/preflight.ts`
  * (`checkStatusUi`), adapted to this app's `Badge` status vocabulary
- * (`success`/`warning`/`danger` instead of custom `text-ok`/`text-warn`/
- * `text-danger` classes).
+ * (`success`/`warning`/`danger` instead of the old app's custom text classes).
  */
 import type { BadgeStatus } from '@shared/ui/design-system'
 import type { PreflightCheck } from './types'
